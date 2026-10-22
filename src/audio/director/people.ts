@@ -6,9 +6,9 @@
  *
  * @module audio/director/people
  */
+import { surfaceAt } from "../../sim/map/surface.ts"
 import { hash01 } from "../../tools/geometry.ts"
 import { EAR_HEIGHT } from "../acoustics.ts"
-import { surfaceAt } from "../places.ts"
 import { stepRate, WALK_DB } from "../synth/steps.ts"
 import type { HeardPerson } from "../types.ts"
 import { type Frame, groundAt } from "./frame.ts"

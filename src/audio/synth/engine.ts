@@ -1,27 +1,27 @@
 /**
  * Engine voices (synthesis.md §2.1–2.2): one oscillator at the firing frequency (a sawtooth, or a
- * band-limited pulse for the two-stroke Ape and the diesel), a half-order sub, a tanh waveshaper
- * whose drive follows the load, two exhaust formants, a lowpass opening with revs, and bandpassed
- * noise gated at the firing rate (diesel clatter, two-stroke rattle). Turbo models add a whine that
- * spools up with lag. Each voice owns a virtual gearbox, so revs follow speed and throttle.
+ * band-limited pulse for a two-stroke or a diesel), a half-order sub, a tanh waveshaper whose drive
+ * follows the load, two exhaust formants, a lowpass opening with revs, and bandpassed noise gated at
+ * the firing rate (diesel clatter, two-stroke rattle). A turbo adds a whine that spools up with lag.
+ * The revs and load are the sim's (`engineRevs`); the timbre comes from how the engine is built
+ * (`VEHICLES[model].engine`, `timbreOf`): its cycle and fuel, its cylinders and its displacement.
  *
- * Levels: every model's output peaks near 0.5 at the redline under full load and sits about 20 dB
- * lower at idle. How loud each model is (physics.md §8) is the director's per-model source level,
- * and so is the own engine's level inside: `inside` only changes the tone (the firewall's dull,
- * boomy filter, physics.md §10).
+ * Levels: every model's output peaks near 0.5 at the redline under full load (its measured `TRIM`)
+ * and sits about 20 dB lower at idle. How loud each model is (physics.md §8) is the director's
+ * per-model source level, and so is the own engine's level inside: `inside` only changes the tone
+ * (the firewall's dull, boomy filter, physics.md §10).
  *
  * @module audio/synth/engine
  */
-import type { VehicleModel } from "../../sim/vehicles.ts"
+import { type EngineSpec, VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
 import { loop, tanhCurve } from "../buffers.ts"
-import { GEARBOXES, type GearOutput, type GearState, stepGearbox } from "../gearbox.ts"
 import type { Continuous, Voice, VoiceIo } from "../types.ts"
 import { builtOnFirst, fadeOut, glide } from "./graph.ts"
 
 type EngineSound = Extract<Continuous, { readonly kind: "engine" }>
 
-/** One engine's timbre (TUNED starting points from synthesis.md §2.2). */
-interface EngineSpec {
+/** One engine's sound, derived from how it is built (`timbreOf`). */
+export interface Timbre {
   /** Firing pulses per crank revolution: cylinders / 2 for a four-stroke, cylinders for a two-stroke. */
   readonly pulses: number
   /** The firing waveform: a sawtooth, or a pulse with this duty cycle. */
@@ -40,38 +40,90 @@ interface EngineSpec {
   readonly noise: { readonly level: number; readonly band: readonly [number, number]; readonly q: number; readonly pulse: number }
   /** Turbo whine level at full boost; 0 for none. */
   readonly turbo: number
-  /** 1 / the patch's own peak near the redline under full load (calibrated by rendering it offline). */
+  /** Idle and redline, rpm. */
+  readonly idle: number
+  readonly redline: number
+  /** 1 / the patch's own peak at the redline under full load. */
   readonly trim: number
 }
 
-/** The engine of every model. */
-export const ENGINES = {
-  // Fiat Panda 1.2 FIRE, 69 CV: a nasal small four.
-  panda: {
-    pulses: 2, wave: "sawtooth", sub: 0.25, formants: [[330, 2.5, 0.6], [1100, 3, 0.25]], lowpass: [900, 3800], highpass: 40, drive: 2.5,
-    noise: { level: 0.05, band: [700, 2500], q: 1.2, pulse: 0 }, turbo: 0, trim: 0.538
+/**
+ * What the cycle and the fuel give an engine, whatever its size: the firing waveform, how many
+ * harmonics of the firing frequency the lowpass keeps at the redline, the mechanical noise (the
+ * diesel's knock and the two-stroke's rattle gated at the firing rate, the petrol four's valve
+ * train not), the formants' Q, gains and spacing, how far above the first formant the idle lowpass
+ * sits and how far under it the highpass, and the waveshaper's drive. Fitted to the four hand-tuned
+ * engines this replaced (docs/audio.md).
+ */
+const CYCLES = {
+  petrol: {
+    wave: "sawtooth", harmonics: 20, noise: { level: 0.05, band: [800, 3000], q: 1.1, pulse: 0 }, q: [2.5, 3], gains: [0.6, 0.25], spacing: 3.3,
+    idle: 2.7, highpass: 1 / 8, drive: 2.5
   },
-  // Piaggio Ape 50 two-stroke single: thin, buzzy, rattly, no bass.
-  ape: {
-    pulses: 1, wave: 0.12, sub: 0.12, formants: [[1250, 3, 0.7], [2900, 4, 0.35]], lowpass: [2500, 7500], highpass: 250, drive: 4,
-    noise: { level: 0.1, band: [1500, 4500], q: 1, pulse: 0.15 }, turbo: 0, trim: 0.336
+  diesel: {
+    wave: 0.3, harmonics: 11, noise: { level: 0.075, band: [1500, 2500], q: 1.5, pulse: 0.6 }, q: [2.5, 3], gains: [0.6, 0.25], spacing: 3.3,
+    idle: 2.7, highpass: 1 / 8, drive: 2.5
   },
-  // Marble truck, inline-6 turbo diesel: a low drone with a knock band gated at the firing rate.
-  truck: {
-    pulses: 3, wave: 0.3, sub: 0.35, formants: [[160, 2, 0.8], [520, 3, 0.35]], lowpass: [350, 1300], highpass: 30, drive: 3,
-    noise: { level: 0.06, band: [1500, 2500], q: 1.5, pulse: 0.6 }, turbo: 0.02, trim: 0.435
-  },
-  // Carabinieri Alfa Romeo Giulia 2.0 turbo, 200 CV: deeper and sportier than the Panda.
-  carabinieri: {
-    pulses: 2, wave: "sawtooth", sub: 0.3, formants: [[210, 2, 0.8], [780, 2.5, 0.35]], lowpass: [700, 4500], highpass: 35, drive: 3.5,
-    noise: { level: 0.04, band: [900, 3500], q: 1, pulse: 0 }, turbo: 0.015, trim: 0.48
+  // A short, sharp port-timed pulse through an expansion chamber: thin, bright, buzzy.
+  twoStroke: {
+    wave: 0.12, harmonics: 66, noise: { level: 0.1, band: [1500, 4500], q: 1, pulse: 0.15 }, q: [3, 4], gains: [0.7, 0.35], spacing: 2.3,
+    idle: 2, highpass: 1 / 5, drive: 4
   }
-} as const satisfies Record<VehicleModel, EngineSpec>
+} as const
+
+/** The first exhaust formant of a 1242 cm³ four (Hz); it scales as the cube root of the swept volume (a resonance goes as 1/length). */
+const F1 = 330, F1_CC = 1242
+/** A two-stroke's expansion chamber rings this much higher than a four-stroke's pipe of its size. */
+const CHAMBER = 1.3
+
+/**
+ * An engine's timbre from how it is built: pulses from its cylinders and cycle, waveform and noise from
+ * its cycle and fuel, the sub from the size of each cylinder (0.25 at 310 cm³), the formants and the
+ * idle lowpass from its displacement (size scaling), the redline lowpass from its firing frequency
+ * there, a turbo's whine, tighter formants and harder drive only with a turbo. `exhaust` moves the
+ * formants for an exhaust voiced unlike its size; `trim` is the measured 1 / peak.
+ */
+export const timbreOf = (engine: EngineSpec, trim = 1, exhaust = 1): Timbre => {
+  const cycle = engine.strokes === 2 ? CYCLES.twoStroke : CYCLES[engine.fuel], turbo = engine.aspiration === "turbo"
+  const pulses = engine.strokes === 4 ? engine.cylinders / 2 : engine.cylinders
+  const f1 = F1 * (engine.displacement / F1_CC) ** (-1 / 3) * (engine.strokes === 2 ? CHAMBER : 1) * exhaust
+  const tight = turbo ? 0.8 : 1
+  return {
+    pulses,
+    wave: cycle.wave,
+    sub: Math.min(0.4, Math.max(0.1, 0.25 + 0.15 * Math.log10(engine.displacement / engine.cylinders / 310))),
+    formants: [[f1, cycle.q[0] * tight, turbo ? 0.8 : cycle.gains[0]], [f1 * cycle.spacing, cycle.q[1] * tight, turbo ? 0.35 : cycle.gains[1]]],
+    lowpass: [cycle.idle * f1, cycle.harmonics * (engine.redline / 60) * pulses],
+    highpass: Math.max(30, f1 * cycle.highpass),
+    drive: cycle.drive + (turbo ? 1 : 0),
+    noise: { ...cycle.noise, level: cycle.noise.level * tight },
+    // The diesel's bigger turbo whines louder.
+    turbo: turbo ? (engine.fuel === "diesel" ? 0.02 : 0.015) : 0,
+    idle: engine.idle,
+    redline: engine.redline,
+    trim
+  }
+}
+
+/**
+ * MEASURED: 1 / each model's own peak at the redline under full load, from the audition page's renders at
+ * {rpm: redline, load: 1} in headless Chrome (three runs within 0.001 of each other; `window.lab.renderAll()`
+ * flags a row off the nominal 0.42–0.6). Re-measure after any change to `timbreOf` or the graph.
+ */
+const TRIM = { panda: 0.488, ape: 0.316, truck: 0.371, carabinieri: 0.469 } as const satisfies Record<VehicleModel, number>
+/** Voicing where size alone is wrong: the Giulia's sports exhaust plays a quarter lower than its 2 l would (210 Hz, not 282). */
+const EXHAUST = { panda: 1, ape: 1, truck: 1, carabinieri: 0.75 } as const satisfies Record<VehicleModel, number>
+
+/** The timbre of `model`'s engine. */
+export const timbre = (model: VehicleModel): Timbre => timbreOf(VEHICLES[model].engine, TRIM[model], EXHAUST[model])
 
 /** The own engine heard from the driver's seat, behind the firewall (physics.md §10). */
 export const CABIN = { lowpass: 2500, shelf: 4 } as const
 
-/** Where every param of an engine graph heads for one gearbox step. */
+/** How one vehicle differs from another of its model, from its `variant` 0…1: ±2 % in pitch, ±4 % in its exhaust formants. */
+export const variation = (variant: number) => ({ pitch: 1 + 0.04 * (variant - 0.5), formant: 1 + 0.08 * (variant - 0.5) })
+
+/** Where every param of an engine graph heads. */
 interface EngineTargets {
   /** Firing frequency, Hz. */
   readonly hz: number
@@ -88,23 +140,31 @@ interface EngineTargets {
 
 /**
  * The output gain at idle against the redline under full load, dB. The lowpass closing and the light
- * drive take about 9 dB more, so idle sits near 20 dB (RMS) below full (offline renders: Panda −19,
- * Ape −25, truck −16, Giulia −22; the diesel's clatter keeps its idle loud).
+ * drive take about 9 dB more, so idle sits near 20 dB (RMS) below full.
  */
 const IDLE_DB = -11
 
+/** Revs as a share of the way from idle (0) to the redline (1). */
+const revsOf = (timbre: Timbre, rpm: number): number => Math.min(1, Math.max(0, (rpm - timbre.idle) / (timbre.redline - timbre.idle)))
+
+/** The gain law's dB under the nominal peak (0 at the redline under full load, 11 at idle): masking and the voice caps count it. */
+const quietOf = (timbre: Timbre, rpm: number, load: number): number => -IDLE_DB * (1 - 0.6 * revsOf(timbre, rpm) - 0.4 * load)
+
+/** How many dB `model`'s engine plays under its nominal peak at `rpm` and `load` by its gain law (the filters' share at idle, ~9 dB, is not counted). */
+export const engineQuiet = (model: VehicleModel, rpm: number, load: number): number => quietOf(timbre(model), rpm, load)
+
 /** The engine law: revs set pitch and brightness, load sets drive and level (revs weigh 60 % of the level range, load 40 %). */
-export const engineTargets = (spec: EngineSpec, gear: GearOutput, inside: boolean): EngineTargets => {
-  const { rpm, rpmN, load } = gear
+export const engineTargets = (timbre: Timbre, rpm: number, load: number, inside: boolean, variant: number): EngineTargets => {
+  const revs = revsOf(timbre, rpm)
   return {
-    hz: (rpm / 60) * spec.pulses,
-    drive: 0.4 + load * spec.drive,
-    lowpass: spec.lowpass[0] + (spec.lowpass[1] - spec.lowpass[0]) * rpmN * (0.5 + 0.5 * load),
-    noiseHz: spec.noise.band[0] + (spec.noise.band[1] - spec.noise.band[0]) * rpmN,
-    noise: spec.noise.level * (0.3 + 0.7 * load) * (0.4 + rpmN),
-    turboHz: 2500 + 6000 * load * rpmN,
-    turbo: spec.turbo * load * rpmN,
-    gain: 0.5 * spec.trim * 10 ** ((IDLE_DB * (1 - 0.6 * rpmN - 0.4 * load)) / 20),
+    hz: (rpm / 60) * timbre.pulses * variation(variant).pitch,
+    drive: 0.4 + load * timbre.drive,
+    lowpass: timbre.lowpass[0] + (timbre.lowpass[1] - timbre.lowpass[0]) * revs * (0.5 + 0.5 * load),
+    noiseHz: timbre.noise.band[0] + (timbre.noise.band[1] - timbre.noise.band[0]) * revs,
+    noise: timbre.noise.level * (0.3 + 0.7 * load) * (0.4 + revs),
+    turboHz: 2500 + 6000 * load * revs,
+    turbo: timbre.turbo * load * revs,
+    gain: 0.5 * timbre.trim * 10 ** (-quietOf(timbre, rpm, load) / 20),
     cabinHz: inside ? CABIN.lowpass : 20000,
     shelf: inside ? CABIN.shelf : 0
   }
@@ -119,11 +179,9 @@ const pulseWave = (ctx: BaseAudioContext, duty: number, harmonics = 48): Periodi
 
 /** Turbo spool lag, s. */
 const SPOOL = 0.6
-/** Longest frame step the gearbox integrates, s (a stalled tab must not jump gears). */
-const MAX_DT = 0.1
 
 const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
-  const { ctx } = io, spec: EngineSpec = ENGINES[first.model], box = GEARBOXES[first.model]
+  const { ctx } = io, spec = timbre(first.model), shift = variation(first.variant).formant
   const firing = new ConstantSourceNode(ctx, { offset: 0 })
   const sources: Array<AudioScheduledSourceNode> = [firing]
   const tone = (options: OscillatorOptions, ratio: number) => {
@@ -146,7 +204,7 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
   tone({ type: "triangle" }, 0.5).connect(new GainNode(ctx, { gain: spec.sub })).connect(pre)
   pre.connect(shaper).connect(lowpass).connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: spec.highpass })).connect(cabin)
   for (const [frequency, Q, gain] of spec.formants) {
-    shaper.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency, Q })).connect(new GainNode(ctx, { gain })).connect(cabin)
+    shaper.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: frequency * shift, Q })).connect(new GainNode(ctx, { gain })).connect(cabin)
   }
 
   const hiss = loop(ctx, io.kit.white), band = new BiquadFilterNode(ctx, { type: "bandpass", frequency: spec.noise.band[0], Q: spec.noise.q })
@@ -166,19 +224,12 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
   // `loop` started the noise already.
   sources.push(hiss)
 
-  const state: GearState = { gear: 0, shiftLeft: 0 }
-  let last: number | undefined
+  let fresh = true
   return {
     update: (sound, now) => {
-      const jump = last === undefined
-      if (jump) {
-        // A voice first heard at speed settles into its gear without a shift's throttle cut.
-        stepGearbox(box, state, sound.speed, sound.throttle, 0)
-        state.shiftLeft = 0
-      }
-      const gear = stepGearbox(box, state, sound.speed, sound.throttle, jump ? 0 : Math.min(MAX_DT, Math.max(0, now - last!)))
-      last = now
-      const t = engineTargets(spec, gear, sound.inside)
+      const jump = fresh
+      fresh = false
+      const t = engineTargets(spec, sound.rpm, sound.load, sound.inside, first.variant)
       glide(firing.offset, t.hz, now, jump, 0.04)
       glide(pre.gain, t.drive, now, jump, 0.04)
       glide(lowpass.frequency, t.lowpass, now, jump, 0.04)
@@ -196,5 +247,5 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
   }
 }
 
-/** An engine: revs from its own gearbox, Doppler from `io.cents`, the cabin tone when `inside`. */
+/** An engine: the sim's revs and load, Doppler from `io.cents`, the cabin tone when `inside`. */
 export const engine = builtOnFirst(build)

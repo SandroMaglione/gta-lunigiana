@@ -2,19 +2,19 @@
  * One frame of the director, shared by its vehicle, people and world parts: the listener's ears
  * and surroundings, where things stand (`groundAt`), the way from any source to them (`path`, with
  * the ground under it and its obstacles, cached per key), and the frame's requests. One-shots play
- * at once, loud ones with their echoes off rock faces; continuous voices are offered (`hold`) and
- * `commit` keeps the loudest of each kind up to its cap.
+ * at once (a crash no louder than `CRASH_MOST_DB`), loud ones with their echoes off rock faces;
+ * continuous voices are offered (`hold`) and `commit` keeps the loudest of each kind up to its cap.
  *
  * @module audio/director/frame
  */
-import { groundY, yOf } from "../../render/ground.ts"
+import { groundZ } from "../../sim/map/ground.ts"
 import { heightAt } from "../../sim/map/index.ts"
 import type { VehicleModel } from "../../sim/vehicles.ts"
 import { airCutoff, audibility, CABIN, dbToGain, gainToDb, panOf, SPEED_OF_SOUND, spreading } from "../acoustics.ts"
 import type { Echo } from "../places.ts"
 import type { Continuous, Heard, OneShot, Placement, Speaker } from "../types.ts"
 import { type Ears, hear, type Hearing, SILENT, type Source } from "./hearing.ts"
-import { CAPS, ECHO_MIN_DB, echoes, KEEP_DB, LEVELS, type Level } from "./levels.ts"
+import { CAPS, CRASH_MOST_DB, ECHO_MIN_DB, echoes, KEEP_DB, LEVELS, type Level } from "./levels.ts"
 import type { Between, Occluder } from "./occluder.ts"
 
 /** How a path is heard: Doppler-shifted (vehicles), through the listener's `cabin` (unless false: their own car's crash, scrape, doors), `quiet` dB under the nominal peak. */
@@ -63,7 +63,7 @@ export interface Setup {
 }
 
 /** Elevation a.s.l. of what stands at (x, y): the terrain, a road, or the bridge deck nearest `near` (a previous elevation). */
-export const groundAt = (x: number, y: number, near?: number): number => groundY(x, y, near === undefined ? undefined : yOf(near)) - yOf(0)
+export const groundAt = (x: number, y: number, near?: number): number => groundZ(x, y, near)
 
 /** Nothing in the way (sounds of the listener's own car or body). */
 const CLEAR: Between = { delta: 0, forest: 0 }
@@ -78,7 +78,8 @@ export const makeFrame = (setup: Setup): Frame => {
   const play = (sound: OneShot, at: Hearing, after = 0) => {
     const delay = at.delay + after
     if (!at.audible || !finite(at.placement) || !Number.isFinite(delay)) return
-    speaker.play(sound, at.placement, delay)
+    // A crash's direct sound only: its echoes, far under it, keep the way's own level.
+    speaker.play(sound, sound.kind === "crash" ? { ...at.placement, gain: Math.min(at.placement.gain, dbToGain(CRASH_MOST_DB)) } : at.placement, delay)
     if (!echoes(sound)) return
     for (const echo of setup.echoes) {
       // The echo's extra way past the direct sound, never closer than `ECHO_MIN_DB` under it; in a street the facades

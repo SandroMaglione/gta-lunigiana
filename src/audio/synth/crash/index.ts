@@ -14,11 +14,12 @@ import type { Shot } from "../../types.ts"
 import { playBuffer } from "../graph.ts"
 import { bandLoops } from "./dsp.ts"
 import { type Crash, levelOf } from "./hit.ts"
-import { renderCrash } from "./render.ts"
+import { renderCrash, SHELL_ADDS } from "./render.ts"
 import { TARGETS } from "./targets.ts"
 
-/** How far (dB) a crash plays under its nominal peak (the reference crash, a Panda into a house at 15 m/s), so masking counts the level played: the law, less what a ringing wall adds to it; negative past the reference, to about −8 dB. */
-export const crashQuiet = (sound: Crash): number => -levelOf(sound) - (sound.against.kind === "wall" ? TARGETS[sound.against.material].adds * Math.min(1, sound.speed / 8) : 0)
+/** How far (dB) a crash plays under its nominal peak (the reference crash, a Panda into a house at 15 m/s), so masking counts the level played: the law, less what a ringing wall or two clanking shells add to it; negative past the reference, to about −8 dB. */
+export const crashQuiet = (sound: Crash): number =>
+  -levelOf(sound) - (sound.against.kind === "wall" ? TARGETS[sound.against.material].adds : SHELL_ADDS) * Math.min(1, sound.speed / 8)
 
 /** The rate a crash renders at on `ctx`, Hz. */
 const rateOf = (ctx: BaseAudioContext): number => Math.min(ctx.sampleRate, 48000)

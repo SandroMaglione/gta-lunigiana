@@ -44,6 +44,17 @@
       </div>
       <div class="credits">Map data © OpenStreetMap contributors (ODbL) · Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR, Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)</div>
     </div>
+    <dialog id="settings" aria-labelledby="settings-title">
+      <h2 id="settings-title">Settings</h2>
+      <section aria-labelledby="settings-gameplay">
+        <h3 id="settings-gameplay">Gameplay</h3>
+        <fieldset id="settings-physics">
+          <legend>Vehicle physics</legend>
+          <p id="settings-custom" hidden>Custom: set in the debug menu</p>
+        </fieldset>
+      </section>
+      <button id="settings-resume" type="button" aria-keyshortcuts="Escape">Resume (Esc)</button>
+    </dialog>
     <div id="title">
       <div class="card">
         <h1><small>Grand Theft Auto</small> Lunigiana</h1>
@@ -61,6 +72,7 @@
           <div><dt>Space</dt><dd>handbrake</dd></div>
           <div><dt>H</dt><dd>horn · siren (Carabinieri)</dd></div>
           <div><dt>M</dt><dd>map (pauses)</dd></div>
+          <div><dt>Esc</dt><dd>settings (pauses)</dd></div>
         </dl>
         <div id="title-load">
           <progress id="title-bar" max="1" value="0" aria-labelledby="title-step"></progress>

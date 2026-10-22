@@ -1,7 +1,7 @@
 import type { Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, vehicleInReach } from "./body.ts"
-import { Down, Driving, Game, Motion, Player, Pose, type PoseValue, PrevPose, Score, Stolen, Traffic, Vehicle, View } from "./schema.ts"
+import { Chassis, Down, Driving, Game, Handling, Motion, Player, Pose, type PoseValue, PrevPose, Score, Stolen, Traffic, Vehicle, View } from "./schema.ts"
 import { VEHICLES } from "./vehicles.ts"
 
 /** Plain view data for the camera and HUD. */
@@ -38,6 +38,7 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
       selection: {
         vehicle: Game.Query.read(Vehicle),
         pose: Game.Query.read(Pose),
+        chassis: Game.Query.read(Chassis),
         motion: Game.Query.read(Motion),
         traffic: Game.Query.optional(Traffic),
         stolen: Game.Query.optional(Stolen)
@@ -59,7 +60,7 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
   }
   const near = driving !== undefined || data.down.present
     ? undefined
-    : vehicleInReach(pose, queries.vehicles.each(), ({ data: v }) => ({ model: v.vehicle.get().model, pose: v.pose.get() }))
+    : vehicleInReach(pose, queries.vehicles.each(), ({ data: v }) => ({ model: v.vehicle.get().model, pose: v.pose.get(), chassis: v.chassis.get() }))
   return {
     prev: data.prev.get(),
     pose,
@@ -73,3 +74,8 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
     turns: resources.view.get().turns
   }
 })
+
+/** The handling knobs' current values, for the host's handling store (the settings and the dev debug menu). */
+export const HandlingView = Game.Inspector("Lunigiana/HandlingView", {
+  resources: { handling: Game.System.readResource(Handling) }
+}, ({ resources }) => resources.handling.get())

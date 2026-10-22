@@ -1,9 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { groundZ, ROAD_LIFT } from "../sim/map/ground.ts"
 import { isDrivable, MAP, roadClassOf } from "../sim/map/index.ts"
 import { VEHICLES } from "../sim/vehicles.ts"
-import { axleY, groundY, ROAD_LIFT, terrainY, yOf } from "./ground.ts"
+import { groundY, terrainY, yOf } from "./ground.ts"
 
 const hm = MAP.heightmap
 
@@ -36,9 +37,10 @@ test("groundY stands on an at-grade road when arriving from the terrain beside i
 })
 
 // Regression: on the steep little bridge on Via Provinciale near Colognola (OSM 810591030) the gully below stayed
-// nearer than the climbing deck, so the car (and walkers) dropped 1.9 m under it.
-test("a car and a walker crossing every drivable bridge, both ways, from 12 m before it, stay on the deck", () => {
-  const length = VEHICLES.carabinieri.length
+// nearer than the climbing deck, so the car (and walkers) dropped 1.9 m under it. The car's wheels are the sim's: each
+// keeps to the level of its previous contact, as the drive physics does; walkers stand where the renderer puts them.
+test("a car's wheels and a walker crossing every drivable bridge, both ways, from 12 m before it, stay on the deck", () => {
+  const { wheels } = VEHICLES.carabinieri
   // The straight approach out of a tunnel runs through the hillside (the old marble road up the Solco di Equi bends between its tunnels and bridges).
   const tunnelEnd = (x: number, y: number) => MAP.roads.some((q) => q.tunnel === true && [0, q.pts.length - 2].some((i) => Math.hypot(q.pts[i]! - x, q.pts[i + 1]! - y) < 0.1))
   let passes = 0
@@ -49,9 +51,10 @@ test("a car and a walker crossing every drivable bridge, both ways, from 12 m be
       if (reverse) pts.reverse()
       const [x0, y0] = pts[0]!, [x1, y1] = pts[1]!, d = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / d, uy = (y1 - y0) / d
       if (tunnelEnd(x0, y0)) continue
-      let wheels: { readonly front: number; readonly rear: number } | undefined, feet: number | undefined
+      let contacts: ReadonlyArray<number> | undefined, feet: number | undefined
       const place = (x: number, y: number, angle: number) => {
-        wheels = axleY(x, y, angle, length, wheels)
+        const c = Math.cos(angle), s = Math.sin(angle)
+        contacts = wheels.map((w, i) => groundZ(x + w.x * c - w.y * s, y + w.x * s + w.y * c, contacts?.[i]))
         feet = groundY(x, y, feet)
       }
       for (let s = -12; s < 0; s += 0.4) place(x0 + ux * s, y0 + uy * s, Math.atan2(uy, ux))
@@ -60,8 +63,8 @@ test("a car and a walker crossing every drivable bridge, both ways, from 12 m be
         for (let s = 0; s < len; s += 0.4) {
           const x = ax + ((bx - ax) * s) / len, y = ay + ((by - ay) * s) / len
           place(x, y, Math.atan2(by - ay, bx - ax))
-          const deck = yOf(az + ((bz - az) * s) / len) + ROAD_LIFT[roadClassOf(r)], car = (wheels!.front + wheels!.rear) / 2
-          assert.ok(Math.abs(car - deck) < 0.5 && Math.abs(feet! - deck) < 0.5, `road ${r.id} ${reverse ? "b -> a" : "a -> b"} at ${x.toFixed(1)},${y.toFixed(1)}: deck ${deck.toFixed(2)}, car ${car.toFixed(2)}, walker ${feet!.toFixed(2)}`)
+          const deck = az + ((bz - az) * s) / len + ROAD_LIFT[roadClassOf(r)], car = contacts!.reduce((a, b) => a + b) / contacts!.length
+          assert.ok(Math.abs(car - deck) < 0.5 && Math.abs(feet! - yOf(deck)) < 0.5, `road ${r.id} ${reverse ? "b -> a" : "a -> b"} at ${x.toFixed(1)},${y.toFixed(1)}: deck ${deck.toFixed(2)}, wheels ${car.toFixed(2)}, walker ${(feet! - yOf(0)).toFixed(2)} m a.s.l.`)
         }
       }
       passes++

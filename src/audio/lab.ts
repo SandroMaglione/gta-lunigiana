@@ -5,13 +5,14 @@
  * and reverb send the director gives it there: its calibration (director/levels.ts) through its
  * acoustic chain (director/hearing.ts), over open, flat ground with nothing in the way. "Render
  * all" renders every voice and shot offline at a few representative params (the crashes over a
- * matrix of bodies, targets and speeds, the scrape along every material) and tabulates peak, RMS,
- * spectral centroid and NaNs; `window.lab.renderAll()` returns the same rows, for CDP checks.
+ * matrix of bodies, targets and speeds, the scrape along every material, each engine at its redline
+ * under full load, where its trim is calibrated) and tabulates peak, RMS, spectral centroid and
+ * NaNs; `window.lab.renderAll()` returns the same rows, for CDP checks.
  *
  * @module audio/lab
  */
 import { screenAxes } from "../sim/view.ts"
-import { VEHICLE_MODELS, type VehicleModel } from "../sim/vehicles.ts"
+import { VEHICLE_MODELS, VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { AMBIENT_DB, CABIN, type Cabin, dbToGain, EAR_HEIGHT, gainToDb } from "./acoustics.ts"
 import { makeKit } from "./buffers.ts"
 import { hear, type Hearing } from "./director/hearing.ts"
@@ -20,6 +21,8 @@ import { type Emitter, makeEmitter } from "./emitter.ts"
 import { measure } from "./measure.ts"
 import { makeMixer, type Mixer } from "./mixer.ts"
 import { crashQuiet } from "./synth/crash/index.ts"
+import { engineQuiet } from "./synth/engine.ts"
+import { clunkQuiet } from "./synth/impacts.ts"
 import { VEHICLE_SHOTS, VEHICLE_VOICES } from "./synth/vehicles.ts"
 import { WORLD_SHOTS, WORLD_VOICES } from "./synth/world.ts"
 import type { Continuous, Kit, Material, OneShot, Shot, Shots, Surface, Voice, VoiceFactory, Voices, Zone } from "./types.ts"
@@ -40,15 +43,16 @@ const WATER_DB = { fountain: 65, stream: 61, river: 76 } as const satisfies Reco
 
 /**
  * A source's calibration; `wet` marks one heard at the ears, with the director's reverb send for it (none); `under`, a bed
- * whose voice plays that many dB under its nominal by itself, which its gain gives back (world.ts); `quiet`, a crash that
- * plays that many dB under its nominal, which masking counts (vehicles.ts).
+ * whose voice plays that many dB under its nominal by itself, which its gain gives back (world.ts); `quiet`, an engine, crash
+ * or clunk that plays that many dB under its nominal, which masking counts (vehicles.ts).
  */
 type Calibration = Level & { readonly wet?: number; readonly under?: number; readonly quiet?: number }
 
 /** `sound`'s calibration: the beds and the own engine (from the driver's seat, through no cabin) sound at the ears. */
 const sourceOf = (sound: Sound): Calibration =>
-  sound.kind === "engine" ? (sound.inside ? { db: OWN_ENGINE_DB, rMin: 1, wet: 0 } : ENGINE[sound.model])
+  sound.kind === "engine" ? (sound.inside ? { db: OWN_ENGINE_DB, rMin: 1, wet: 0 } : { ...ENGINE[sound.model], quiet: engineQuiet(sound.model, sound.rpm, sound.load) })
   : sound.kind === "crash" ? { ...LEVELS.crash, quiet: crashQuiet(sound) }
+  : sound.kind === "clunk" ? { ...LEVELS.clunk, quiet: clunkQuiet(sound.speed) }
   : sound.kind === "water" ? { db: WATER_DB[sound.body], rMin: WATER_R_MIN }
   : sound.kind === "wind" ? { db: windDb(sound.strength), rMin: 1, wet: 0, under: BEDS.wind - windDb(sound.strength) }
   : sound.kind === "crickets" ? { db: BEDS.crickets, rMin: 1, wet: 0 }
@@ -64,8 +68,8 @@ const EARS = { x: 0, y: 0, z: EAR_HEIGHT, vx: 0, vy: 0, right: SCREEN_RIGHT } as
 const heard = (sound: Sound, where: Where): { readonly hearing: Hearing; readonly source: Calibration } => {
   const source = sourceOf(sound), r = source.wet === undefined ? where.r : 0, ahead = Math.sqrt(1 - where.side * where.side)
   const at = { x: r * (where.side * SCREEN_RIGHT.x + ahead * SCREEN_UP.x), y: r * (where.side * SCREEN_RIGHT.y + ahead * SCREEN_UP.y), z: EAR_HEIGHT }
-  // The game plays the listener's own engine and crash through no cabin (the synths make theirs).
-  const own = (sound.kind === "engine" || sound.kind === "crash") && sound.inside
+  // The game plays the listener's own engine through no cabin (the synth makes its own).
+  const own = sound.kind === "engine" && sound.inside
   const hearing = hear({
     ears: EARS, source: at, db: source.db, rMin: source.rMin, height: EAR_HEIGHT, quiet: source.quiet, delta: 0, forest: 0, ambient: AMBIENT_DB,
     street: where.street, cabin: own ? undefined : where.cabin
@@ -76,8 +80,8 @@ const heard = (sound: Sound, where: Where): { readonly hearing: Hearing; readonl
 
 const SURFACES = Object.keys({ asphalt: 0, stone: 0, gravel: 0, dirt: 0, grass: 0, leaves: 0 } satisfies Record<Surface, 0>)
 // Every key of a `satisfies Record<Material, 0>` is a Material.
-const MATERIALS = Object.keys({ masonry: 0, stone: 0, sheet: 0, glass: 0, rail: 0, rock: 0, earth: 0, tree: 0 } satisfies Record<Material, 0>) as ReadonlyArray<Material>
-const ZONES = Object.keys({ front: 0, side: 0, rear: 0 } satisfies Record<Zone, 0>)
+const MATERIALS = Object.keys({ masonry: 0, stone: 0, sheet: 0, glass: 0, rail: 0, rock: 0, earth: 0, tree: 0, road: 0 } satisfies Record<Material, 0>) as ReadonlyArray<Material>
+const ZONES = Object.keys({ front: 0, side: 0, rear: 0, under: 0 } satisfies Record<Zone, 0>)
 /** Menus for the string params. */
 const OPTIONS: Readonly<Record<string, ReadonlyArray<string>>> = {
   model: VEHICLE_MODELS,
@@ -91,15 +95,19 @@ const OPTIONS: Readonly<Record<string, ReadonlyArray<string>>> = {
 }
 /** Slider [min, max, step] per numeric param, or per `kind.param` where kinds differ. */
 const RANGES: Readonly<Record<string, readonly [number, number, number] | undefined>> = {
-  speed: [-10, 45, 0.5], "tyres.speed": [0, 45, 0.5], "scrape.speed": [0, 20, 0.5], "crash.speed": [0, 60, 0.5], "thud.speed": [0, 20, 0.5],
-  throttle: [-1, 1, 0.05], slip: [0, 10, 0.1], mass: [0.2, 5, 0.1], pitch: [350, 900, 1]
+  "tyres.speed": [0, 45, 0.5], "scrape.speed": [0, 20, 0.5], "crash.speed": [0, 60, 0.5], "thud.speed": [0, 20, 0.5], "clunk.speed": [0, 6, 0.1],
+  rpm: [0, 7000, 10], slip: [0, 20, 0.1], mass: [0.1, 30, 0.05], pitch: [350, 900, 1]
 }
 const UNIT_RANGE = [0, 1, 0.01] as const
 
+/** `model`'s mass, t, as the sim reports it; the reduced mass of two models. */
+const tonnes = (model: VehicleModel): number => VEHICLES[model].mass / 1000
+const paired = (a: VehicleModel, b: VehicleModel): number => 1 / (1 / tonnes(a) + 1 / tonnes(b))
+
 /** Each kind's params as first shown; the controls are made from these (numbers: sliders, strings: menus, flags: checkboxes). */
 const HELD = {
-  engine: { kind: "engine", model: "panda", speed: 10, throttle: 0.5, inside: false },
-  tyres: { kind: "tyres", speed: 12, slip: 0, surface: "asphalt", heavy: false },
+  engine: { kind: "engine", model: "panda", rpm: 3000, load: 0.5, inside: false, variant: 0.5 },
+  tyres: { kind: "tyres", speed: 12, skid: 0, slip: 0, surface: "asphalt", heavy: false },
   scrape: { kind: "scrape", speed: 8, material: "masonry" },
   horn: { kind: "horn", model: "panda" },
   siren: { kind: "siren" },
@@ -119,10 +127,9 @@ interface CrashForm {
   readonly against: Material | VehicleModel
   readonly struck: Zone
   readonly surface: Surface
-  readonly inside: boolean
 }
-/** A Panda's nose into a rendered house wall, on asphalt, heard from outside. */
-const CRASH: CrashForm = { kind: "crash", speed: 8, mass: 1, model: "panda", zone: "front", against: "masonry", struck: "front", surface: "asphalt", inside: false }
+/** A Panda's nose into a rendered house wall, on asphalt. */
+const CRASH: CrashForm = { kind: "crash", speed: 8, mass: tonnes("panda"), model: "panda", zone: "front", against: "masonry", struck: "front", surface: "asphalt" }
 const isModel = (name: string): name is VehicleModel => (VEHICLE_MODELS as ReadonlyArray<string>).includes(name)
 /** The crash `form` describes. */
 const crashOf = ({ model, zone, against, struck, ...rest }: CrashForm): Crash => ({
@@ -136,6 +143,7 @@ const soundOf = (form: Form): OneShot => (form.kind === "crash" ? crashOf(form) 
 const PLAYED = {
   crash: CRASH,
   thud: { kind: "thud", speed: 8 },
+  clunk: { kind: "clunk", speed: 3, heavy: false },
   door: { kind: "door", model: "panda", open: false },
   ignition: { kind: "ignition", model: "panda" },
   honk: { kind: "honk", model: "panda" },
@@ -153,21 +161,25 @@ type Each<S extends Sound> = { readonly [K in S["kind"]]: ReadonlyArray<Extract<
 
 /** "Render all": representative params per voice (rendered 2 s) and per shot. */
 const VOICE_RENDERS = {
+  // Each model at the redline under full load (its trim's calibration: flagged off nominal outside 0.42–0.6) and idling; the Giulia from its seat.
   engine: [
-    { kind: "engine", model: "panda", speed: 0, throttle: 0, inside: false },
-    { kind: "engine", model: "panda", speed: 15, throttle: 1, inside: false },
-    { kind: "engine", model: "ape", speed: 12, throttle: 1, inside: false },
-    { kind: "engine", model: "truck", speed: 15, throttle: 1, inside: false },
-    { kind: "engine", model: "carabinieri", speed: 40, throttle: 1, inside: false },
-    { kind: "engine", model: "carabinieri", speed: 20, throttle: 0.5, inside: true }
+    ...VEHICLE_MODELS.flatMap((model) => {
+      const { idle, redline } = VEHICLES[model].engine
+      return [{ kind: "engine", model, rpm: redline, load: 1, inside: false, variant: 0.5 }, { kind: "engine", model, rpm: idle, load: 0, inside: false, variant: 0.5 }] as const
+    }),
+    { kind: "engine", model: "carabinieri", rpm: 3500, load: 0.5, inside: true, variant: 0.5 }
   ],
   tyres: [
     // The loudest intended case, a full slide at the Giulia's top speed: peaks near 0.5.
-    { kind: "tyres", speed: 40, slip: 12, surface: "asphalt", heavy: false },
-    { kind: "tyres", speed: 14, slip: 0, surface: "asphalt", heavy: false },
-    { kind: "tyres", speed: 20, slip: 6, surface: "asphalt", heavy: false },
-    { kind: "tyres", speed: 10, slip: 0, surface: "stone", heavy: false },
-    { kind: "tyres", speed: 15, slip: 3, surface: "gravel", heavy: true }
+    { kind: "tyres", speed: 40, skid: 1, slip: 12, surface: "asphalt", heavy: false },
+    { kind: "tyres", speed: 14, skid: 0, slip: 0, surface: "asphalt", heavy: false },
+    { kind: "tyres", speed: 20, skid: 0.6, slip: 6, surface: "asphalt", heavy: false },
+    { kind: "tyres", speed: 10, skid: 0, slip: 0, surface: "stone", heavy: false },
+    { kind: "tyres", speed: 15, skid: 0.5, slip: 3, surface: "gravel", heavy: true },
+    // A standing burnout, a locked wheel, ABS braking at the limit.
+    { kind: "tyres", speed: 0, skid: 1, slip: 8, surface: "asphalt", heavy: false },
+    { kind: "tyres", speed: 15, skid: 1, slip: 15, surface: "asphalt", heavy: false },
+    { kind: "tyres", speed: 20, skid: 0.25, slip: 3, surface: "asphalt", heavy: false }
   ],
   // Full grinding from 12 m/s, where every material peaks near 0.5; masonry slower, and the guard rail's squeal at 2.5 m/s.
   scrape: [
@@ -183,20 +195,28 @@ const VOICE_RENDERS = {
   crickets: [{ kind: "crickets", density: 0.3 }, { kind: "crickets", density: 1 }]
 } satisfies Each<Continuous>
 const SHOT_RENDERS = {
-  // A Panda into a house wall (a bump to a heavy hit), car–car pairs at their reduced mass, each other target, a side hit, the cabin, a wreck.
+  // A Panda into a house wall (a bump to a heavy hit), car–car pairs, each other target, a side hit, a wreck, the laden truck nudging
+  // and hitting a house, a hard landing on the road and a roll onto it: each at the sim's mass (the car's, the reduced mass of two).
   crash: ([
     { speed: 2 }, { speed: 5 }, { speed: 14 }, { speed: 20 },
-    { speed: 10, mass: 0.5, against: "panda" },
-    { speed: 12, mass: 0.8, against: "truck" },
-    { speed: 8, mass: 0.6, model: "ape", against: "stone" },
-    { speed: 12, mass: 1.3, model: "carabinieri", against: "rail" },
+    { speed: 10, against: "panda" },
+    { speed: 12, against: "truck" },
+    { speed: 8, model: "ape", against: "stone" },
+    { speed: 12, model: "carabinieri", against: "rail" },
     { speed: 10, against: "tree" },
     { speed: 8, against: "earth" },
     { speed: 12, zone: "side" },
-    { speed: 14, inside: true },
-    { speed: 40, mass: 1.3, model: "carabinieri" }
-  ] satisfies ReadonlyArray<Partial<CrashForm>>).map((row) => crashOf({ ...CRASH, ...row })),
+    { speed: 40, model: "carabinieri" },
+    { speed: 2, model: "truck" },
+    { speed: 12, model: "truck" },
+    { speed: 8, zone: "under", against: "road" },
+    { speed: 8, zone: "side", against: "road" }
+  ] satisfies ReadonlyArray<Partial<CrashForm>>).map((row) => {
+    const form = { ...CRASH, ...row }
+    return crashOf({ ...form, mass: isModel(form.against) ? paired(form.model, form.against) : tonnes(form.model) })
+  }),
   thud: [{ kind: "thud", speed: 5 }, { kind: "thud", speed: 12 }],
+  clunk: [{ kind: "clunk", speed: 5, heavy: false }, { kind: "clunk", speed: 2, heavy: true }],
   door: [{ kind: "door", model: "panda", open: true }, { kind: "door", model: "panda", open: false }, { kind: "door", model: "truck", open: false }],
   ignition: VEHICLE_MODELS.map((model) => ({ kind: "ignition", model }) as const),
   honk: [{ kind: "honk", model: "panda" }, { kind: "honk", model: "truck" }],
@@ -221,6 +241,12 @@ const VOICE_RENDER = { settle: 0.5, seconds: 2, fade: 0.5 } as const
 const SHOT_SECONDS = 12
 /** Below this peak a render counts as silent (−80 dBFS); above `CLIP`, as clipping. */
 const SILENT = 1e-4, CLIP = 0.95
+/** An engine at the redline under full load, heard outside, peaks at the nominal 0.5 within this (its `TRIM` is off otherwise). */
+const NOMINAL = [0.42, 0.6] as const
+
+/** Whether `sound` is a calibration render that peaks off nominal. */
+const offNominal = (sound: Sound, peak: number): boolean =>
+  sound.kind === "engine" && !sound.inside && sound.load === 1 && sound.rpm === VEHICLES[sound.model].engine.redline && (peak < NOMINAL[0] || peak > NOMINAL[1])
 
 /** One line of the render table. */
 interface Row {
@@ -234,7 +260,7 @@ interface Row {
   readonly nan: boolean
   /** How long it sounds: the voice's measured span, the shot's own end time. */
   readonly seconds: number
-  /** Anything to look at: silent, clipping, NaN, sound after its stop or end. */
+  /** Anything to look at: silent, clipping, an engine off its nominal peak, NaN, sound after its stop or end. */
   readonly flags: string
 }
 
@@ -246,7 +272,10 @@ const paramsOf = (sound: Sound): string => Object.entries(sound).filter(([name])
 const rowOf = (sound: Sound, audio: AudioBuffer, from: number, to: number, quiet: number): Row => {
   const span = (a: number, b: number) => Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c).subarray(Math.floor(a * RATE), Math.floor(b * RATE)))
   const m = measure(span(from, to), RATE), after = measure(span(quiet, audio.duration), RATE)
-  const flags = [m.peak < SILENT && "silent", m.peak > CLIP && "clips", (m.nan || after.nan) && "NaN", after.peak > SILENT && `${after.peak.toFixed(4)} after its end`]
+  const flags = [
+    m.peak < SILENT && "silent", m.peak > CLIP && "clips", offNominal(sound, m.peak) && "off nominal", (m.nan || after.nan) && "NaN",
+    after.peak > SILENT && `${after.peak.toFixed(4)} after its end`
+  ]
   return {
     name: sound.kind, params: paramsOf(sound), peak: Number(m.peak.toFixed(3)), rms: Number(m.rms.toFixed(1)), centroid: Math.round(m.centroid),
     nan: m.nan || after.nan, seconds: Number((to - from).toFixed(2)), flags: flags.filter((flag) => flag !== false).join(", ")

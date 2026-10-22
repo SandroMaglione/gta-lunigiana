@@ -11,6 +11,7 @@
  *
  * @module audio/director
  */
+import { VEHICLES } from "../../sim/vehicles.ts"
 import { screenAxes } from "../../sim/view.ts"
 import { EAR_HEIGHT } from "../acoustics.ts"
 import { echoesAt, type Echo } from "../places.ts"
@@ -51,10 +52,12 @@ export const makeDirector = (
       const dt = last === undefined ? 0 : Math.min(MAX_DT, Math.max(0, now - last))
       last = now
       const { listener } = heard
-      // The ground under the listener stays on the level it was on: a bridge deck, not the river under it.
-      ground = groundAt(listener.x, listener.y, ground)
+      // In a car the ears ride with it, in the air too; on foot the ground under the listener stays on the level it was on: a bridge
+      // deck, not the river under it.
+      const seat = listener.car === undefined ? undefined : heard.vehicles.find((v) => v.id === listener.car)
+      ground = seat === undefined ? groundAt(listener.x, listener.y, ground) : seat.z - VEHICLES[seat.model].cg
       const ears = { x: listener.x, y: listener.y, z: ground + EAR_HEIGHT, vx: listener.vx, vy: listener.vy, right: screenAxes(listener.turns).right }
-      const inside = listener.car === undefined ? undefined : heard.vehicles.find((v) => v.id === listener.car)?.model
+      const inside = seat?.model
       const { ambient, street } = world.listen(ears, now, dt)
       if (live && (faces === undefined || now - faces.at >= ECHOES_EVERY || Math.hypot(ears.x - faces.x, ears.y - faces.y) >= ECHOES_MOVED)) {
         faces = { x: ears.x, y: ears.y, at: now, echoes: echoesAt(ears.x, ears.y) }

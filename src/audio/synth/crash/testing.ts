@@ -5,7 +5,7 @@
  *
  * @module audio/synth/crash/testing
  */
-import { BANDS, fft, type Mix, noiseFor, playNoise } from "./dsp.ts"
+import { fft, type Mix, noiseFor, playNoise } from "./dsp.ts"
 
 /** Octave band centres the levels are given at, Hz. */
 const OCTAVES = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const
@@ -205,7 +205,7 @@ export const bandEnergy = (x: Float32Array, sr: number, from: number, to: number
 
 /** One layer alone: `draw` writes into an empty mix `seconds` long (heard from outside), then its noise is played. */
 export const layer = (sr: number, seconds: number, random: () => number, draw: (mix: Mix) => void): Float32Array => {
-  const n = Math.ceil(seconds * sr), mix: Mix = { out: new Float32Array(n), noise: noiseFor(n, sr), sampleRate: sr, random, floor: 1e-6, view: BANDS.map(() => 1) }
+  const n = Math.ceil(seconds * sr), mix: Mix = { out: new Float32Array(n), noise: noiseFor(n, sr), sampleRate: sr, random, floor: 1e-6 }
   draw(mix)
   playNoise(mix.out, mix.noise, random, mix.floor)
   return mix.out

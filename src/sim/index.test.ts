@@ -8,14 +8,16 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { ringBox, segDist2 } from "../tools/geometry.ts"
 import { carClear } from "./body.ts"
-import { graph, MAP, wallsNear } from "./map/index.ts"
+import { graph, isDrivable, MAP, wallsNear } from "./map/index.ts"
 import { pointInRing } from "./collide.ts"
 import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkIndex } from "./route.ts"
-import { bindings, Game, KeyboardInput, makeRuntime, type PoseValue, setup, update } from "./index.ts"
-import { parkedCar, pedestrian } from "./spawning.ts"
+import { settle, uprightness } from "./chassis.ts"
+import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
+import { roadLevel } from "./map/ground.ts"
+import { parkedCar, pedestrian, trafficCar } from "./spawning.ts"
 import { PEDESTRIANS, PEOPLED, TRAFFIC } from "./systems/populate.ts"
 import { PARKED } from "./systems/spawn.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, start, straightOn, teleport, type Timeline, walkClear } from "./testing.ts"
+import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, start, straightOn, teleport, type Timeline, walkClear, World } from "./testing.ts"
 import { KNOCK_SPEED } from "./tuning.ts"
 import { screenAxes, VIEW_REACH } from "./view.ts"
 import { VEHICLES } from "./vehicles.ts"
@@ -26,10 +28,18 @@ test("setup: the player at the map spawn, 200 parked cars on random spots, Carab
   assert.equal(view()?.mode, "foot")
   assert.deepEqual(view()?.pose, MAP.spawns.player)
   const { vehicles } = world()
-  assert.equal(vehicles.length, Math.min(PARKED, MAP.spawns.parked.length))
+  assert.equal(vehicles.length, PARKED)
   assert.ok(vehicles.length >= 40, `${vehicles.length} parked cars`)
   assert.ok(vehicles.every((v) => !v.traffic && v.input.handbrake))
   assert.ok(vehicles.every((v) => MAP.spawns.parked.some((s) => s.x === v.x && s.y === v.y && s.angle === v.angle)), "every car on a parked spot")
+  assert.ok(vehicles.every((v) => uprightness(v.chassis) > Ops.cos(0.26)), "every one standing within 15° of level")
+  // On other seeds too: the Ape and the truck are parked only where they stand level.
+  for (let seed = 2; seed <= 12; seed++) {
+    const made = makeRuntime({ seed, services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.scripted(bindings, []))) })
+    assert.ok(made.ok && made.value.tick(setup).ok)
+    const tilted = made.value.inspect(World).vehicles.filter((v) => uprightness(v.chassis) <= Ops.cos(0.26))
+    assert.deepEqual(tilted.map((v) => v.model), [], `seed ${seed}`)
+  }
   const police = MAP.pois.find((p) => p.kind === "amenity=police")!
   const nearest = [...MAP.spawns.parked].sort((a, b) => Vec2.distance(a, police) - Vec2.distance(b, police)).slice(0, 2)
   const carabinieri = vehicles.filter((v) => v.model === "carabinieri")
@@ -56,7 +66,7 @@ test("on foot: the up key walks along screen-up and stops at a building wall", (
   assert.ok(Vec2.distance(path.at(-30)!, last) < 0.05, "standing (all but) still against it")
 })
 
-test("driving: entering a parked car, the up key accelerates toward maxSpeed and the left key turns CCW", () => {
+test("driving: entering a parked car, the up key accelerates like a Panda 1.2 and the left key turns CCW", () => {
   const timeline: Timeline = [...press(0, "action"), { frame: 2, press: ["up"] }, { frame: 92, press: ["left"] }]
   const { run, view, world } = start(timeline, [door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)] }])
   run(1)
@@ -65,21 +75,27 @@ test("driving: entering a parked car, the up key accelerates toward maxSpeed and
   const speeds: Array<number> = []
   run(91, () => speeds.push(view()!.vehicle!.speed))
   assert.ok(speeds.every((v, i) => i === 0 || v >= speeds[i - 1]!), "speeds up every step")
+  // 0–50 km/h in about 4.5 s: 4–7 m/s after 1.5 s in first gear.
   const top = speeds.at(-1)!
-  assert.ok(top > 8 && top < VEHICLES.panda.maxSpeed, `speed after 1.5 s: ${top}`)
+  assert.ok(top > 4 && top < 7, `speed after 1.5 s: ${top}`)
   const heading = view()!.pose.angle
-  run(18)
+  run(40)
   assert.ok(view()!.pose.angle > heading + 0.3, `left turns counter-clockwise: ${heading} -> ${view()!.pose.angle}`)
 })
 
 test("driving into a building: the car stops at the wall without tunnelling, loses its speed, and the hit is a wall Impact as fast as the car was, where its nose meets the wall", () => {
-  // Square on to an 11 m house wall on Via Cesare Battisti, 18.15 m to first contact.
+  // Square on to an 11 m house wall on Via Cesare Battisti, 18.15 m from `car` to first contact, up a grass bank too steep and
+  // slippery to build speed on from rest: the car rolls in at full throttle from 7 m along, past the garden wall it grazes before.
   const car = { x: -433.525, y: 433.24, angle: 1.386 }
-  const { run, view, world, heard } = start([...press(0, "action"), { frame: 2, press: ["up"] }], [door(car), { cars: [parkedCar("panda", 0xf2efe6, car)] }])
+  const from = { x: car.x + Ops.cos(car.angle) * 7, y: car.y + Ops.sin(car.angle) * 7, angle: car.angle }
+  const { run, world, heard } = start([], [door(car), { cars: [rolling("panda", from, 13, 1)] }])
   const id = world().vehicles[0]!.id
   const progress = (p: { readonly x: number; readonly y: number }) => (p.x - car.x) * Ops.cos(car.angle) + (p.y - car.y) * Ops.sin(car.angle)
   const frames: Array<{ pose: PoseValue; speed: number }> = []
-  run(240, () => frames.push({ pose: view()!.pose, speed: view()!.vehicle!.speed }))
+  run(150, () => {
+    const v = world().vehicles[0]!
+    frames.push({ pose: v, speed: v.vx * Ops.cos(v.angle) + v.vy * Ops.sin(v.angle) })
+  })
   assert.ok(frames.every(({ pose }) => carClear("panda", pose, 0.02)), "never inside a wall")
   assert.ok(frames.every(({ pose }) => progress(pose) < 18.17), `never past the wall: ${Math.max(...frames.map(({ pose }) => progress(pose)))}`)
   const fastest = Math.max(...frames.map((f) => f.speed))
@@ -89,7 +105,7 @@ test("driving into a building: the car stops at the wall without tunnelling, los
   // Regression: the speed at contact (one step's throttle over the fastest frame), not the speed lost in the step, which
   // is less by what the step travelled before contact (7.1 m/s here, then 4.4 the next step), so a hit read as two softer ones.
   const hardest = heard.impacts.reduce((a, b) => (b.speed > a.speed ? b : a))
-  assert.deepEqual([hardest.hit, hardest.car, hardest.mass, hardest.other], ["wall", id, VEHICLES.panda.mass, undefined])
+  assert.deepEqual([hardest.hit, hardest.car, hardest.mass, hardest.other], ["wall", id, VEHICLES.panda.mass / 1000, undefined])
   assert.ok(Math.abs(hardest.speed - fastest) < 0.3, `hit at ${hardest.speed} m/s, ${fastest} m/s at most`)
   // The contact point: the nose, half a length ahead of the centre, on the axis the car has kept since (it only bounced back along it).
   const { pose } = frames.at(-1)!
@@ -129,7 +145,7 @@ test("contacts: a car rolling into a parked one is a car Impact at the closing s
   })
   const hit = heard.impacts.find((i) => i.hit === "car")!
   assert.deepEqual(new Set([hit.car, hit.other]), new Set(ids))
-  assert.equal(hit.mass, VEHICLES.panda.mass / 2, "the reduced mass")
+  assert.equal(hit.mass, VEHICLES.panda.mass / 2000, "the reduced mass, in tonnes")
   assert.ok(hit.speed > 5 && hit.speed < 10, `closing at ${hit.speed} m/s`)
   assert.ok(Vec2.distance(hit, between!) < 0.3, `${Vec2.distance(hit, between!)} m from where two pandas touch`)
 })
@@ -256,17 +272,17 @@ test("knockdown: a fast car knocks a pedestrian down (one person Impact), scores
   const side = laneSide(next, "panda")
   const at = { ...lanePoint(laneOf(next.edge, next.forward), 5, side), angle: ON_BATTISTI.angle + Math.PI }
   const walker = pedestrian({ skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }, at, { edge: next.edge, forward: !next.forward, side: -side }, { mood: "walk", until: 0 })
-  const timeline: Timeline = [...press(0, "action"), { frame: 2, press: ["up"] }, { frame: 200, release: ["up"] }]
+  const timeline: Timeline = [...press(0, "action"), { frame: 2, press: ["up"] }, { frame: 300, release: ["up"] }]
   const { run, world, heard } = start(timeline, [door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)], peds: [walker] }])
   const { vehicles: [car], peds: [person] } = world()
   let knockedAt = -1
-  run(200, (frame) => {
+  run(300, (frame) => {
     if (knockedAt < 0 && world().peds[0]!.down) knockedAt = frame
   })
   assert.ok(knockedAt > 0, "knocked down")
   assert.equal(world().score.knocked, 1)
   const hits = heard.impacts.filter((i) => i.hit === "person")
-  assert.deepEqual(hits.map((i) => [i.car, i.other, i.mass]), [[car!.id, person!.id, VEHICLES.panda.mass]])
+  assert.deepEqual(hits.map((i) => [i.car, i.other, i.mass]), [[car!.id, person!.id, VEHICLES.panda.mass / 1000]])
   assert.ok(hits[0]!.speed > KNOCK_SPEED, `hit at ${hits[0]!.speed} m/s`)
   run(150)
   const [ped] = world().peds
@@ -356,6 +372,9 @@ test("determinism: the same scripted joyride replays bit for bit", () => {
     if (!made.ok) throw new Error(JSON.stringify(made.error))
     const ready = made.value.tick(setup, stage(...joyrideCast))
     if (!ready.ok) throw new Error(JSON.stringify(ready.error))
+    // A handling off its real values: the knobs are part of what replays.
+    made.value.send(SetHandling, { key: "grip", value: 1.3 })
+    made.value.send(SetHandling, { key: "weightTransfer", value: 0.5 })
     return { runtime: made.value, schedules: { update } }
   }, { schedule: "update", frames: 600, hostClock: HostClock.test() })
   assert.deepEqual(result, { ok: true, frames: 600 })
@@ -363,6 +382,7 @@ test("determinism: the same scripted joyride replays bit for bit", () => {
 
 test("saves: a snapshot taken mid-joyride restores through JSON and plays on identically", () => {
   const a = start(joyride, joyrideCast)
+  a.runtime.send(SetHandling, { key: "power", value: 1.5 })
   const modes: Array<string> = []
   a.run(420, () => {
     const mode = a.view()!.mode
@@ -395,6 +415,18 @@ test("contacts: sprinting into a parked car does not knock the player down", () 
   assert.deepEqual([...modes], ["foot"])
 })
 
+test("enter: a car lying on its roof cannot be entered, and the HUD offers none", () => {
+  const roof = { ...settle("panda", ON_BATTISTI), roll: Math.PI }
+  const wreck = Game.Command.spawn(
+    [Vehicle, { model: "panda", color: 0xb8312b }], [Pose, ON_BATTISTI], [PrevPose, ON_BATTISTI], [Motion, { vx: 0, vy: 0, spin: 0 }],
+    [CarInput, { throttle: 0, steer: 0, handbrake: true }], [Chassis, roof]
+  )
+  const { run, view } = start(press(0, "action"), [door(ON_BATTISTI), { cars: [wreck] }])
+  assert.equal(view()?.nearby, undefined)
+  run(2)
+  assert.equal(view()?.mode, "foot")
+})
+
 test("enter: the marble truck can be entered from beside its cab, 3.5 m from its centre", () => {
   const { length } = VEHICLES.truck
   const cab = { x: ON_BATTISTI.x + Ops.cos(ON_BATTISTI.angle) * (length / 2 - 0.5), y: ON_BATTISTI.y + Ops.sin(ON_BATTISTI.angle) * (length / 2 - 0.5) }
@@ -403,4 +435,56 @@ test("enter: the marble truck can be entered from beside its cab, 3.5 m from its
   const { run, view } = start(press(0, "action"), [at, { cars: [parkedCar("truck", 0xd4a85e, ON_BATTISTI)] }])
   run(1)
   assert.equal(view()?.mode, "driving")
+})
+
+/** The player out of the way, in the map's empty south-west corner: Populate brings nobody near the car under test. */
+const FAR_AWAY = { x: -2800, y: -6000, angle: 0 }
+
+// Regression: a car came to rest and slept wherever it stopped, so a car its brakes could not hold on a steep bank hung there for ever.
+test("sleep: standing with no pedal the brakes hold a car on a hill and it sleeps; on a bank too steep for them it slides on", () => {
+  // On the grass bank up to a house on Via Cesare Battisti, 11% uphill along its heading; the player gets in and touches nothing.
+  const hill = { x: -433.525, y: 433.24, angle: 1.386 }
+  const held = start(press(0, "action"), [door(hill), { cars: [parkedCar("panda", 0xf2efe6, hill)] }])
+  held.run(180)
+  const parked = held.world().vehicles[0]!
+  assert.equal(held.view()?.mode, "driving")
+  assert.ok(Ops.hypot(parked.x - hill.x, parked.y - hill.y) < 0.05 && parked.vx === 0 && parked.chassis.vz === 0, "held and asleep")
+  // Coasting up a 54% grass bank west of Monzone: it stops, and no grass holds a braked car there at its real grip (a new game's
+  // off-road grip loss of 0.5 does), so it slides back down past its start.
+  const bank = { x: -596, y: 596, angle: -2.657 + Math.PI }
+  const { runtime, run, world } = start([], [FAR_AWAY, { cars: [rolling("panda", bank, 1, 0)] }])
+  runtime.send(SetHandling, { key: "looseGround", value: 1 })
+  run(180)
+  const slid = world().vehicles[0]!, up = (slid.x - bank.x) * Ops.cos(bank.angle) + (slid.y - bank.y) * Ops.sin(bank.angle)
+  assert.ok(up < -1, `${up} m up the bank`)
+})
+
+test("sleep: a car on its roof with its handbrake off comes to rest and sleeps", () => {
+  const roof = { ...settle("panda", ON_BATTISTI), roll: Math.PI, z: settle("panda", ON_BATTISTI).z - VEHICLES.panda.cg + VEHICLES.panda.height - VEHICLES.panda.cg + 0.02 }
+  const wreck = Game.Command.spawn(
+    [Vehicle, { model: "panda", color: 0xb8312b }], [Pose, ON_BATTISTI], [PrevPose, ON_BATTISTI], [Motion, { vx: 0, vy: 0, spin: 0.01 }],
+    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, roof]
+  )
+  const { run, world } = start([], [FAR_AWAY, { cars: [wreck] }])
+  run(240)
+  const v = world().vehicles[0]!
+  assert.deepEqual([v.vx, v.vy, v.spin, v.chassis.vz, v.chassis.pitchRate, v.chassis.rollRate], [0, 0, 0, 0, 0, 0])
+})
+
+// Regression: spawns settled onto the highest surface, so traffic spawned in a tunnel stood on the hillside above it and traffic on a
+// road under a bridge on the deck.
+test("spawns: traffic on a tunnel edge or under a bridge starts on its own road", () => {
+  const underDeck = (e: number) => {
+    const ed = graph.edges[e]!, a = graph.nodes[ed.a]!, b = graph.nodes[ed.b]!, x = (a.x + b.x) / 2, y = (a.y + b.y) / 2
+    return MAP.roads.some((r) => r.bridge === true && isDrivable(r.cls) && r.pts.some((_, k) => k % 2 === 0 && k + 3 < r.pts.length && segDist2(x, y, r.pts[k]!, r.pts[k + 1]!, r.pts[k + 2]!, r.pts[k + 3]!).d2 < (r.w / 2) ** 2))
+  }
+  const edges = [graph.trafficEdges.find((e) => roadOf(e).tunnel === true)!, graph.trafficEdges.find((e) => roadOf(e).bridge !== true && roadOf(e).tunnel !== true && underDeck(e))!]
+  for (const edge of edges) {
+    const lane = laneOf(edge, true), side = laneSide({ edge, forward: true }, "panda")
+    const at = { ...lanePoint(lane, lane.length / 2, side), angle: Ops.atan2(lane.dy, lane.dx) }
+    const car = trafficCar("panda", 0x74746f, at, 5, { edge, forward: true, side }, { edge, forward: false })
+    const { world } = start([], [FAR_AWAY, { traffic: [car] }])
+    const v = world().vehicles[0]!, road = roadLevel(roadOf(edge), v.x, v.y)
+    assert.ok(Math.abs(v.chassis.z - VEHICLES.panda.cg - road) < 0.3, `edge ${edge}: ${(v.chassis.z - VEHICLES.panda.cg).toFixed(2)} m against its road at ${road.toFixed(2)}`)
+  }
 })

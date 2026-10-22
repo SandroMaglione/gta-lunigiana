@@ -1,14 +1,18 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { VehicleModel } from "../../sim/vehicles.ts"
+import { groundZ, terrainZ } from "../../sim/map/ground.ts"
+import { MAP } from "../../sim/map/index.ts"
+import { surfaceAt } from "../../sim/map/surface.ts"
+import { VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
 import { screenAxes } from "../../sim/view.ts"
+import { hash01 } from "../../tools/geometry.ts"
 import { AMBIENT_DB, CABIN, dbToGain, gainToDb, SPEED_OF_SOUND } from "../acoustics.ts"
-import { bells, streetAt } from "../places.ts"
+import { bells, streetAt, wallAt } from "../places.ts"
 import { stepRate } from "../synth/steps.ts"
 import type { Continuous, Happening, Heard, HeardPerson, HeardVehicle, OneShot, Placement, Speaker, Zone } from "../types.ts"
 import { makeDirector, type WallClock } from "./index.ts"
-import { TOWERS, windDb } from "./levels.ts"
+import { CRASH_MOST_DB, TOWERS, windDb } from "./levels.ts"
 
 /**
  * Real map spots (found by probing the map): a treeless meadow on Monte dei Bianchi clear for 300 m to the south and
@@ -17,14 +21,14 @@ import { TOWERS, windDb } from "./levels.ts"
  * 50 m from Monzone Alto's tower, the woods above Isolano, in earshot of eleven bell towers, and the street of Monzone
  * where the game starts, 50 m from the Lucido behind the houses; a bank 15 m from the Lucido with nothing in the way,
  * the two flanks of Monte San Giorgio, 400 m apart (the west one in the open under a rock face), Gragnola's centre,
- * walled in on every side, and the rendered house wall on Via Cesare Battisti where src/sim/index.test.ts drives a
- * Panda, on its cobbles.
+ * walled in on every side, the rendered house wall on Via Cesare Battisti where src/sim/index.test.ts drives a
+ * Panda, on its cobbles, and the riverbed's gravel 16 m under a bridge's asphalt deck.
  */
 const MEADOW = { x: -329, y: 1078 }, STREET = { x: -916.6, y: 1706.8 }, BEHIND = { x: -886.6, y: 1706.8 }, OPEN = { x: -937.8, y: 1728 }
 const RIDGE = { x: 1600, y: -494.5 }, STATION = { x: -494, y: 437 }, BELFRY = { x: -41.8, y: -306.6 }
 const HILLSIDE = { x: -950, y: 71 }, SPAWN = { x: -412.6, y: 437.8 }, BANK = { x: -418.6, y: 395.8 }
 const WEST_FLANK = { x: 785.7, y: -563.4 }, EAST_FLANK = { x: 1185.7, y: -563.4 }, HOUSE_WALL = { x: -429.85, y: 452.9 }
-const GRAGNOLA = { x: -1751.2, y: 3360.4 }
+const GRAGNOLA = { x: -1751.2, y: 3360.4 }, UNDER_BRIDGE = { x: -1190.3, y: 1273.1 }
 const FRAME = 1 / 60
 /** Screen-right on the ground, with the view in its home seat. */
 const SCREEN_RIGHT = screenAxes(0).right
@@ -69,9 +73,13 @@ const rig = (clock: () => WallClock = () => ({ hour: 10, minute: 10, second: 0 }
   }
 }
 
+/** Vehicle `id`, idling on its wheels at `at`. */
 const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly y: number }, more: Partial<HeardVehicle> = {}): HeardVehicle => ({
-  id, model, x: at.x, y: at.y, angle: 0, vx: 0, vy: 0, throttle: 0, running: true, mine: false, ...more
+  id, model, x: at.x, y: at.y, z: groundZ(at.x, at.y) + VEHICLES[model].cg, angle: 0, vx: 0, vy: 0, rpm: VEHICLES[model].engine.idle, load: 0,
+  wheelsDown: true, hullDown: false, running: true, mine: false, ...more
 })
+/** A Panda revving at the redline under full load. */
+const FULL = { rpm: VEHICLES.panda.engine.redline, load: 1 } as const
 const person = (id: number, at: { readonly x: number; readonly y: number }, more: Partial<HeardPerson> = {}): HeardPerson => ({
   id, x: at.x, y: at.y, vx: 0, vy: 0, player: false, fleeing: false, down: false, ...more
 })
@@ -81,9 +89,11 @@ const world = (at: { readonly x: number; readonly y: number }, more: Partial<Hea
 const away = (from: { readonly x: number; readonly y: number }, metres: number, dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT) =>
   ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
 const SOUTH = { x: 0, y: -1 }
+/** A Panda's mass, t. */
+const PANDA = VEHICLES.panda.mass / 1000
 /** Car `car`, a Panda, hitting a wall at `at` on its `zone` (nose first). */
 const wallHit = (at: { readonly x: number; readonly y: number }, speed: number, car = 1, zone: Zone = "front"): Happening => ({
-  kind: "impact", hit: "wall", x: at.x, y: at.y, speed, mass: 1, car, body: { model: "panda", zone }
+  kind: "impact", hit: "wall", x: at.x, y: at.y, speed, mass: PANDA, car, body: { model: "panda", zone }
 })
 
 test("a running car 30 m away on screen-right is heard there; 2 km away it is not (proximity)", () => {
@@ -107,11 +117,110 @@ test("the stereo image turns with the view: a car ahead of the home seat's scree
 
 test("a car at full load 300 m across the open meadow is heard; 400 m away behind Monte San Giorgio it is not", () => {
   const open = rig()
-  open.hear(world(MEADOW, { vehicles: [car(1, "panda", away(MEADOW, 300, SOUTH), { throttle: 1 })] }))
+  open.hear(world(MEADOW, { vehicles: [car(1, "panda", away(MEADOW, 300, SOUTH), FULL)] }))
   assert.equal(open.held().has("engine:1"), true)
   const behind = rig()
-  behind.hear(world(WEST_FLANK, { vehicles: [car(1, "panda", EAST_FLANK, { throttle: 1 })] }))
+  behind.hear(world(WEST_FLANK, { vehicles: [car(1, "panda", EAST_FLANK, FULL)] }))
   assert.equal(behind.held().has("engine:1"), false)
+})
+
+test("an engine plays the sim's revs and load, with a variant of its model's sound drawn from its id", () => {
+  const director = rig()
+  director.hear(world(MEADOW, { vehicles: [car(41, "truck", away(MEADOW, 30), { rpm: 1800, load: 0.6 })] }))
+  assert.deepEqual(director.held().get("engine:41")?.sound, { kind: "engine", model: "truck", rpm: 1800, load: 0.6, inside: false, variant: hash01(41) })
+})
+
+// Regression: masking and the caps counted every engine at full load, so an idling car 50 m away outranked one revving 100 m away.
+test("engines rank by their load: one revving 100 m away keeps its voice over eight idling 40–54 m away", () => {
+  const director = rig()
+  const idling = Array.from({ length: 8 }, (_, i) => car(i + 1, "panda", away(MEADOW, 40 + 2 * i, SOUTH)))
+  director.hear(world(MEADOW, { vehicles: [...idling, car(9, "panda", away(MEADOW, 100, SOUTH), FULL)] }))
+  const engines = [...director.held().keys()].filter((key) => key.startsWith("engine:"))
+  assert.ok(engines.length === 8 && engines.includes("engine:9") && !engines.includes("engine:8"), engines.join())
+})
+
+// Regression: the squeal came from sideways speed and no tyre voice was held under 1 m/s, so a standing burnout was silent.
+test("tyres play the sim's skids: a standing burnout squeals on the skidding wheel's surface; a car in the air rolls silently", () => {
+  const director = rig(), at = away(MEADOW, 10, SOUTH)
+  const tyres = () => director.held().get("tyres:1")?.sound
+  director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, { ...FULL, skid: { amount: 1, slip: 8, surface: "asphalt" } })] }))
+  assert.deepEqual(tyres(), { kind: "tyres", speed: 0, skid: 1, slip: 8, surface: "asphalt", heavy: false })
+  // A frame with no sim step reports no skid: the last one holds for 50 ms, then the tyres fall silent (standing, nothing rolls).
+  director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, FULL)] }))
+  assert.deepEqual(tyres(), { kind: "tyres", speed: 0, skid: 1, slip: 8, surface: "asphalt", heavy: false })
+  director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, FULL)] }), 3)
+  assert.equal(tyres(), undefined)
+  director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, { vx: 20 })] }))
+  assert.deepEqual(tyres(), { kind: "tyres", speed: 20, skid: 0, slip: 0, surface: surfaceAt(at.x, at.y), heavy: false })
+  director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, { vx: 20, wheelsDown: false })] }))
+  assert.equal(tyres(), undefined)
+})
+
+test("a vehicle is heard where its body is: a car 10 m up in the air 3 m away is heard farther off", () => {
+  const director = rig(), at = away(MEADOW, 3, SOUTH)
+  const gain = (lift: number) => {
+    director.hear(world(MEADOW, { vehicles: [car(1, "panda", at, { ...FULL, z: groundZ(at.x, at.y) + VEHICLES.panda.cg + lift })] }))
+    return director.held().get("engine:1")!.at.gain
+  }
+  assert.ok(gain(0) > gain(10) * dbToGain(6), `${gain(0)} vs ${gain(10)}`)
+})
+
+test("a hard landing crashes against the ground's own material, not the nearest wall's: the road on paving, earth off it; sliding on the roof grinds it", () => {
+  const ground = (at: { readonly x: number; readonly y: number }, speed: number, zone: Zone) => {
+    const director = rig()
+    const hit: Happening = { kind: "impact", hit: "ground", x: at.x, y: at.y, speed, mass: PANDA, car: 1, face: zone === "side" ? "roof" : "under", body: { model: "panda", zone } }
+    director.hear(world(at, { vehicles: [car(1, "panda", at, { vx: 8, wheelsDown: false })], happenings: [hit] }), 3)
+    const [crash] = director.take("crash"), scrape = director.held().get("scrape:1")?.sound
+    return crash?.sound.kind === "crash" ? [crash.sound.against, crash.sound.body.zone, crash.sound.surface] : scrape?.kind === "scrape" ? scrape.material : undefined
+  }
+  assert.deepEqual(ground(HOUSE_WALL, 8, "under"), [{ kind: "wall", material: "road" }, "under", "stone"])
+  assert.deepEqual(ground(away(MEADOW, 10, SOUTH), 8, "under"), [{ kind: "wall", material: "earth" }, "under", "grass"])
+  // Beside a trunk, which a wall hit there would strike.
+  const trunk = { x: MAP.trees[0]! + 0.55, y: MAP.trees[1]! }, under = surfaceAt(trunk.x, trunk.y)
+  assert.equal(wallAt(trunk.x, trunk.y), "tree")
+  assert.deepEqual(ground(trunk, 8, "under"), [{ kind: "wall", material: under === "asphalt" || under === "stone" ? "road" : "earth" }, "under", under])
+  // A body down on the ground, with no hit at all: the physics reports none for a slide.
+  const slide = (at: { readonly x: number; readonly y: number }, vx: number) => {
+    const director = rig()
+    director.hear(world(at, { vehicles: [car(1, "panda", at, { vx, wheelsDown: false, hullDown: true })] }), 3)
+    const scrape = director.held().get("scrape:1")?.sound
+    return scrape?.kind === "scrape" ? scrape.material : undefined
+  }
+  assert.equal(slide(HOUSE_WALL, 8), "road")
+  assert.equal(slide(away(MEADOW, 10, SOUTH), 8), "earth")
+  assert.equal(slide(HOUSE_WALL, 1), undefined, "too slow to grind")
+})
+
+// Regression: the director looked the ground up on the deck above a car under a bridge, while the sim's tyres use the car's own level.
+test("under a bridge a car's tyres roll on the riverbed's gravel and a landing there crashes on earth", () => {
+  const at = UNDER_BRIDGE, z = terrainZ(at.x, at.y) + VEHICLES.panda.cg
+  assert.equal(surfaceAt(at.x, at.y), "asphalt", "the deck 16 m up")
+  const director = rig()
+  director.hear(world(away(at, 20), { vehicles: [car(1, "panda", at, { z, vx: 6 })] }))
+  const tyres = director.held().get("tyres:1")?.sound
+  assert.equal(tyres?.kind === "tyres" ? tyres.surface : undefined, "gravel")
+  const hit: Happening = { kind: "impact", hit: "ground", x: at.x, y: at.y, speed: 8, mass: PANDA, car: 1, face: "under", body: { model: "panda", zone: "under" } }
+  const deck = rig()
+  deck.hear(world(away(at, 20), { vehicles: [car(1, "panda", at, { z, vx: 6 })], happenings: [hit] }))
+  const [crash] = deck.take("crash")
+  assert.deepEqual(crash?.sound.kind === "crash" ? [crash.sound.against, crash.sound.surface] : undefined, [{ kind: "wall", material: "earth" }, "gravel"])
+})
+
+test("cresting a hump bottoms the suspension out with a clunk, a step or two of it heard once; only a hard landing crashes", () => {
+  const director = rig(), at = away(MEADOW, 10, SOUTH)
+  const land = (speeds: ReadonlyArray<number>, frames = 1) => director.hear(world(MEADOW, {
+    vehicles: [car(1, "panda", at, { vx: 15 })],
+    happenings: speeds.map((speed): Happening => ({ kind: "impact", hit: "ground", x: at.x, y: at.y, speed, mass: PANDA, car: 1, face: "under", body: { model: "panda", zone: "under" } }))
+  }), frames)
+  land([3])
+  land([2.4])
+  land([1])
+  const [clunk, ...more] = director.take("clunk")
+  assert.ok(clunk?.sound.kind === "clunk" && clunk.sound.speed === 3 && more.length === 0, JSON.stringify(director.plays))
+  assert.equal(director.held().has("scrape:1"), false, "the wheels touching down do not grind")
+  land([], 7)
+  land([9])
+  assert.deepEqual([director.take("clunk").length, director.take("crash").length], [0, 1])
 })
 
 test("a building between the listener and a car 30 m away muffles it: lower gain and cutoff", () => {
@@ -193,17 +302,18 @@ test("a crash into a house wall knows its masonry and the cobbles under it, a sc
   assert.deepEqual(hits(away(MEADOW, 10, SOUTH)), [[{ kind: "wall", material: "earth" }, "grass"], "earth"])
 })
 
-test("a car crash heard from inside the struck car is that car's: its body first, the other the one it hit, from the cabin", () => {
+test("a car crash is the Impact's from either car: its body first, the other the one it hit", () => {
   const crash = (listener: number | undefined) => {
     const director = rig()
     const at = away(MEADOW, 3, SOUTH)
-    const hit: Happening = { kind: "impact", hit: "car", x: at.x, y: at.y, speed: 10, mass: 0.8, car: 1, other: 2, body: { model: "truck", zone: "front" }, otherBody: { model: "panda", zone: "rear" } }
+    const hit: Happening = { kind: "impact", hit: "car", x: at.x, y: at.y, speed: 10, mass: 1 / (1000 / VEHICLES.truck.mass + 1 / PANDA), car: 1, other: 2, body: { model: "truck", zone: "front" }, otherBody: { model: "panda", zone: "rear" } }
     director.hear(world(MEADOW, { vehicles: [car(1, "truck", at), car(2, "panda", at, { mine: listener === 2 })], happenings: [hit] }, listener))
     const [played] = director.take("crash")
-    return played?.sound.kind === "crash" ? [played.sound.body, played.sound.against, played.sound.inside] : undefined
+    return played?.sound.kind === "crash" ? [played.sound.body, played.sound.against] : undefined
   }
-  assert.deepEqual(crash(undefined), [{ model: "truck", zone: "front", worn: 0 }, { kind: "car", body: { model: "panda", zone: "rear", worn: 0 } }, false])
-  assert.deepEqual(crash(2), [{ model: "panda", zone: "rear", worn: 0 }, { kind: "car", body: { model: "truck", zone: "front", worn: 0 } }, true])
+  const truckFirst = [{ model: "truck", zone: "front", worn: 0 }, { kind: "car", body: { model: "panda", zone: "rear", worn: 0 } }]
+  assert.deepEqual(crash(undefined), truckFirst)
+  assert.deepEqual(crash(2), truckFirst, "sitting in the Panda")
 })
 
 test("what broke stays broken: a car's second crash on the same zone carries how hard the first one crushed it, another zone none", () => {
@@ -244,7 +354,7 @@ test("a scrape keeps its wall's material through a brief other contact (a tree a
 })
 
 // Regression: on foot, a wall hit's missing `other` matched the missing car the listener sits in, so every wall crash was "their own".
-test("a wall crash heard on foot is not the listener's own: the building in the way muffles it, and it is not heard from a cabin", () => {
+test("a wall crash heard on foot is not the listener's own: the building in the way muffles it", () => {
   const crash = (at: { readonly x: number; readonly y: number }) => {
     const director = rig()
     director.hear(world(STREET, { vehicles: [car(1, "panda", at)], happenings: [wallHit(at, 10)] }))
@@ -252,7 +362,6 @@ test("a wall crash heard on foot is not the listener's own: the building in the 
   }
   const behind = crash(BEHIND), open = crash(OPEN)
   assert.ok(behind.at.gain < open.at.gain * dbToGain(-10), `${behind.at.gain} < ${open.at.gain}`)
-  assert.ok(behind.sound.kind === "crash" && !behind.sound.inside)
 })
 
 test("a 2 m/s bump plays quieter than a 20 m/s crash, so masking culls it nearer: both at full gain 150 m away, only the crash 1.2 km away", () => {
@@ -299,7 +408,7 @@ test("the reverb follows the surroundings: a honk in the open meadow plays dry, 
   assert.ok(walled.length > 0 && walled[0]!.at.wet > 1, JSON.stringify(walled))
 })
 
-test("inside the Panda its own crash plays open, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
+test("inside the Panda its own crash plays open, at most CRASH_MOST_DB over gain 1, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
   const crash = (spot: { readonly x: number; readonly y: number }, own: boolean) => {
     const director = rig(), other = away(spot, 3, SOUTH), at = own ? spot : other
     const vehicles = [car(5, "panda", spot, { mine: true }), car(2, "panda", other)]
@@ -307,7 +416,9 @@ test("inside the Panda its own crash plays open, but its street tail and its ech
     return director.take("crash")
   }
   const [own] = crash(GRAGNOLA, true), [outside] = crash(GRAGNOLA, false)
-  assert.ok(own!.at.gain > outside!.at.gain * dbToGain(10) && own!.at.wet < outside!.at.wet, `${own!.at.wet} < ${outside!.at.wet}`)
+  // Regression: it came about 25 dB over gain 1, and the master limiter, taking 20 dB off the hit, gave the sub-hits back as loud as it.
+  assert.equal(own!.at.gain, dbToGain(CRASH_MOST_DB))
+  assert.ok(own!.at.cutoff === 20000 && outside!.at.cutoff <= CABIN.panda.cutoff && own!.at.wet < outside!.at.wet, `${JSON.stringify(own!.at)} against ${JSON.stringify(outside!.at)}`)
   for (const spot of [WEST_FLANK, BELFRY]) {
     const [direct, ...echoes] = crash(spot, true), [, ...outsides] = crash(spot, false)
     assert.ok(echoes.length > 0 && echoes.length === outsides.length, `${echoes.length} echoes`)
@@ -359,6 +470,16 @@ test("getting into a parked car: doors and the starter, the engine after it cran
   carjack.hear(world(MEADOW, { people: [person(1, away(MEADOW, 1.5), { player: true })] }))
   assert.equal(carjack.take("door").length, 2)
   assert.equal(carjack.held().has("engine:6"), false)
+})
+
+// Regression: the ears stayed 1.6 m over the ground while the car they sat in flew, so its own siren faded with the height.
+test("the listener's own siren sounds the same in the air as on the ground: the ears ride in the car", () => {
+  const gain = (lift: number) => {
+    const director = rig(), z = groundZ(MEADOW.x, MEADOW.y) + VEHICLES.carabinieri.cg + lift
+    director.hear(world(MEADOW, { vehicles: [car(7, "carabinieri", MEADOW, { mine: true, z })], horn: true }, 7))
+    return gainToDb(director.held().get("siren:7")!.at.gain)
+  }
+  for (const lift of [5, 20]) assert.ok(Math.abs(gain(lift) - gain(0)) < 0.5, `${lift} m up: ${gain(lift)} dB against ${gain(0)} on the ground`)
 })
 
 test("in the Carabinieri car a horn press toggles the siren; in the Panda the horn sounds while the key is held", () => {

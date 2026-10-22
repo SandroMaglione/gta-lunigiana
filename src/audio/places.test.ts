@@ -2,31 +2,16 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { pointInRing } from "../sim/collide.ts"
-import { buildingsIn, MAP, treesIn } from "../sim/map/index.ts"
+import { buildingsIn, heightAt, MAP, treesIn } from "../sim/map/index.ts"
+import { surfaceAt } from "../sim/map/surface.ts"
 import { SPEED_OF_SOUND } from "./acoustics.ts"
-import { ambienceAt, bells, birdSpot, dogsNear, echoesAt, forestAlong, streetAt, surfaceAt, wallAt } from "./places.ts"
+import { ambienceAt, bells, birdSpot, dogsNear, echoesAt, forestAlong, streetAt, wallAt } from "./places.ts"
 
 /** A small deterministic random source, so the checks never flake. */
 const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
 const FOREST = { x: 500, y: -400 }, MEADOW = { x: -329, y: 1078 }, GRAGNOLA = { x: -1751.2, y: 3360.4 }, EQUI = { x: 1804.9, y: 721 }
-/** Monzone's street where the game starts, in sight of slopes steeper than 35° but not rock. */
-const SPAWN = { x: -412.6, y: 437.8 }
 /** 0.15 m off a drive wall in a quarry, with no trunk or building within 3 m and no barrier within 20 m: a cut face. */
 const QUARRY_FACE = { x: -2480, y: -5923.85 }
-
-test("surfaces: road carriageways by their OSM surface, the forest floor, a meadow", () => {
-  // Midway along the longest segment of the first road of each surface, away from any junction.
-  const cases = [["tertiary", "asphalt", "asphalt"], ["path", "paving_stones", "stone"], ["track", "unpaved", "dirt"], ["track", "gravel", "gravel"]] as const
-  for (const [cls, surface, expected] of cases) {
-    const { pts } = MAP.roads.find((r) => r.cls === cls && r.surface === surface && r.tunnel !== true && r.bridge !== true)!
-    const length = (i: number) => Math.hypot(pts[i + 2]! - pts[i]!, pts[i + 3]! - pts[i + 1]!)
-    let k = 0
-    for (let i = 0; i + 3 < pts.length; i += 2) if (length(i) > length(k)) k = i
-    assert.equal(surfaceAt((pts[k]! + pts[k + 2]!) / 2, (pts[k + 1]! + pts[k + 3]!) / 2), expected, surface)
-  }
-  assert.equal(surfaceAt(FOREST.x, FOREST.y), "leaves")
-  assert.equal(surfaceAt(MEADOW.x, MEADOW.y), "grass")
-})
 
 test("walls: a tree trunk, buildings by kind and style, the guard rail, the stone wall and a cliff, each 0.3 m off; bare ground is earth, a quarry's bank rock", () => {
   /** 0.3 m off the middle of the longest edge of `pts`, on its right (outside a counter-clockwise ring). */
@@ -126,7 +111,24 @@ test("echoes at Equi Terme come off the rock faces around it, finite and in rang
     assert.ok(Math.abs(2 * Math.hypot(dx, dy) - SPEED_OF_SOUND * delay) < 1e-6, `${dx}, ${dy}`)
   }
   assert.deepEqual(echoesAt(MEADOW.x, MEADOW.y), [])
-  assert.deepEqual(echoesAt(SPAWN.x, SPAWN.y), [])
+  // Monzone's streets, every 25 m: where no slope in sight climbs as steeply as bare rock (50°), nothing echoes, steep or not.
+  let checked = 0
+  for (let x = -700; x <= -200; x += 25) for (let y = 300; y <= 600; y += 25) {
+    if (surfaceAt(x, y) !== "asphalt") continue
+    let steepest = 0
+    for (let k = 0; k < 16; k++) {
+      const ux = Math.cos((k * Math.PI) / 8), uy = Math.sin((k * Math.PI) / 8)
+      for (let d = 8, before = heightAt(x, y); d <= 400; d += 8) {
+        const z = heightAt(x + ux * d, y + uy * d)
+        steepest = Math.max(steepest, (z - before) / 8)
+        before = z
+      }
+    }
+    if (steepest >= 1.19) continue
+    checked++
+    assert.deepEqual(echoesAt(x, y), [], `${x}, ${y}`)
+  }
+  assert.ok(checked >= 3, `${checked} streets short of rock`)
 })
 
 test("one bell per settlement, lower in taller towers", () => {

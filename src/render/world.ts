@@ -10,10 +10,11 @@
  */
 import { InstancedMesh, Mesh, type BufferGeometry, type Material, type Object3D, type Vector3 } from "three"
 
+import { mapCover } from "../sim/map/cover.ts"
+
 import { buildingPieces } from "./buildings.ts"
 import { chunkBoxes, CHUNKS, chunkOf, plan, radiiFor, screenDistances, screenRects } from "./chunks.ts"
 import { decalMaterial, merge, solidMaterial, Triangles, type Piece, type Sink } from "./geometry.ts"
-import { mapCover } from "./landcover.ts"
 import { linePieces } from "./lines.ts"
 import { viewAxes } from "./pipeline.ts"
 import { terrainChunk } from "./terrain.ts"

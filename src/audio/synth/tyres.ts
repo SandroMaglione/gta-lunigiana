@@ -1,15 +1,16 @@
 /**
  * Tyre voices (synthesis.md §3): rolling noise rising 30 dB per decade of speed, (v / 70 km/h)^1.5
  * as in CNOSSOS-EU; on stone setts an amplitude rumble at v / 0.14 m (one sett per 14 cm); a tonal
- * squeal from two very narrow bandpasses (980 and 1460 Hz) on asphalt and stone when the car slides;
- * a gravel crunch from noise grains on loose ground that sprays instead of squealing. Heavy tyres
- * (the truck) are darker and 6 dB louder; a full slide at the Giulia's top speed peaks near 0.5.
+ * squeal from two very narrow bandpasses (980 and 1460 Hz) on asphalt and stone when the tyres skid
+ * (the sim's `Skid`: sliding sideways, spinning or locked); a gravel crunch from noise grains on loose
+ * ground that sprays instead of squealing. Heavy tyres (the truck) are darker and 6 dB louder; a
+ * full slide at the Giulia's top speed peaks near 0.5.
  *
  * @module audio/synth/tyres
  */
 import { loop, smoothstep } from "../buffers.ts"
 import type { Continuous, Surface, VoiceFactory } from "../types.ts"
-import { fadeOut, glide } from "./graph.ts"
+import { fadeOut, glide, unit } from "./graph.ts"
 
 type TyreSound = Extract<Continuous, { readonly kind: "tyres" }>
 
@@ -39,7 +40,7 @@ const GROUND = {
 const SQUEAL = [980, 1460] as const
 /**
  * Layer gains, calibrated by offline renders (the narrow squeal bands pass about 1/9 of the noise):
- * the loudest intended case, a full slide at the Giulia's top speed (40 m/s, slip ≥ 12, asphalt),
+ * the loudest intended case, a full slide at the Giulia's top speed (40 m/s, skid 1 at 12 m/s, asphalt),
  * peaks near 0.5 (the director's tyres level). Louder by nature, the truck sliding at its top
  * speed (20 m/s) and cobbles at 40 m/s (the setts' rumble adds crest) peak up to 4 dB higher.
  */
@@ -62,10 +63,14 @@ interface TyreTargets {
   readonly grains: number
 }
 
-/** The tyre law. Sliding is sideways speed over ground speed (synthesis.md §3), faded in from 8 to 30 km/h. */
+/**
+ * The tyre law. Rolling follows the speed over the ground; the slide is the sim's skid, how far past
+ * their grip the tyres are, faded in as they slide from 0.5 to 2.5 m/s (TUNED: a creep barely past
+ * grip does not squeal), so wheelspin standing still and a locked wheel in a straight line squeal too.
+ */
 export const tyreTargets = (sound: TyreSound): TyreTargets => {
   const ground = GROUND[sound.surface], speed = Math.max(0, sound.speed), kmh = speed * 3.6, size = sound.heavy ? 1 : LIGHT
-  const slide = smoothstep(0.08, 0.3, Math.abs(sound.slip) / Math.max(speed, 1)) * smoothstep(8, 30, kmh)
+  const slide = unit(sound.skid) * smoothstep(0.5, 2.5, sound.slip)
   const roll = ROLL * size * ground.roll * (kmh / 70) ** 1.5
   return {
     roll,

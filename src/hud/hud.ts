@@ -83,24 +83,50 @@ export const makeHud = (document: Document) => {
   }
 }
 
+/** Which overlays are up when a key goes down: the title card, the full map, the settings. */
+export interface Overlays {
+  readonly title: boolean
+  readonly map: boolean
+  readonly settings: boolean
+}
+
+/** What an overlay key does. */
+export type OverlayAction = "toggleMap" | "closeMap" | "toggleSettings"
+
 /**
- * M toggles the full map; Esc closes it. Held-down repeats and modified keys (Cmd+M...) are
- * ignored. M is matched by the character it types, so it is the key labelled M on any Latin layout
- * (AZERTY too); layouts whose keys type no ASCII character (Cyrillic, Greek) fall back to its position.
+ * What a keydown does to the overlays: M toggles the full map, unless the settings are open; Esc
+ * closes the map when it is open, else opens or closes the settings. Nothing while the title card
+ * is up, so the key that dismisses it opens nothing behind it; held-down repeats and modified keys
+ * (Cmd+M...) do nothing. M is matched by the character it types, so it is the key labelled M on any
+ * Latin layout (AZERTY too); layouts whose keys type no ASCII character (Cyrillic, Greek) fall back
+ * to its position.
  */
-export const toggleMapOnKey = (window: Pick<Window, "addEventListener">, hud: { readonly toggleMap: () => void; readonly closeMap: () => void }): void => {
+export const overlayKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">, open: Overlays): OverlayAction | undefined => {
+  if (open.title || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return undefined
+  if (event.key === "Escape") return open.map ? "closeMap" : "toggleSettings"
+  const key = event.key.toLowerCase()
+  return !open.settings && (key === "m" || (event.code === "KeyM" && !/^[ -~]$/.test(key))) ? "toggleMap" : undefined
+}
+
+/**
+ * Runs `overlayKey`'s action for each keydown that reaches the window, and cancels that key's
+ * default: the Esc that opens the settings would go on to close them, as the browser closes an open
+ * modal dialog on Esc. Add it before the title card's listener (`titleReady`), so the key that
+ * dismisses the card still finds it up.
+ */
+export const routeOverlayKeys = (window: Pick<Window, "addEventListener">, overlays: { readonly open: () => Overlays } & Readonly<Record<OverlayAction, () => void>>): void => {
   window.addEventListener("keydown", (event) => {
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
-    const key = event.key.toLowerCase()
-    if (key === "m" || (event.code === "KeyM" && !/^[ -~]$/.test(key))) hud.toggleMap()
-    else if (event.code === "Escape") hud.closeMap()
+    const action = overlayKey(event, overlays.open())
+    if (action === undefined) return
+    event.preventDefault()
+    overlays[action]()
   })
 }
 
 /**
- * The fixed-loop update with the full map able to pause the game: `tick` while it is closed;
- * while it is open, `skip`, after draining the controls' press edges (keys and touch) so presses
- * made on the map do not act when play resumes (held keys stay held).
+ * The fixed-loop update with the full map or the settings able to pause the game: `tick` while
+ * `paused` is false; while it is true, `skip`, after draining the controls' press edges (keys and
+ * touch) so presses made over the pause do not act when play resumes (held keys stay held).
  */
 export const pausable = <R>(paused: () => boolean, controls: { readonly snapshot: () => unknown }, tick: () => R, skip: R) => (): R => {
   if (!paused()) return tick()

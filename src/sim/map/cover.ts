@@ -1,13 +1,13 @@
 /**
  * Land cover of every 4 m terrain cell: map areas rasterised with a scanline even-odd fill
  * (`fillPolygon`), meadow where nothing covers a cell, paving where a house fronts a road, and
- * pebble beds along rivers and streams.
+ * pebble beds along rivers and streams. The terrain is painted from it, the tyres grip by it
+ * (through `surfaceAt`) and the sound reads it.
  *
- * @module render/landcover
+ * @module map/cover
  */
-import { type AreaKind, MAP, type MonzoneMap } from "../sim/map/index.ts"
-import { fillPolygon, segDist2 } from "../tools/geometry.ts"
-import { PALETTE } from "./palette.ts"
+import { fillPolygon, segDist2 } from "../collide.ts"
+import { type AreaKind, MAP, type MonzoneMap } from "./index.ts"
 
 /** Cover kinds: meadow by default, the map's area kinds, and the river bed. */
 export type Cover = "meadow" | AreaKind | "pebble"
@@ -18,35 +18,6 @@ const COVERS = [
 ] as const satisfies ReadonlyArray<Cover>
 
 const coverIndex = new Map<string, number>(COVERS.map((c, i) => [c, i]))
-
-/** Base colour, variant colour and the noise level under which a cell takes the variant (`stripes`: alternate columns). */
-export interface CoverLook { readonly base: number; readonly alt: number; readonly share: number; readonly stripes?: boolean }
-
-/** How each cover is painted. */
-export const COVER_LOOK = {
-  meadow: { base: PALETTE.grass, alt: PALETTE.grassDry, share: 0.3 },
-  forest: { base: PALETTE.forestDark, alt: PALETTE.forest, share: 0.35 },
-  grassland: { base: PALETTE.grassDry, alt: PALETTE.grass, share: 0.35 },
-  scrub: { base: PALETTE.forestLight, alt: PALETTE.grassDry, share: 0.4 },
-  sparse: { base: PALETTE.grassDry, alt: PALETTE.limestone, share: 0.45 },
-  scree: { base: PALETTE.stoneLight, alt: PALETTE.limestone, share: 0.45 },
-  rock: { base: PALETTE.limestone, alt: PALETTE.stoneLight, share: 0.35 },
-  quarry: { base: PALETTE.marbleWhite, alt: PALETTE.limestone, share: 0.3 },
-  residential: { base: PALETTE.grass, alt: PALETTE.grassDry, share: 0.3 },
-  farmland: { base: PALETTE.grassDry, alt: PALETTE.dirtTrack, share: 0.5, stripes: true },
-  farmyard: { base: PALETTE.dirtTrack, alt: PALETTE.grassDry, share: 0.3 },
-  vineyard: { base: PALETTE.grass, alt: PALETTE.dirtTrack, share: 0.5, stripes: true },
-  park: { base: PALETTE.grass, alt: PALETTE.forestLight, share: 0.25 },
-  school: { base: PALETTE.grass, alt: PALETTE.asphaltWorn, share: 0.2 },
-  cemetery: { base: PALETTE.plasterGrey, alt: PALETTE.stoneLight, share: 0.4 },
-  pitch: { base: PALETTE.grass, alt: PALETTE.forestLight, share: 0.5, stripes: true },
-  parking: { base: PALETTE.asphaltWorn, alt: PALETTE.asphalt, share: 0.2 },
-  industrial: { base: PALETTE.asphaltWorn, alt: PALETTE.stoneMid, share: 0.3 },
-  paved: { base: PALETTE.asphaltWorn, alt: PALETTE.stoneMid, share: 0.15 },
-  platform: { base: PALETTE.asphaltWorn, alt: PALETTE.asphaltWorn, share: 0 },
-  ruins: { base: PALETTE.stoneMid, alt: PALETTE.forest, share: 0.4 },
-  pebble: { base: PALETTE.limestone, alt: PALETTE.marbleWhite, share: 0.4 }
-} as const satisfies Record<Cover, CoverLook>
 
 /** Metres from a wall and from a road's edge within which open ground is paved: house fronts, sidewalks, alleys. */
 const FRONT = 3
@@ -103,5 +74,13 @@ export const rasterCover = (map: Pick<MonzoneMap, "heightmap" | "areas" | "water
 export const coverName = (value: number): Cover => COVERS[value] ?? "meadow"
 
 let shared: Uint8Array | undefined
-/** `rasterCover(MAP)`, built on first use and shared by the renderer and the audio host (≈ 105 ms, 4.9 MB); never write to it. */
+/** `rasterCover(MAP)`, built on first use and shared by the sim, the renderer and the audio host (≈ 105 ms, 4.9 MB); never write to it. */
 export const mapCover = (): Uint8Array => (shared ??= rasterCover(MAP))
+
+const { cell, x0, y0 } = MAP.heightmap, COLS = MAP.heightmap.cols - 1, ROWS = MAP.heightmap.rows - 1
+
+/** The land cover of the 4 m cell under (x, y), clamped to the map. */
+export const coverAt = (x: number, y: number): Cover => {
+  const i = Math.min(COLS - 1, Math.max(0, Math.floor((x - x0) / cell))), j = Math.min(ROWS - 1, Math.max(0, Math.floor((y - y0) / cell)))
+  return coverName(mapCover()[j * COLS + i]!)
+}

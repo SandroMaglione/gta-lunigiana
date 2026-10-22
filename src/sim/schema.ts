@@ -2,6 +2,8 @@ import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
 import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
 
+import type { HandlingKey } from "./handling.ts"
+import type { Surface } from "./map/surface.ts"
 import { VEHICLE_MODELS, type VehicleModel } from "./vehicles.ts"
 
 /**
@@ -52,6 +54,20 @@ export const Vehicle = Descriptor.ConstructedComponent(
 export const CarInput = Descriptor.ConstructedComponent(
   Decode.struct({ throttle: Decode.number, steer: Decode.number, handbrake: Decode.boolean })
 )("Lunigiana/CarInput")
+/**
+ * A vehicle's body beyond its planar Pose and Motion: the elevation of its centre of mass (m a.s.l.)
+ * and vertical speed, pitch (nose up +) and roll (left side up +) with their rates (rad, rad/s; the
+ * body turns yaw, then pitch, then roll), the road wheels' steering angle (rad, left +), the gear
+ * (index into the gearbox's ratios; −1 reverse) and the step at which the current shift ends.
+ */
+export const Chassis = Descriptor.ConstructedComponent(
+  Decode.struct({
+    z: Decode.number, vz: Decode.number, pitch: Decode.number, pitchRate: Decode.number, roll: Decode.number, rollRate: Decode.number,
+    steer: Decode.number, gear: Decode.integer, shiftUntil: Decode.integer
+  })
+)("Lunigiana/Chassis")
+/** A Chassis value. */
+export type ChassisValue = Descriptor.Descriptor.Value<typeof Chassis>
 /** An AI-driven vehicle (it follows its Route). */
 export const Traffic = Descriptor.Tag("Lunigiana/Traffic")
 /**
@@ -92,22 +108,55 @@ export const Score = Descriptor.ConstructedResource(
  * see `screenAxes`). Saved: the on-foot keys depend on it.
  */
 export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))("Lunigiana/View")
+/**
+ * Every vehicle's handling knobs (`HANDLING` in handling.ts): multipliers, shares and switches over the
+ * vehicles' real data, at `DEFAULT_HANDLING` in a new game. Saved, so a run replays with the handling
+ * it was played with; set only through `SetHandling`.
+ */
+export const Handling = Descriptor.ConstructedResource(Decode.struct({
+  grip: Decode.number, looseGround: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
+  stability: Decode.number, selfRighting: Decode.number,
+  traction: Decode.number, steering: Decode.number, steeringRate: Decode.number, weightTransfer: Decode.number, antiRoll: Decode.number,
+  stiffness: Decode.number, damping: Decode.number
+} satisfies Record<HandlingKey, typeof Decode.number>))("Lunigiana/Handling")
+/** A request to set one handling knob, sent by the host's handling store (the settings, the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
+export const SetHandling = Descriptor.Event<{ readonly key: HandlingKey; readonly value: number }>()("Lunigiana/SetHandling")
 
 /**
- * A vehicle hit something this step: a wall, another vehicle or a person (`other`, their entity
- * ids), where (the contact point on a wall or between two vehicles, the person's position), how
- * hard (the closing speed at contact, m/s) and with how much relative mass behind it. Not saved; the
- * audio schedule plays it.
+ * A vehicle hit something this step: a wall, another vehicle, a person (`other`, their entity ids)
+ * or the ground (landing hard, rolling over), where (the contact point on a wall, between two
+ * vehicles or on the ground, the person's position), how hard (the closing speed at contact, m/s)
+ * and with how much mass behind it (tonnes). A ground hit names the `face` of the body that struck:
+ * the wheels bottoming out, the roof, a side, the nose or the tail. Not saved; the audio schedule
+ * plays it.
  */
 export const Impact = Descriptor.Event<{
-  readonly hit: "wall" | "car" | "person"
+  readonly hit: "wall" | "car" | "person" | "ground"
   readonly x: number
   readonly y: number
   readonly speed: number
   readonly mass: number
   readonly car: number
   readonly other?: number
+  readonly face?: "under" | "roof" | "side" | "front" | "rear"
 }>()("Lunigiana/Impact")
+/**
+ * A tyre slid this step: wheel `wheel` (index into the model's `wheels`) of vehicle `car`, at its
+ * contact point (x, y, z m a.s.l.), sliding at `slip` m/s past the ground (sideways beyond its grip,
+ * spinning or locked), `amount` 0…1 how far past its grip, on `surface`, at simulation `step`. Not
+ * saved; the render lays tyre marks and smoke from it and the audio plays the squeal.
+ */
+export const Skid = Descriptor.Event<{
+  readonly car: number
+  readonly wheel: number
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  readonly slip: number
+  readonly amount: number
+  readonly surface: Surface
+  readonly step: number
+}>()("Lunigiana/Skid")
 /** An AI driver held up for a while sounds the horn, once per stuck episode. Not saved; the audio schedule plays it. */
 export const Honk = Descriptor.Event<{ readonly car: number; readonly model: VehicleModel; readonly x: number; readonly y: number }>()("Lunigiana/Honk")
 
@@ -134,13 +183,13 @@ export const KeyboardInput = Descriptor.Service<InputCapture.Source<Controls>>()
 
 export const Game = Schema.bind(
   Schema.fragment({
-    components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Traffic, Route, Driving, Autopilot, Stolen },
-    resources: { Time, Rng, Score, View, Input },
-    events: { Impact, Honk },
+    components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Chassis, Traffic, Route, Driving, Autopilot, Stolen },
+    resources: { Time, Rng, Score, View, Handling, Input },
+    events: { Impact, Honk, Skid, SetHandling },
     requires: [
       Schema.requires(Player, Pose, PrevPose, Motion, Person),
       Schema.requires(Pedestrian, Pose, PrevPose, Motion, Person, Route),
-      Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput),
+      Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput, Chassis),
       Schema.requires(Traffic, Vehicle, Route, Autopilot)
     ]
   }),

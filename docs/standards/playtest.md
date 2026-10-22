@@ -19,8 +19,9 @@ this WebGL page, so drive headless Chrome over CDP:
    for example 844 × 390 at `deviceScaleFactor` 3; swap the sides for a phone held upright) and
    `Emulation.setTouchEmulationEnabled`, which make `(pointer: coarse)` match, so the game starts
    in mobile mode. Drive the touch controls with `Input.dispatchTouchEvent`.
-4. Dev builds expose `window.gta`: `renderer`, `view`, `scene`, `world`, `heightAt`, `player()` and
-   `audio` (`level()` gives the output in dBFS). Load `?seed=N`, wait for `gta`, then press a key
+4. Dev builds expose `window.gta`: `renderer`, `view`, `scene`, `world`, `effects`, `heightAt`,
+   `player()`, `handling()` (the handling knobs in force) and `audio` (`level()` gives the output in
+   dBFS). Load `?seed=N`, wait for `gta`, then press a key
    to dismiss the title card.
 5. To shoot the spot at (x east, y north), run this, then wait about 6 s:
 

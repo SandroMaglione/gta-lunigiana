@@ -191,10 +191,11 @@ const OPEN_STEP = 0.25
  * draws cliffs across the paths that climb through them and garden walls up to the road's
  * centreline; the way itself is open (a gap, a gate, steps cut in the rock). Original vertices are
  * kept; each opening ends at the last free sample. Guard rails run along their road and stay whole.
+ * Tunnels open nothing unless `tunnels` (a bridge's parapet where the road runs on into one).
  */
-export const openBarriers = (barriers: ReadonlyArray<Barrier>, roads: ReadonlyArray<RoadF>): Array<Barrier> => {
+export const openBarriers = (barriers: ReadonlyArray<Barrier>, roads: ReadonlyArray<RoadF>, tunnels = false): Array<Barrier> => {
   const ways = segIndex<null>()
-  for (const r of roads) if (r.tunnel !== true) ways.addLine(r.pts, r.w / 2, null)
+  for (const r of roads) if (tunnels || r.tunnel !== true) ways.addLine(r.pts, r.w / 2, null)
   return barriers.flatMap((b) => {
     if (b.kind === "guard_rail") return [b]
     const out: Array<Barrier> = []
@@ -222,6 +223,24 @@ export const openBarriers = (barriers: ReadonlyArray<Barrier>, roads: ReadonlyAr
     return out
   })
 }
+
+/** A bridge's parapets stand this far beyond half its carriageway, m: where `lines.ts` draws them. */
+const PARAPET = 0.25
+
+/**
+ * The parapets along both sides of every drivable bridge deck, as walls for the cars: one piece per
+ * deck segment and side, opened (`openBarriers`) where any other road crosses under the bridge or
+ * joins or carries on from its deck, tunnels and other pieces of the same bridge included (OSM
+ * splits bridges). Walkers keep their verge across.
+ */
+const parapets = (roads: ReadonlyArray<RoadF>): Array<Barrier> =>
+  roads.filter((r) => r.bridge === true && isDrivable(r.cls)).flatMap((r) => openBarriers(r.pts.slice(1).flatMap((b, i) => {
+    const a = r.pts[i]!, len = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len
+    return [-1, 1].map((side): Barrier => {
+      const o = side * (r.w / 2 + PARAPET)
+      return { kind: "wall", pts: [r1(a.x + nx * o), r1(a.y + ny * o), r1(b.x + nx * o), r1(b.y + ny * o)] }
+    })
+  }), roads.filter((q) => q !== r), true))
 
 /**
  * Building edges into every list in `outs`. Where a tunnel, path or steps centreline comes within
@@ -289,6 +308,7 @@ export const buildWalls = (g: Grid, roads: ReadonlyArray<RoadF>, water: Readonly
     if (b.kind !== "guard_rail") pushPolyline(walk, b.pts, false)
     pushPolyline(drive, b.pts, false)
   }
+  for (const p of parapets(roads)) pushPolyline(drive, p.pts, false)
   const { minX, minY, maxX, maxY } = BOUNDS
   for (const out of [walk, drive]) for (const [ax, ay, bx, by] of [[minX, minY, maxX, minY], [maxX, minY, maxX, maxY], [maxX, maxY, minX, maxY], [minX, maxY, minX, minY]] as const)
     pushSplit(out, ax, ay, bx, by, 64)

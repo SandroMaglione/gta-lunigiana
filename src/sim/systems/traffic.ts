@@ -2,14 +2,19 @@ import { Clock } from "@typeonce/ritmo"
 import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, wrapAngle } from "../body.ts"
+import { GRAVITY, rigFor, RIGS } from "../chassis.ts"
+import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { graph } from "../map/index.ts"
 import {
   allowsModel, alongLane, cruiseSpeed, distanceToEdge, edgeIndex, endNode, facesForward, type Lane, laneOf, lanePoint, laneSide, leadsToDeadEnd,
   nextTrafficEdge, roadOf, walkSide
 } from "../route.ts"
-import { Autopilot, CarInput, Driving, Game, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle } from "../schema.ts"
+import {
+  Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
+} from "../schema.ts"
 import { PERSON_RADIUS } from "../tuning.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
+import { steerLimit } from "./physics.ts"
 
 /** Look-ahead along the route: base metres plus seconds of speed. */
 const LOOK_BASE = 6
@@ -38,6 +43,18 @@ const LINED_UP = 0.7
 /** Unstick attempts after which a car always turns round (dead end or not), and after which Populate gives up on it. */
 const TURN_TRIES = 2
 export const GIVE_UP_TRIES = 4
+/**
+ * AI drivers keep their sideways acceleration under this (m/s²), or under this share of what would
+ * tip their vehicle over (the Ape, the laden truck): they slow for the curve they are steering.
+ */
+const COMFORT = 3.5
+const COMFORT_TIP = 0.45
+/**
+ * Rolled sideways more than this share of its tipping angle (the Ape ≈ 14°, the laden truck ≈ 16°, a
+ * Panda ≈ 26°), a wheel up a bank or the road falling away to one side, a driver brakes, and once
+ * stopped holds the handbrake with the wheel straight, rather than tip over; stuck there, it backs off.
+ */
+const LEANING = 0.5
 /** Speed backing up to get unstuck, m/s (negative: reverse). */
 const REVERSE_SPEED = -3
 /** Within this distance of its edge's end node a car moves on to the next edge, m. */
@@ -48,6 +65,25 @@ export const LOST = 12
 const usable = (model: VehicleModel) => edgeIndex(graph.trafficEdges.filter((e) => allowsModel(e, model)))
 /** Per model, the traffic edges it may drive, for finding the road again. */
 const usableByModel = { panda: usable("panda"), ape: usable("ape"), truck: usable("truck"), carabinieri: usable("carabinieri") } satisfies Record<VehicleModel, ReturnType<typeof edgeIndex>>
+
+/**
+ * The fastest an AI driver takes the curve it steers with `steer` at `speed` (m/s): its sideways acceleration within comfort. The
+ * wheels turn as far as the physics turns them under `handling`; the comfort is the vehicle's real one.
+ */
+export const comfortSpeed = (model: VehicleModel, steer: number, speed: number, handling: HandlingValue = REAL_HANDLING): number => {
+  const rig = RIGS[model], wheel = Math.abs(steer) * steerLimit(rigFor(model, handling), Math.abs(speed))
+  return wheel < 1e-3 ? Number.MAX_VALUE : Math.sqrt((Math.min(COMFORT, COMFORT_TIP * rig.tipping * GRAVITY) * rig.wheelbase) / Ops.tan(wheel))
+}
+
+/** Whether a vehicle rolls far enough over to fear tipping (a wheel up a bank, down a stream's edge). */
+export const leans = (model: VehicleModel, chassis: Pick<ChassisValue, "roll">): boolean => Math.abs(chassis.roll) > LEANING * Ops.atan(RIGS[model].tipping)
+
+/** Lifted roads: a bridge deck or a tunnel. */
+const lifted = (edge: number): boolean => roadOf(edge).bridge === true || roadOf(edge).tunnel === true
+
+/** Whether a car may turn round on `edge`: never on a bridge or in a tunnel, nor on an edge next to one (a circle there leaves the deck). */
+export const roomToTurn = (edge: number): boolean =>
+  !lifted(edge) && [graph.edges[edge]!.a, graph.edges[edge]!.b].every((node) => !graph.adjacency[node]!.some(lifted))
 
 /** Throttle (or brake) toward a wanted speed. */
 const throttleFor = (want: number, speed: number): number => Math.max(-1, Math.min(1, (want - speed) * 0.4))
@@ -77,6 +113,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       selection: {
         pose: Game.Query.read(Pose),
         motion: Game.Query.read(Motion),
+        chassis: Game.Query.read(Chassis),
         vehicle: Game.Query.read(Vehicle),
         input: Game.Query.write(CarInput),
         route: Game.Query.write(Route),
@@ -87,10 +124,10 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose), vehicle: Game.Query.read(Vehicle) } }),
     people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving] })
   },
-  resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)) },
+  resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
   events: { honk: Game.System.writeEvent(Honk) }
 }, ({ queries, resources, events }) => {
-  const { step } = resources.time.get()
+  const { step } = resources.time.get(), handling = resources.handling.get()
   const random = Random.draw(resources.rng)
   const obstacles = [
     ...queries.vehicles.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: VEHICLES[data.vehicle.get().model].length / 2, person: false })),
@@ -142,6 +179,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     let want = Math.min(cruise, Math.max(CORNER_MIN, cruise * (1 - 1.2 * sharp)) + CORNER_RAMP * Math.max(0, lane.length - along))
     // Pointing away from the target (turning round, a corner gone wide): corner speed, for the tightest circle.
     want = Math.min(want, CORNER_MIN + (cruise - CORNER_MIN) * Math.max(0, Ops.cos(error)))
+    want = Math.min(want, comfortSpeed(model, steer, speed, handling))
     const fx = Ops.cos(pose.angle), fy = Ops.sin(pose.angle)
     const range = CONE_BASE + Math.max(0, speed) * CONE_TIME
     // The carriageway or its verge, where walkers keep (`walkSide`).
@@ -159,10 +197,10 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       if (limit < want) [want, forPerson] = [limit, other.person && front > spec.length / 2 && onRoad(other)]
     }
 
-    const holding = want < 0.5 && Math.abs(speed) < 0.5
-    data.input.set(holding
-      ? { throttle: 0, steer, handbrake: true }
-      : { throttle: throttleFor(want, speed), steer, handbrake: false })
+    const holding = want < 0.5 && Math.abs(speed) < 0.5, slow = Math.abs(speed) < 0.5
+    data.input.set(leans(model, data.chassis.get())
+      ? { throttle: slow ? 0 : throttleFor(0, speed), steer: slow ? 0 : steer, handbrake: slow }
+      : holding ? { throttle: 0, steer, handbrake: true } : { throttle: throttleFor(want, speed), steer, handbrake: false })
 
     // Stopped (or grinding along a wall) counts up, waiting for a person in the way only every PERSON_PATIENCE steps; only real progress resets it.
     const counts = !forPerson || step % PERSON_PATIENCE === 0
@@ -172,9 +210,10 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     else {
       pilot = { ...pilot, stuck: 0, reverseUntil: step + REVERSE_STEPS, tries: pilot.tries + 1 }
       const back = { edge: route.edge, forward: !route.forward }
-      // Turn round only when lined up with the route (mid-turn, backing up helps it round instead).
+      // Turn round only when lined up with the route (mid-turn, backing up helps it round instead), and where there is room.
       const linedUp = lane.dx * fx + lane.dy * fy > LINED_UP
-      const turn = linedUp && (pilot.tries >= TURN_TRIES || (!leadsToDeadEnd(back, model) && random.next() < 0.5))
+      // Trucks never do: they keep to loops of the network because they cannot.
+      const turn = linedUp && model !== "truck" && roomToTurn(route.edge) && (pilot.tries >= TURN_TRIES || (!leadsToDeadEnd(back, model) && random.next() < 0.5))
       if (roadOf(route.edge).oneway !== true && turn) {
         route = { ...route, forward: back.forward, side: laneSide(back, model) }
         const after = nextTrafficEdge(endNode(route.edge, route.forward), route.edge, model, random)

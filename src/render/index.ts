@@ -1,9 +1,10 @@
 /**
  * The render schedule: mirrors people and vehicles into three nodes with RenderSync, places them
- * between fixed steps (PrevPose → Pose at the loop's alpha) on the ground or road under them, and
- * marks the player's car for the x-ray silhouette. Read-only towards the world (index.test.ts
- * checks every system's declared access); the host ticks it once per animation frame after writing
- * `RenderClock.alpha`.
+ * between fixed steps (PrevPose → Pose at the loop's alpha), people on the ground or road under
+ * them and vehicles at their centre of mass from their Chassis, marks the player's car for the
+ * x-ray silhouette, and lays tyre marks and smoke from the Skid events. Read-only towards the
+ * world (index.test.ts checks every system's declared access); the host ticks it once per
+ * animation frame after writing `RenderClock.alpha`.
  *
  * @module render
  */
@@ -12,15 +13,19 @@ import { NodeRegistry, RenderSync } from "@typeonce/ritmo-render"
 import type { Object3D } from "three"
 
 import { wrapAngle } from "../sim/body.ts"
-import { Down, Driving, Game, Person, Player, Pose, type PoseValue, PrevPose, Vehicle } from "../sim/index.ts"
-import { ActorNode, PersonNode, vehicleNode } from "./actors.ts"
+import {
+  Chassis, type ChassisValue, Down, Driving, Game, Person, Player, Pose, type PoseValue, PrevPose, Skid, STEP, Time, Vehicle
+} from "../sim/index.ts"
+import { type ActorNode, PersonNode, type VehicleNode, vehicleNode } from "./actors.ts"
 import { solidMaterial } from "./geometry.ts"
-import { axleY, groundY } from "./ground.ts"
+import { groundY, yOf } from "./ground.ts"
+import { Marks, TREAD } from "./marks.ts"
+import { Smoke } from "./smoke.ts"
 
 /** Person nodes, one per entity with a Person. */
 export const People = Descriptor.Service<NodeRegistry.NodeRegistry<PersonNode>>()("Lunigiana/PeopleNodes")
 /** Vehicle nodes, one per entity with a Vehicle. */
-export const Vehicles = Descriptor.Service<NodeRegistry.NodeRegistry<ActorNode>>()("Lunigiana/VehicleNodes")
+export const Vehicles = Descriptor.Service<NodeRegistry.NodeRegistry<VehicleNode>>()("Lunigiana/VehicleNodes")
 /** Mutable host object: the loop writes `alpha` (fraction of a step since the last one) before ticking `render`. */
 export const RenderClock = Descriptor.Service<{ readonly alpha: number }>()("Lunigiana/RenderClock")
 
@@ -33,8 +38,17 @@ export const makeRegistries = (parent: Object3D) => {
       node.dispose()
     }
   }
-  return { people: NodeRegistry.make<PersonNode>(options), vehicles: NodeRegistry.make<ActorNode>(options) }
+  return { people: NodeRegistry.make<PersonNode>(options), vehicles: NodeRegistry.make<VehicleNode>(options) }
 }
+
+/** The map's tyre marks and smoke, under `parent` for the page's life. */
+export const makeEffects = (parent: Object3D) => {
+  const effects = { marks: new Marks(), smoke: new Smoke() }
+  parent.add(effects.marks.mesh, effects.smoke.mesh)
+  return effects
+}
+/** The host's tyre marks and smoke (`makeEffects`), fed by the render schedule. */
+export const Effects = Descriptor.Service<ReturnType<typeof makeEffects>>()("Lunigiana/Effects")
 
 const SyncPeople = RenderSync.system(Game, {
   name: "Lunigiana/SyncPeople",
@@ -101,21 +115,53 @@ const PlacePeople = RenderSync.interpolate(Game, {
   }
 })
 
-const PlaceVehicles = RenderSync.interpolate(Game, {
-  name: "Lunigiana/PlaceVehicles",
-  registry: Vehicles,
-  previous: PrevPose,
-  current: Pose,
-  clock: RenderClock,
-  blend,
-  place: (node, { x, y, angle }) => {
-    const wheels = axleY(x, y, angle, node.length, node.wheels)
-    node.wheels = wheels
-    node.position.set(x, (wheels.front + wheels.rear) / 2, -y)
-    node.rotation.y = angle
-    node.rotation.z = Math.atan2(wheels.front - wheels.rear, node.length)
+/**
+ * Puts a vehicle's node at its centre of mass `alpha` of the way through the last step: the pose
+ * blended PrevPose → Pose, the height, pitch and roll stepped back from the current Chassis along
+ * their rates (close to the previous step's values: the physics moves them in substeps). Three's rotation order YZX turns
+ * the body as the sim does: heading, then pitch (nose up +) about its right axis, then roll (left
+ * side up +, the roof toward local +Z, the right) about its forward axis.
+ */
+export const placeVehicle = (node: Object3D, prev: PoseValue, pose: PoseValue, chassis: ChassisValue, alpha: number): void => {
+  // No car turns 90° in a step: a heading half a turn on is the physics folding a tumble's angles (heading + π, pitch π − pitch,
+  // roll + π, the same body), unfolded here so the blend runs on from the previous step's angles.
+  const folded = Math.abs(wrapAngle(pose.angle - prev.angle)) > Math.PI / 2
+  const to = folded ? { ...pose, angle: pose.angle - Math.PI } : pose
+  const pitch = folded ? Math.PI - chassis.pitch : chassis.pitch, pitchRate = folded ? -chassis.pitchRate : chassis.pitchRate
+  const roll = folded ? chassis.roll - Math.PI : chassis.roll
+  const { x, y, angle } = blend(prev, to, alpha), back = (1 - alpha) * STEP.dt
+  node.position.set(x, yOf(chassis.z - chassis.vz * back), -y)
+  node.rotation.set(roll - chassis.rollRate * back, angle, pitch - pitchRate * back)
+}
+
+const PlaceVehicles = Game.System("Lunigiana/PlaceVehicles", {
+  queries: { vehicles: Game.Query({ selection: { prev: Game.Query.read(PrevPose), pose: Game.Query.read(Pose), chassis: Game.Query.read(Chassis) } }) },
+  services: { nodes: Game.System.service(Vehicles), clock: Game.System.service(RenderClock) }
+}, ({ queries, services }) => {
+  for (const { entity, data } of queries.vehicles.each()) {
+    const node = services.nodes.get(entity.id)
+    if (node !== undefined) placeVehicle(node, data.prev.get(), data.pose.get(), data.chassis.get(), services.clock.alpha)
   }
 })
 
+/** Lays the steps' Skid events as tyre marks and smoke, then moves both to the drawn moment's sim time. */
+const DrawEffects = Game.System("Lunigiana/DrawEffects", {
+  resources: { time: Game.System.readResource(Time) },
+  events: { skids: Game.System.readEvent(Skid) },
+  services: { effects: Game.System.service(Effects), nodes: Game.System.service(Vehicles), clock: Game.System.service(RenderClock) }
+}, ({ resources, events, services }) => {
+  const { marks, smoke } = services.effects
+  for (const skid of events.skids.all()) {
+    // A vehicle despawned since leaves no more marks.
+    const node = services.nodes.get(skid.car)
+    if (node === undefined) continue
+    marks.add(skid, TREAD[node.model])
+    smoke.add(skid)
+  }
+  const now = (resources.time.get().step + services.clock.alpha) * STEP.dt
+  marks.update(now)
+  smoke.update(now)
+})
+
 /** The render schedule, ticked once per animation frame after the fixed updates. */
-export const render = Game.Schedule(SyncPeople, SyncVehicles, MarkDriven, PlacePeople, PlaceVehicles)
+export const render = Game.Schedule(SyncPeople, SyncVehicles, MarkDriven, PlacePeople, PlaceVehicles, DrawEffects)

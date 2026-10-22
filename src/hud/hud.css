@@ -47,6 +47,22 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2c3d22; }
 
 .credits { z-index: 2; position: absolute; right: 16px; bottom: 8px; font-size: 10px; text-transform: none; letter-spacing: 0; opacity: 0.85; }
 
+#settings { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); padding: 24px 32px; color: var(--ink); background: var(--panel); border: 2px solid var(--accent); text-shadow: 2px 2px 0 var(--shadow); }
+#settings::backdrop { background: rgb(23 22 26 / 0.55); }
+#settings h2, #settings h3 { margin: 0; color: var(--accent); text-transform: uppercase; }
+#settings h2 { margin-bottom: 16px; font-size: 22px; letter-spacing: 0.08em; }
+#settings h3 { margin-bottom: 8px; font-size: 13px; letter-spacing: 0.06em; }
+#settings fieldset { margin: 0; padding: 0; border: 0; }
+#settings legend { padding: 0; text-transform: uppercase; letter-spacing: 0.06em; }
+#settings-custom { margin: 8px 0 0; font-size: 12px; color: var(--accent); }
+#settings .preset { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 8px; margin-top: 12px; }
+#settings .preset input { margin: 0; accent-color: var(--accent); }
+#settings .preset label { cursor: pointer; }
+#settings .preset input:checked + label { color: var(--accent); }
+#settings .preset p { grid-column: 2; margin: 0; font-size: 12px; opacity: 0.85; }
+#settings button { margin-top: 20px; padding: 2px 12px; font: inherit; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); cursor: pointer; text-shadow: none; }
+#settings :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
 #title { position: fixed; inset: 0; display: grid; place-items: center; background: rgb(23 22 26 / 0.55); color: var(--ink); text-shadow: 2px 2px 0 var(--shadow); }
 #title[hidden] { display: none; }
 #title .card { padding: 24px 32px; background: var(--panel); border: 2px solid var(--accent); text-align: center; }

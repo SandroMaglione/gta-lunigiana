@@ -4,10 +4,15 @@ import { test } from "node:test"
 import { Keyboard } from "@typeonce/ritmo-browser"
 import { Vec2 } from "@typeonce/ritmo-math"
 
+import { engineRevs } from "../sim/drivetrain.ts"
+import { groundZ } from "../sim/map/ground.ts"
 import { laneOf, lanePoint, laneSide, roadOf, walkSide } from "../sim/route.ts"
-import { bindings, Game, Honk, Impact, KeyboardInput, makeRuntime, setup, update } from "../sim/index.ts"
-import { parkedCar, pedestrian } from "../sim/spawning.ts"
+import {
+  bindings, CarInput, Chassis, type ChassisValue, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, Skid, update, Vehicle
+} from "../sim/index.ts"
+import { parkedCar, pedestrian, rollingChassis } from "../sim/spawning.ts"
 import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, type Timeline } from "../sim/testing.ts"
+import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { Audio, audio } from "./index.ts"
 import type { Heard } from "./types.ts"
 
@@ -28,7 +33,20 @@ const listen = (timeline: Timeline, ...staging: Parameters<typeof stage>) => {
   const run = (n: number) => {
     for (let i = 0; i < n; i++) assert.ok(runtime.tick(update, audio).ok)
   }
-  return { runtime, run, frames }
+  /** One audio frame with no sim step in between: the staged world as it is. */
+  const hear = () => assert.ok(runtime.tick(audio).ok)
+  return { runtime, run, hear, frames }
+}
+
+/** An unmanned `model` at `pose` rolling at `speed` along its heading with the pedal at `throttle`, its chassis changed by `chassis`. */
+const staged = (model: VehicleModel, pose: PoseValue, speed: number, throttle: number, chassis: Partial<ChassisValue> = {}) => {
+  const body = { ...rollingChassis(model, pose, speed), ...chassis }
+  const spawn = Game.Command.spawn(
+    [Vehicle, { model, color: 0x8b8170 }], [Pose, pose], [PrevPose, pose],
+    [Motion, { vx: Math.cos(pose.angle) * speed, vy: Math.sin(pose.angle) * speed, spin: 0 }],
+    [CarInput, { throttle, steer: 0, handbrake: false }], [Chassis, body]
+  )
+  return { spawn, body }
 }
 
 test("hear: the player on foot, then at the wheel of a running car with the horn held, and a pedestrian nearby", () => {
@@ -82,13 +100,95 @@ test("hear: impacts then honks since the last frame, as happenings with the stru
   // 3 m behind the truck's centre, and an impact of a vehicle gone since.
   const behind = { x: truck.x - 3 * Math.cos(truck.angle), y: truck.y - 3 * Math.sin(truck.angle) }
   runtime.send(Honk, { car: 7, model: "ape", x: 1, y: 2 })
-  runtime.send(Impact, { hit: "wall", ...behind, speed: 5, mass: 4, car: truck.id })
+  runtime.send(Impact, { hit: "wall", ...behind, speed: 5, mass: 26, car: truck.id })
   runtime.send(Impact, { hit: "wall", x: 3, y: 4, speed: 5, mass: 1, car: 9999 })
   run(2)
   assert.deepEqual(frames.slice(1).map((f) => f.happenings), [
-    [{ kind: "impact", hit: "wall", ...behind, speed: 5, mass: 4, car: truck.id, body: { model: "truck", zone: "rear" } }, { kind: "honk", car: 7, model: "ape", x: 1, y: 2 }],
+    [{ kind: "impact", hit: "wall", ...behind, speed: 5, mass: 26, car: truck.id, body: { model: "truck", zone: "rear" } }, { kind: "honk", car: 7, model: "ape", x: 1, y: 2 }],
     []
   ])
+})
+
+test("hear: a ground hit lands on the face that struck: the roof and a side on the side, the nose on the front, the wheels under", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const at = { ...lanePoint(lane, 30, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle }
+  const { runtime, hear, frames } = listen([], door(ON_BATTISTI), { cars: [rolling("panda", at, 5, 0)] })
+  hear()
+  const car = frames[0]!.vehicles.find((v) => v.model === "panda")!.id
+  for (const face of ["roof", "side", "front", "rear", "under"] as const) runtime.send(Impact, { hit: "ground", x: at.x, y: at.y, speed: 6, mass: 1.015, car, face })
+  hear()
+  const zones = frames[1]!.happenings.map((h) => (h.kind === "impact" ? h.body.zone : undefined))
+  assert.deepEqual(zones, ["side", "side", "front", "rear", "under"])
+})
+
+test("hear: a vehicle's revs and load are the drivetrain's, from its chassis's gear, its forward speed and its pedal", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const at = { ...lanePoint(lane, 30, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle }
+  const { spawn, body } = staged("panda", at, 12, 1)
+  const { hear, frames } = listen([], door(ON_BATTISTI), { cars: [spawn] })
+  hear()
+  const heard = frames[0]!.vehicles.find((v) => v.model === "panda")!, revs = engineRevs(VEHICLES.panda, body, 12, 1, 0)
+  assert.ok(body.gear > 0 && revs.load === 1 && revs.rpm > VEHICLES.panda.engine.idle, `gear ${body.gear}, ${revs.rpm} rpm`)
+  assert.ok(Math.abs(heard.rpm - revs.rpm) < 1e-6 && heard.load === revs.load, `${heard.rpm} rpm, load ${heard.load}`)
+})
+
+test("hear: each vehicle's skids since the last frame, the hardest-sliding wheel's surface, the most it slid and how fast", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const at = { ...lanePoint(lane, 30, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle }
+  const { runtime, hear, frames } = listen([], door(ON_BATTISTI), { cars: [rolling("panda", at, 5, 0)] })
+  hear()
+  const car = frames[0]!.vehicles.find((v) => v.model === "panda")!.id
+  const skid = { car, x: at.x, y: at.y, z: 0, step: 0 }
+  runtime.send(Skid, { ...skid, wheel: 0, slip: 9, amount: 0.4, surface: "asphalt" })
+  runtime.send(Skid, { ...skid, wheel: 2, slip: 6, amount: 0.9, surface: "gravel" })
+  hear()
+  hear()
+  const of = (frame: Heard) => frame.vehicles.find((v) => v.id === car)!.skid
+  assert.deepEqual([of(frames[0]!), of(frames[1]!), of(frames[2]!)], [undefined, { amount: 0.9, slip: 9, surface: "gravel" }, undefined])
+})
+
+test("hear: a vehicle's wheels are down on its springs; in the air, on its side or on its roof they are not", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  const pose = (metres: number) => ({ ...lanePoint(lane, metres, side), angle: ON_BATTISTI.angle })
+  const cars = [
+    staged("panda", pose(20), 8, 0),
+    staged("panda", pose(30), 8, 0, { z: rollingChassis("panda", pose(30), 8).z + 1.2 }),
+    staged("panda", pose(40), 8, 0, { roll: Math.PI / 2 }),
+    staged("panda", pose(50), 8, 0, { roll: Math.PI })
+  ]
+  const { hear, frames } = listen([], door(ON_BATTISTI), { cars: cars.map((c) => c.spawn) })
+  hear()
+  const down = [20, 30, 40, 50].map((metres) => frames[0]!.vehicles.find((v) => Vec2.distance(v, pose(metres)) < 0.5)!.wheelsDown)
+  assert.deepEqual(down, [true, false, false, false])
+  assert.equal(frames[0]!.vehicles.find((v) => Vec2.distance(v, pose(30)) < 0.5)!.z, cars[1]!.body.z)
+})
+
+// Regression: the physics reports no ground hit for a body sliding along the ground, so a car on its roof slid in silence.
+test("hear: a car sliding on its roof or its side has its body down on the ground; one on its wheels or in the air has not", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda"), { height, width, cg } = VEHICLES.panda
+  const pose = (metres: number) => ({ ...lanePoint(lane, metres, side), angle: ON_BATTISTI.angle })
+  const ground = (metres: number) => groundZ(pose(metres).x, pose(metres).y)
+  const cars = [
+    staged("panda", pose(10), 8, 0),
+    staged("panda", pose(20), 8, 0, { z: ground(20) + 3 }),
+    staged("panda", pose(30), 8, 0, { roll: Math.PI / 2, z: ground(30) + width / 2 }),
+    staged("panda", pose(40), 8, 0, { roll: Math.PI, z: ground(40) + height - cg })
+  ]
+  const { run, frames } = listen([], door(ON_BATTISTI), { cars: cars.map((c) => c.spawn) })
+  run(10)
+  const at = (metres: number) => frames.at(-1)!.vehicles.find((v) => Vec2.distance(v, pose(metres)) < 3)!
+  assert.deepEqual([10, 20, 30, 40].map((metres) => at(metres).hullDown), [false, false, true, true])
+  for (const metres of [30, 40]) assert.ok(Math.hypot(at(metres).vx, at(metres).vy) > 2, `${metres} m: still sliding`)
+})
+
+// Regression: only planar motion counted, so a car nobody drives rolling over on the spot dropped out and its scrape could not be held.
+test("hear: a vehicle nobody drives is heard while it rolls, pitches or bounces, though it has stopped on the ground", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  const pose = (metres: number) => ({ ...lanePoint(lane, metres, side), angle: ON_BATTISTI.angle })
+  const cars = [staged("panda", pose(20), 0, 0, { rollRate: 2 }), staged("panda", pose(30), 0, 0, { pitchRate: -1 }), staged("panda", pose(40), 0, 0, { vz: 3 }), staged("panda", pose(50), 0, 0)]
+  const { hear, frames } = listen([], door(ON_BATTISTI), { cars: cars.map((c) => c.spawn) })
+  hear()
+  assert.deepEqual([20, 30, 40, 50].map((metres) => frames[0]!.vehicles.some((v) => Vec2.distance(v, pose(metres)) < 0.5)), [true, true, true, false])
 })
 
 test("hear: an Ape rolling into a parked Panda hits it with its front on the Panda's rear", () => {

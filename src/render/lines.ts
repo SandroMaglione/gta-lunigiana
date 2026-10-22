@@ -7,8 +7,9 @@
  */
 import { ExtrudeGeometry, Shape, Vector2 } from "three"
 
+import { ROAD_LIFT } from "../sim/map/ground.ts"
 import { MAP, roadClassOf, type Road } from "../sim/map/index.ts"
-import { ROAD_LIFT, surfaceY, terrainY, yOf } from "./ground.ts"
+import { surfaceY, terrainY, yOf } from "./ground.ts"
 import { APRON } from "./chunks.ts"
 import { paint, type Piece, type SinkAt, type Triangles } from "./geometry.ts"
 import { PALETTE } from "./palette.ts"
