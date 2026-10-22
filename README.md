@@ -104,7 +104,7 @@ pnpm install
 pnpm dev
 ```
 
-Then open `http://localhost:5173`. Every load is a new world. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
+Then open `http://localhost:5173`. The server listens on the local network too, so a phone or another computer on the same network can play: open the `Network` address that Vite prints. Anyone on that network can reach it, so stop it on a shared network you don't trust. Every load is a new world. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
 
 In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu that tunes the vehicle handling (the knobs it changes stay for the next load), and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)).
 
@@ -154,7 +154,7 @@ Every script runs with `pnpm`:
 
 | Script | What it does |
 |---|---|
-| `pnpm dev` | Vite dev server on port 5173 |
+| `pnpm dev` | Vite dev server on port 5173, open to the local network (`--host`) |
 | `pnpm build` | production build into `dist/` (the Pages workflow adds `--base=./`) |
 | `pnpm preview` | serves `dist/` on port 4173 |
 | `pnpm check` | `typecheck`, then `lint`, then `test` |

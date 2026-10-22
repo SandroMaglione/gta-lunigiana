@@ -8,7 +8,7 @@
     "map": "node src/tools/build-map.ts",
     "fetch-osm": "node src/tools/fetch-osm.ts",
     "fetch-rt": "node src/tools/fetch-rt.ts",
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview"
   },
