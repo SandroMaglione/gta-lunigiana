@@ -1,7 +1,8 @@
 /**
- * Mobile mode's controls (markup in index.html, layout in hud.css): a stick appears under a thumb
- * on the left half of the screen and holds the arrow keys it leans toward, eight ways like the
- * keys, and buttons on the right press the other keys. They feed the keyboard's own snapshot
+ * Mobile mode's controls (markup in index.html, layout in hud.css). On foot, a stick appears under
+ * a thumb on the left half of the screen and holds the arrow keys it leans toward, eight ways like
+ * the keys. Driving, buttons take its place: ◀ ▶ on the left steer, Gas and Brake on the right.
+ * Every key has a button, shown in the mode it works in. They feed the keyboard's own snapshot
  * (`withTouch`), so the simulation, its tests and replays cannot tell a tap from a key. Ritmo's
  * `Touch` tracks the fingers; its zones are read from the drawn controls, so they always match.
  *
@@ -16,37 +17,34 @@ import { element } from "./title.ts"
 type Key = keyof typeof bindings
 type Controls = Keyboard.Snapshot<typeof bindings>
 
-/** The keys the buttons press; index.html draws each as `#hud-touch-<key>`. The stick holds the rest. */
-export const BUTTONS = ["action", "sprint", "handbrake", "horn", "turnLeft", "turnRight"] as const satisfies ReadonlyArray<Key>
-type Button = (typeof BUTTONS)[number]
+/** The keys the buttons press, every key; index.html draws each as `#hud-touch-<key>`. */
+export const BUTTONS = Object.keys(bindings) as ReadonlyArray<Key>
 
 /** sin 22.5°: the stick holds a direction key once it leans more than this toward it, so it has eight directions. */
 const LEAN = Math.sin(Math.PI / 8)
 
 /** The direction keys a stick tilt holds (screen y grows downwards). */
-const directions = ({ x, y }: Touch.Vector) => {
+const directions = ({ x, y }: Touch.Vector): Partial<Record<Key, boolean>> => {
   const lean = LEAN * Math.hypot(x, y)
   return { up: y < -lean, down: y > lean, left: x < -lean, right: x > lean }
 }
 
 /**
  * The keyboard's controls with the touch screen's added: the stick holds the direction keys, each
- * button its own key. A key is held while either holds it, and a press on either is a press.
+ * button its own key. A key is held while any of them holds it, and a press on any is a press.
  */
-export const withTouch = (keyboard: InputCapture.Source<Controls>, touch: InputCapture.Source<Touch.Snapshot<Button>>): InputCapture.Source<Controls> => {
+export const withTouch = (keyboard: InputCapture.Source<Controls>, touch: InputCapture.Source<Touch.Snapshot<Key>>): InputCapture.Source<Controls> => {
   let was = directions({ x: 0, y: 0 })
   return {
     snapshot: () => {
       const keys = keyboard.snapshot(), { stick, buttons } = touch.snapshot(), now = directions(stick.vector)
-      const edge = (d: keyof typeof now): Keyboard.ActionState => ({ held: now[d], pressed: now[d] && !was[d], released: was[d] && !now[d] })
-      // A new key fails to compile here until the touch screen has a control for it.
-      const pads = { ...buttons, up: edge("up"), down: edge("down"), left: edge("left"), right: edge("right") } satisfies Record<Key, Keyboard.ActionState>
-      was = now
       const merged = {} as Record<Key, Keyboard.ActionState>
-      for (const key of Object.keys(keys) as Array<Key>) {
-        const held = keys[key].held || pads[key].held
-        merged[key] = { held, pressed: keys[key].pressed || pads[key].pressed, released: (keys[key].released || pads[key].released) && !held }
+      for (const key of BUTTONS) {
+        const leans = now[key] === true, leant = was[key] === true
+        const all = [keys[key], buttons[key], { held: leans, pressed: leans && !leant, released: leant && !leans }], held = all.some((state) => state.held)
+        merged[key] = { held, pressed: all.some((state) => state.pressed), released: all.some((state) => state.released) && !held }
       }
+      was = now
       return merged
     }
   }
@@ -90,20 +88,23 @@ const surface = (canvas: HTMLCanvasElement): Touch.TouchTarget => {
   }
 }
 
+/** Whether hud.css hides `node` in the current mode. */
+const hidden = (node: HTMLElement) => node.offsetParent === null
+
 /** A drawn control's touch zone in the page's frame: the circle it is drawn as, or out of reach while hidden. */
 const zone = (node: HTMLElement): Touch.ButtonZone =>
-  node.offsetParent === null
+  hidden(node)
     ? { center: { x: -1e4, y: -1e4 }, radius: 0 }
     : { center: { x: node.offsetLeft + node.offsetWidth / 2, y: node.offsetTop + node.offsetHeight / 2 }, radius: node.offsetWidth / 2 }
 
 /** Binds the touch controls to their markup over `canvas`: `touch` feeds `withTouch`, `draw` runs once per frame. */
 export const makeTouchControls = (document: Document, canvas: HTMLCanvasElement) => {
   const root = element(document, "hud-touch"), stick = element(document, "hud-stick"), knob = stick.firstElementChild as HTMLElement
-  const pads = Object.fromEntries(BUTTONS.map((key) => [key, element(document, `hud-touch-${key}`)])) as Record<Button, HTMLElement>
-  // Read again on every new touch, so the zones follow the buttons hud.css shows in the current mode.
+  const pads = Object.fromEntries(BUTTONS.map((key) => [key, element(document, `hud-touch-${key}`)])) as Record<Key, HTMLElement>
+  // Read again on every new touch, so the zones follow the controls hud.css shows in the current mode.
   const touch = Touch.track(surface(canvas), document.defaultView!, ({ width, height }) => ({
-    stick: { region: { left: 0, top: 0, width: width / 2, height }, radius: stick.offsetWidth / 2 },
-    buttons: Object.fromEntries(BUTTONS.map((key) => [key, zone(pads[key])])) as Record<Button, Touch.ButtonZone>
+    stick: { region: hidden(stick) ? { left: -1e4, top: -1e4, width: 0, height: 0 } : { left: 0, top: 0, width: width / 2, height }, radius: stick.offsetWidth / 2 },
+    buttons: Object.fromEntries(BUTTONS.map((key) => [key, zone(pads[key])])) as Record<Key, Touch.ButtonZone>
   }))
   let moved = "", leaned = ""
   return {

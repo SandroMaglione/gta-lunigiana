@@ -10,13 +10,15 @@ import { BUTTONS, unturn, withTouch } from "./touch.ts"
 type Snapshot = Keyboard.Snapshot<typeof bindings>
 const held = (snapshot: Snapshot) => Object.entries(snapshot).flatMap(([key, state]) => (state.held ? [key] : [])).sort()
 
-test("the stick holds the arrow keys it leans to, eight ways, and the buttons press their own keys", () => {
+test("the stick holds the arrow keys it leans to, eight ways, and the buttons press their own keys, the arrows' too", () => {
   const keyboard = Keyboard.scripted(bindings, [{ frame: 2, press: ["up"] }])
   const touch = Touch.scripted(BUTTONS, [
     { frame: 0, stick: { x: -0.6, y: -0.6 } },
     { frame: 1, stick: { x: 0.3, y: -0.9 } }, // 18° off straight up: up alone
     { frame: 2, stick: null, press: ["action"], release: ["action"] }, // a tap shorter than a frame
-    { frame: 3, press: ["handbrake"] }
+    { frame: 3, press: ["handbrake"] },
+    { frame: 4, press: ["left", "down"] }, // driving: ◀ and Brake
+    { frame: 5, stick: { x: -1, y: 0 }, release: ["left"] } // a thumb on the stick still holds ◀'s key
   ])
   const controls = withTouch(keyboard, touch)
 
@@ -34,6 +36,12 @@ test("the stick holds the arrow keys it leans to, eight ways, and the buttons pr
   const braking = controls.snapshot()
   assert.deepEqual(held(braking), ["handbrake", "up"])
   assert.equal(braking.action.pressed, false)
+  const steering = controls.snapshot()
+  assert.deepEqual(held(steering), ["down", "handbrake", "left", "up"])
+  assert.equal(steering.left.pressed && steering.down.pressed, true)
+  const both = controls.snapshot()
+  assert.deepEqual(held(both), ["down", "handbrake", "left", "up"])
+  assert.equal(both.left.released, false)
 })
 
 // Only mobile mode looks the controls up, so a desktop start-up never notices a missing one.

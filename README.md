@@ -128,11 +128,13 @@ The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street
 
 ### Touch controls on a phone or tablet
 
-Where a touch screen is the main pointer, the game runs in mobile mode: the controls are on the screen, so no keyboard or mouse is needed, and the game is always landscape. A phone held upright shows the game turned a quarter, to be held sideways. On Android, the first tap also takes the game full screen and locks it to landscape. The controls press the same keys as the keyboard:
+Where a touch screen is the main pointer, the game runs in mobile mode: the controls are on the screen, so no keyboard or mouse is needed, and the game is always landscape. A phone held upright shows the game turned a quarter, to be held sideways. On Android, the first tap also takes the game full screen and locks it to landscape. On foot a stick walks; in a vehicle, buttons take its place. The controls press the same keys as the keyboard:
 
 | Control | On foot | Driving |
 |---|---|---|
-| Stick: a thumb on the left half | walk along the screen directions | up: throttle, down: brake and reverse, left/right: steer |
+| Stick: a thumb on the left half | walk along the screen directions | |
+| ◀ / ▶ on the left | | steer left / right |
+| Gas / Brake on the right | | throttle / brake, then reverse |
 | Run | sprint | |
 | Steal, Enter, Carjack or Exit (shown only when it would act) | enter the nearest vehicle | get out |
 | ↺ / ↻ | turn the view a quarter left / right | same |

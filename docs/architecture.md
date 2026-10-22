@@ -143,8 +143,9 @@ see [audio.md](audio.md#where-state-lives)).
 1. `src/main.ts` makes `Keyboard.actions(window, bindings)` and passes it as the `KeyboardInput`
    service. In mobile mode ([HUD](#hud)) it passes `withTouch` (`src/hud/touch.ts`) instead: the
    keyboard's snapshot with the touch controls' added. The stick holds the direction keys it leans
-   more than 22.5° toward, so it has the keys' eight directions, and each button holds its key.
-   A key is held while either holds it, so the sim cannot tell a tap from a key.
+   more than 22.5° toward, so it has the keys' eight directions, and each button holds its key;
+   every key has a button. A key is held while any of them holds it, so the sim cannot tell a tap
+   from a key.
 2. `CaptureInput` (Ritmo's `InputCapture.system`) copies its snapshot into the `Input` resource
    at the start of each step.
 3. Systems read `Input`: `held` for movement, steering and handbrake, `pressed` (once per press)
@@ -408,16 +409,18 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
 - Mobile mode: an inline script in `index.html`'s head marks the page `touch` when a touch screen
   is the main pointer (`(pointer: coarse)`), before the first paint, so the title card shows right.
   hud.css then shows the touch controls and a smaller HUD (the minimap top left, the speedometer
-  and credits between the stick and the buttons) and hides the key prompt: the action button shows
+  and credits between the left controls and the right ones) and hides the key prompt: the action button shows
   its verb, without the vehicle. The card trades its key list for two touch hints and "Tap to
   play", and hides on the tap's click, not its press, so the click cannot land on the minimap under
   it. The keyboard keeps working. In headless Chrome emulating an 844 × 390 phone at 3× on an M4
   Pro, the view is 633 × 293 texels and runs at 60 fps with no frame over 30 ms while the stick is
   held; no real phone has been measured.
 - Touch controls (`src/hud/touch.ts`, `#hud-touch`): Ritmo's `Touch` tracks the fingers on the
-  canvas. A thumb on the left half brings the stick under it (full tilt at 56 px). On the right,
-  the action button shows only when it would act; Run shows on foot; Hand brake and Horn in a car;
-  ↺ and ↻ always. The zones are read from the drawn buttons on every new touch, so they follow
+  canvas. On foot, a thumb on the left half brings the stick under it (full tilt at 56 px), and
+  Run shows on the right. In a car the stick goes, and buttons hold the arrow keys like the
+  keyboard: ◀ and ▶ on the left steer, Gas and Brake take the bottom right, and Hand brake, the
+  action button and Horn a row above them. The action button shows only when it would act; ↺ and
+  ↻ always. The zones are read from the drawn buttons on every new touch, so they follow
   hud.css and the mode. `withTouch` turns them into keys ([Input](#input)).
 - Landscape only: a phone held upright lays the page out sideways (`width: 100dvh`, the height
   Safari's toolbars leave) and turns it a quarter clockwise, to be held sideways (hud.css). The

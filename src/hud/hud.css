@@ -109,15 +109,17 @@ html.touch .score div { gap: 8px; }
 html.touch .score dt { font-size: 10px; }
 html.touch .score dt small { font-size: 8px; }
 html.touch .score dd { font-size: 17px; }
-/* Between the stick and the buttons. */
+/* Between the left controls and the right ones. */
 html.touch #hud-speedo { right: auto; left: 50%; bottom: 48px; transform: translateX(-50%); text-align: center; }
 html.touch #hud-speed { font-size: 26px; }
-html.touch .credits { right: auto; left: 50%; bottom: 4px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 380px); font-size: 8px; text-align: center; }
+html.touch .credits { right: auto; left: 50%; bottom: 4px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 400px); font-size: 8px; text-align: center; }
 html.touch .map-head { top: 10px; left: 16px; right: 16px; font-size: 12px; }
 html.touch .map-title { font-size: 16px; }
 
-/* The touch controls (touch.ts). A finger on the left half brings the stick under it; the buttons
-   show only in the mode they work in, and the action button only when there is something to do. */
+/* The touch controls (touch.ts). On foot, a finger on the left half brings the stick under it;
+   driving, ◀ ▶ take its place and Gas and Brake the action button's and Run's, the action button
+   moving up. The buttons show only in the mode they work in, the action button only when there is
+   something to do. */
 #hud-touch { position: absolute; inset: 0; }
 #hud-touch[data-mode="driving"] .on-foot, #hud-touch:not([data-mode="driving"]) .driving, #hud-touch-action:empty { display: none; }
 #hud-stick { position: absolute; left: 28px; bottom: 28px; box-sizing: border-box; width: 112px; height: 112px; border: 2px solid var(--ink); border-radius: 50%; background: rgb(23 22 26 / 0.35); opacity: 0.5; }
@@ -126,9 +128,17 @@ html.touch .map-title { font-size: 16px; }
 .pad { position: absolute; box-sizing: border-box; display: grid; place-items: center; width: 56px; height: 56px; border: 2px solid var(--ink); border-radius: 50%; background: var(--panel); font-size: 10px; line-height: 1.1; text-align: center; }
 .pad.held { color: var(--shadow); background: var(--accent); text-shadow: none; }
 #hud-touch-action { right: 20px; bottom: 24px; width: 76px; height: 76px; border-color: var(--accent); font-size: 12px; }
-#hud-touch-sprint, #hud-touch-handbrake { right: 108px; bottom: 16px; width: 60px; height: 60px; }
-/* Above the handbrake, clear of ↺ ↻ even on a 250 px tall screen. */
-#hud-touch-horn { right: 110px; bottom: 88px; }
+#hud-touch-sprint { right: 108px; bottom: 16px; width: 60px; height: 60px; }
+.pad.steer { bottom: 24px; width: 76px; height: 76px; font-size: 26px; }
+#hud-touch-left { left: 24px; }
+#hud-touch-right { left: 116px; }
+.pad.pedal { font-size: 12px; }
+#hud-touch-up { right: 20px; bottom: 24px; width: 76px; height: 76px; }
+#hud-touch-down { right: 108px; bottom: 20px; width: 64px; height: 64px; }
+/* A row above the pedals, clear of ↺ ↻ even on a 250 px tall screen and of the speedometer. */
+#hud-touch-handbrake { right: 112px; bottom: 96px; }
+#hud-touch[data-mode="driving"] #hud-touch-action { right: 184px; bottom: 96px; width: 56px; height: 56px; }
+#hud-touch-horn { right: 256px; bottom: 96px; }
 .pad.turn { top: 80px; width: 44px; height: 44px; font-size: 20px; }
 #hud-touch-turnLeft { right: 64px; }
 #hud-touch-turnRight { right: 12px; }
