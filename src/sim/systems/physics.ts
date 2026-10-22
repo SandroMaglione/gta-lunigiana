@@ -1,7 +1,7 @@
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, moveCar, wallsAlong } from "../body.ts"
-import { type Rig, rigFor, RIGS } from "../chassis.ts"
+import { overturned, type Rig, rigFor, RIGS } from "../chassis.ts"
 import { BRAKING, driveForce, shiftGear } from "../drivetrain.ts"
 import { type BodyState, type Ground, integrate } from "../dynamics.ts"
 import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
@@ -170,8 +170,10 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
     const pose = data.pose.get()
     const motion = data.motion.get()
     const chassis = data.chassis.get()
-    // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing.
-    if (input.throttle === 0 && motion.vx === 0 && motion.vy === 0 && motion.spin === 0 && chassis.vz === 0 && chassis.pitchRate === 0 && chassis.rollRate === 0) continue
+    // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing; one lying overturned wakes to
+    // right itself when the handling's self-righting is on.
+    const still = motion.vx === 0 && motion.vy === 0 && motion.spin === 0 && chassis.vz === 0 && chassis.pitchRate === 0 && chassis.rollRate === 0
+    if (input.throttle === 0 && still && !(handling.selfRighting === 1 && overturned(chassis))) continue
 
     const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt, groundZ, surfaceAt, handling)
 

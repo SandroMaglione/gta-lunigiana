@@ -1,19 +1,15 @@
 /**
  * The debug menu, in dev builds only (main.ts imports it inside its `import.meta.env.DEV` block):
- * a panel that sets the vehicle handling knobs live, for every vehicle at once, and keeps the
- * changed ones in localStorage for the next load. P or the Debug button beside the Ritmo
- * monitor's opens and closes it, Esc closes it. Every name, range and text it shows comes from
- * `HANDLING` (src/sim/handling.ts).
+ * a panel that sets the vehicle handling presets and knobs live, for every vehicle at once,
+ * through the store the settings share (`hud/handling.ts`), so each shows what the other sets. P or
+ * the Debug button beside the Ritmo monitor's opens and closes it, Esc inside it closes it. Every
+ * name, range and text it shows comes from `HANDLING` and `HANDLING_PRESETS` (src/sim/handling.ts).
  *
  * @module hud/debug
  */
-import { clampKnob, DEFAULT_HANDLING, HANDLING, HANDLING_KEYS, type HandlingKey, type HandlingValue, type Knob } from "../sim/handling.ts"
+import { DEFAULT_HANDLING, HANDLING, HANDLING_KEYS, HANDLING_PRESETS, type HandlingKey, type Knob, PRESET_IDS } from "../sim/handling.ts"
+import type { HandlingStore } from "./handling.ts"
 
-/** Knob values by name, some knobs only: what the menu stores. */
-type Knobs = Partial<Record<HandlingKey, number>>
-
-/** The localStorage entry: a JSON object of the knobs changed from a new game's (`DEFAULT_HANDLING`). */
-const STORED = "gta-lunigiana/handling"
 const TITLE = "Debug: vehicle handling"
 
 /** A knob's value as the menu shows it: a scale "×1.25", a share "0.60", a switch "On" or "Off". */
@@ -27,23 +23,6 @@ export const formatKnob = (key: HandlingKey, value: number): string => {
 export const sections = (keys: ReadonlyArray<HandlingKey> = HANDLING_KEYS): ReadonlyArray<[group: string, keys: ReadonlyArray<HandlingKey>]> =>
   [...Map.groupBy(keys, (key) => HANDLING[key].group)]
 
-/** The knobs in stored `text`, which is untrusted: anything not JSON is nothing, unknown keys and non-numbers are dropped, the rest kept in range (`clampKnob`). */
-export const parseStored = (text: string | null): Knobs => {
-  let data: unknown
-  try {
-    data = JSON.parse(text ?? "null")
-  } catch {
-    return {}
-  }
-  const knobs: Knobs = {}
-  for (const key of HANDLING_KEYS) {
-    const value: unknown = Object(data)[key]
-    const valid = typeof value === "number" ? clampKnob(key, value) : undefined
-    if (valid !== undefined) knobs[key] = valid
-  }
-  return knobs
-}
-
 /**
  * Whether `event` toggles the menu: the key that types P (on any Latin layout, AZERTY too), or the
  * key in P's place on layouts that type no ASCII character there (Cyrillic, Greek). Repeats and
@@ -55,35 +34,10 @@ export const isDebugKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" 
   return key === "p" || (event.code === "KeyP" && !/^[ -~]$/.test(key))
 }
 
-/**
- * The menu's knobs: the game's (`read` once) with the `stored` ones set over them, then each change set and remembered. The game
- * applies a change on its next step, and not at all while paused (the full map), so the menu keeps its own values rather than read
- * the game's again: what it shows and stores is always what the game will hold. `change` returns what to store: the knobs off their
- * new-game values as JSON, or undefined when none is.
- */
-export const knobModel = (read: () => HandlingValue, stored: Knobs, set: (key: HandlingKey, value: number) => void) => {
-  for (const key of HANDLING_KEYS) {
-    const value = stored[key]
-    if (value !== undefined) set(key, value)
-  }
-  let values: HandlingValue = { ...read(), ...stored }
-  return {
-    values: (): HandlingValue => values,
-    change: (key: HandlingKey, value: number): string | undefined => {
-      values = { ...values, [key]: value }
-      set(key, value)
-      const moved = HANDLING_KEYS.filter((name) => values[name] !== DEFAULT_HANDLING[name])
-      return moved.length === 0 ? undefined : JSON.stringify(Object.fromEntries(moved.map((name) => [name, values[name]])))
-    }
-  }
-}
-
-/** What the menu needs: the page, where to keep the changed knobs, and the game's knobs to read and set. */
+/** What the menu needs: the page, and the player's handling to show and set. */
 export interface DebugMenuHost {
   readonly window: Window
-  readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem">
-  readonly read: () => HandlingValue
-  readonly set: (key: HandlingKey, value: number) => void
+  readonly store: HandlingStore
 }
 
 // The Debug button sits right of the monitor's (`.btm-toggle`, bottom left), anchored to it; until
@@ -104,29 +58,40 @@ const STYLE = `
 .debug input[type="checkbox"] { justify-self: start; }
 .debug button { padding: 0 8px; font: inherit; font-size: 12px; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); text-shadow: none; cursor: pointer; }
 .debug button[hidden] { display: none; }
+.debug-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.debug-custom { color: var(--accent); }
+.debug-custom[hidden] { display: none; }
+.debug .debug-presets button[aria-pressed="false"] { color: var(--accent); background: transparent; border-color: var(--accent); }
 .debug .debug-reset-all { margin-top: 16px; }
 .debug :focus-visible, .debug-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 `
 
 /**
- * Mounts the menu, closed, and its button, and sets the knobs stored by an earlier load. Each change
- * is `set` at once and stored; "Reset" and "Reset all" set knobs back to a new game's values and clear the store.
+ * Mounts the menu, closed, and its button. A preset or a knob changed goes to `store` at once, and
+ * the menu shows every change the store makes, the settings' included; "Reset" and "Reset all" set
+ * knobs back to a new game's values.
  */
-export const mountDebugMenu = ({ window, storage, read, set }: DebugMenuHost): void => {
+export const mountDebugMenu = ({ window, store }: DebugMenuHost): void => {
   const document = window.document
   const make = <K extends keyof HTMLElementTagNameMap>(tag: K, props: NoInfer<Partial<HTMLElementTagNameMap[K]>> = {}, ...children: Array<Node | string>): HTMLElementTagNameMap[K] => {
     const node = Object.assign(document.createElement(tag), props)
     node.append(...children)
     return node
   }
-  const knobs = knobModel(read, parseStored(storage.getItem(STORED)), set)
-
   const panel = make("section", { id: "debug-menu", className: "debug", role: "dialog", ariaLabel: TITLE, hidden: true },
     make("h2", { textContent: TITLE }),
     make("p", { textContent: "Dev builds only. Every change applies to every vehicle at once, traffic included." }))
+  const presets = PRESET_IDS.map((id) => {
+    const button = make("button", { type: "button", textContent: HANDLING_PRESETS[id].label, title: HANDLING_PRESETS[id].description })
+    button.addEventListener("click", () => store.choose(id))
+    return { id, button }
+  })
+  // A mix of knobs set here is no preset: none pressed, and the row says so.
+  const custom = make("span", { className: "debug-custom", textContent: "Custom" })
+  panel.append(make("section", {}, make("h3", { textContent: "Presets" }), make("div", { className: "debug-presets" }, ...presets.map(({ button }) => button), custom)))
   const controls = new Map<HandlingKey, { readonly input: HTMLInputElement; readonly shown: HTMLOutputElement; readonly reset: HTMLButtonElement }>()
   const show = (key: HandlingKey) => {
-    const { input, shown, reset } = controls.get(key)!, value = knobs.values()[key]
+    const { input, shown, reset } = controls.get(key)!, value = store.values()[key]
     if (input.type === "checkbox") input.checked = value === 1
     else {
       input.value = String(value)
@@ -134,12 +99,6 @@ export const mountDebugMenu = ({ window, storage, read, set }: DebugMenuHost): v
     }
     shown.value = formatKnob(key, value)
     reset.hidden = value === DEFAULT_HANDLING[key]
-  }
-  const change = (key: HandlingKey, value: number) => {
-    const keep = knobs.change(key, value)
-    if (keep === undefined) storage.removeItem(STORED)
-    else storage.setItem(STORED, keep)
-    show(key)
   }
   for (const [group, keys] of sections()) {
     const section = make("section", {}, make("h3", { textContent: group }))
@@ -151,9 +110,9 @@ export const mountDebugMenu = ({ window, storage, read, set }: DebugMenuHost): v
       const shown = make("output"), about = make("p", { id: `${id}-about`, textContent: knob.description })
       const reset = make("button", { type: "button", textContent: "Reset", ariaLabel: `Reset ${knob.label}` })
       input.setAttribute("aria-describedby", about.id)
-      input.addEventListener("input", () => change(key, knob.kind === "switch" ? Number(input.checked) : Number(input.value)))
+      input.addEventListener("input", () => store.change(key, knob.kind === "switch" ? Number(input.checked) : Number(input.value)))
       reset.addEventListener("click", () => {
-        change(key, DEFAULT_HANDLING[key])
+        store.change(key, DEFAULT_HANDLING[key])
         input.focus() // the button hides itself
       })
       controls.set(key, { input, shown, reset })
@@ -163,19 +122,26 @@ export const mountDebugMenu = ({ window, storage, read, set }: DebugMenuHost): v
   }
   const resetAll = make("button", { type: "button", className: "debug-reset-all", textContent: "Reset all" })
   resetAll.addEventListener("click", () => {
-    for (const key of HANDLING_KEYS) change(key, DEFAULT_HANDLING[key])
+    for (const key of HANDLING_KEYS) store.change(key, DEFAULT_HANDLING[key])
   })
   panel.append(resetAll)
+  const showAll = () => {
+    const preset = store.preset()
+    for (const { id, button } of presets) button.ariaPressed = String(id === preset)
+    custom.hidden = preset !== undefined
+    for (const key of HANDLING_KEYS) show(key)
+  }
+  store.subscribe(showAll)
+  showAll()
   const toggle = make("button", { type: "button", className: "debug-toggle", textContent: "Debug (P)", title: TITLE, ariaExpanded: "false" })
   toggle.setAttribute("aria-controls", panel.id)
 
   let returnTo: Element | null = null
   const open = () => {
-    for (const key of HANDLING_KEYS) show(key)
     returnTo = document.activeElement
     panel.hidden = false
     toggle.ariaExpanded = "true"
-    panel.querySelector("input")?.focus()
+    presets[0]?.button.focus()
   }
   const close = () => {
     // Focus goes back only from inside the menu: one the player moved elsewhere stays there.
@@ -186,9 +152,9 @@ export const mountDebugMenu = ({ window, storage, read, set }: DebugMenuHost): v
   }
   const flip = () => (panel.hidden ? open() : close())
   toggle.addEventListener("click", flip)
+  // Esc outside the menu is the settings' (`routeOverlayKeys` in hud.ts).
   window.addEventListener("keydown", (event) => {
     if (isDebugKey(event)) flip()
-    else if (event.key === "Escape" && !panel.hidden) close()
   })
   // The game's keyboard listens on the window: a key pressed in the menu stops here, so it neither
   // drives nor walks (nor moves the map or the monitor). Keyups go on: one of a key held as focus

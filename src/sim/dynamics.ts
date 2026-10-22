@@ -11,6 +11,7 @@
  */
 import { Ops } from "@typeonce/ritmo-math"
 
+import { righting, steadying } from "./assists.ts"
 import { fitPlane, GRAVITY, type Offset, type Rig, tiltOf, turn, WHEELS_DOWN } from "./chassis.ts"
 import { groundZ } from "./map/ground.ts"
 import type { Surface } from "./map/surface.ts"
@@ -225,6 +226,11 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
       if (-into > HIT_FROM && (hit === undefined || -into > hit.speed)) hit = { speed: -into, ...at, face: faceOf(index, corner, up, body.pitch) }
     })
 
+    // The stability assist (arcade): yaw toward the steered line, the slide damped.
+    const steady = steadying(rig, vf, vl, r, controls.steer, touching, controls.handbrake)
+    fl += steady.side
+    tu += steady.yaw
+
     // Air drag at the centre of mass.
     const drag = 0.5 * AIR * spec.drag * Math.sqrt(vf * vf + vl * vl)
     ff -= drag * vf
@@ -241,6 +247,12 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
       body.rollRate *= 1 - AIR_SPIN * h
       body.pitchRate *= 1 - AIR_SPIN * h
     }
+    // Self-righting (arcade): a vehicle down on its side or roof, nearly stopped, rolls back onto its wheels.
+    const partly = touching > 0 && touching < rig.wheels.length
+    const righted = righting(rig, up, resting || partly, Math.sqrt(body.vx * body.vx + body.vy * body.vy), body.roll, body.pitch, body, h)
+    body.rollRate = righted.rollRate
+    body.pitchRate = righted.pitchRate
+    body.vz = righted.vz
     body.x += body.vx * h
     body.y += body.vy * h
     body.angle += body.spin * h

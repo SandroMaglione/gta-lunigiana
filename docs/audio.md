@@ -739,11 +739,11 @@ On foot H does nothing. The title card lists it.
   whole graph before it renders, so baking all at once built some 1,200 noise bursts in one task).
   A later gesture resumes a context the browser has left suspended or interrupted (Safari,
   Firefox).
-- **Pause.** While the full map (M) is open, `main.ts` calls `speaker.pause(true)` every frame,
-  which suspends the context, and skips the frame, so the audio schedule does not run either.
-  Closing the map resumes both.
+- **Pause.** While the full map (M) or the settings (Esc) are open, `main.ts` calls
+  `speaker.pause(true)` every frame, which suspends the context, and skips the frame, so the audio
+  schedule does not run either. Closing them resumes both.
 - **Hidden tab.** The context is suspended while the page is hidden and resumed when it shows
-  again (unless the map is open).
+  again (unless the map or the settings are open).
 - **Failures.** A non-finite placement or delay is never sent (it would mute its kind for the
   session); a synth that throws mutes only its own kind.
 

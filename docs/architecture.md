@@ -4,8 +4,8 @@ The game is a Ritmo ECS simulation plus a browser host. The simulation (`src/sim
 that changes the world. It is headless and deterministic: no DOM, no Three.js, no wall clock, no
 `Math.random`. The host (`src/main.ts`, `src/render`, `src/audio`, `src/hud`) captures input,
 draws, plays the sound, and shows the HUD. It reads the world and never writes saved state: its
-one request, the dev debug menu's handling, goes in as a `SetHandling` event that a system
-applies.
+one request, the handling the player picks in the settings or the dev debug menu, goes in as
+`SetHandling` events that a system applies.
 
 ```
 keyboard ──► KeyboardInput service ──► CaptureInput ──► Input resource ──► systems
@@ -20,8 +20,8 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 `src/sim/index.ts` is the entry. It re-exports the schema, defines the schedules, and exports
 `makeRuntime({ seed, services, debug? })`, which makes a runtime with the starting resources:
 `Time` (60 Hz clock), `Rng` (seeded from `seed`), `Score` (zeroed), `View` (home view),
-`Handling` (a new game's knobs, `DEFAULT_HANDLING`: real but off-road grip loss at 0.5) and
-`Input` (idle keys).
+`Handling` (a new game's knobs, `DEFAULT_HANDLING`: the Balanced preset) and `Input` (idle
+keys).
 
 ### Schedules and system order
 
@@ -30,9 +30,9 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 1. `SpawnWorld` (`systems/spawn.ts`): the player and the parked cars on 200 of the map's parked
    spots (`PARKED`), the two Carabinieri cars included.
 2. `ApplyHandling` (`index.ts`): runs here once, before any request exists, so it is listening
-   when the host first sends: a `SetHandling` sent before the first `update` (the debug menu
-   re-sending its stored knobs at load) would otherwise be dropped by whichever schedule ticked
-   first.
+   when the host first sends: a `SetHandling` sent before the first `update` (the host
+   re-sending the player's stored handling at load) would otherwise be dropped by whichever
+   schedule ticked first.
 3. `applyDeferred`
 
 `update` is one fixed step (`STEP = Clock.hz(60)`):
@@ -88,7 +88,7 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 `Chassis` and `Handling` need no snapshot migration.
 
 Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`), `View` (`turns`, the net quarter turns
-of the camera) and `Handling` (the 13 handling knobs, [gameplay.md](gameplay.md#handling)) are
+of the camera) and `Handling` (the 15 handling knobs, [gameplay.md](gameplay.md#handling)) are
 saved. `Input` is transient: it is rebuilt every step and never saved.
 
 Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person or the ground:
@@ -98,9 +98,9 @@ how fast, how far past its grip, on what surface) and `Honk` (an AI driver held 
 carry moments that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI`
 emit them; the audio schedule reads all three ([audio.md](audio.md#data-flow)) and the render
 schedule reads `Skid` (tyre marks and smoke). `SetHandling` (set one handling knob to a value) is
-a host intent: no system emits it, the dev debug menu sends it with `runtime.send`, and
-`ApplyHandling` reads it. Snapshots hold no events, and emitting them changes neither the
-determinism nor the saves test.
+a host intent: no system emits it, the host's handling store (`src/hud/handling.ts`) sends it
+with `runtime.send` for the settings and the dev debug menu, and `ApplyHandling` reads it.
+Snapshots hold no events, and emitting them changes neither the determinism nor the saves test.
 
 Static data is module content, not state. `MAP` and `graph` (`src/sim/map/index.ts`), the wall,
 tree, building and edge lookups, the per-model lane tables in `src/sim/route.ts` and the per-model
@@ -133,9 +133,10 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   cells at load. The renderer converts it to render y (`src/render/ground.ts`).
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
-streamed world's chunks, the tyre marks and smoke, the HUD's DOM, the knobs the debug menu keeps
-in `localStorage`, and the audio context, live voices and the director's memory of each sound
-source (pruned as sources go; see [audio.md](audio.md#where-state-lives)).
+streamed world's chunks, the tyre marks and smoke, the HUD's DOM, the player's handling (a
+preset's name or the knobs set by hand, kept in `localStorage` by `src/hud/handling.ts`), and the
+audio context, live voices and the director's memory of each sound source (pruned as sources go;
+see [audio.md](audio.md#where-state-lives)).
 
 ## Input
 
@@ -338,13 +339,14 @@ turns (the stereo image turns with the screen), and hands them as plain `Heard` 
 acoustics and drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths
 (`src/audio/synth`). The speaker starts its AudioContext on the first key or click once it exists
 (made during the last loading steps, so normally the one that dismisses the title card), and
-suspends it while the full map is open or the tab is hidden. In dev builds `gta.audio` exposes the
-speaker, its output level and the context. Everything else is in [audio.md](audio.md).
+suspends it while the full map or the settings are open or the tab is hidden. In dev builds
+`gta.audio` exposes the speaker, its output level and the context. Everything else is in
+[audio.md](audio.md).
 
 ## HUD
 
 The HUD (`src/hud`) is plain DOM over the canvas, with its markup in `index.html`. It reads only
-the `PlayerView` inspector (`src/sim/views.ts`) and the map; the dev debug menu also reads the
+the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store also reads the
 `HandlingView` inspector:
 
 - `PlayerView` returns a `PlayerViewModel`: previous and current pose, velocity, mode (`foot`,
@@ -371,20 +373,32 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the dev debug menu 
   `prefers-reduced-motion`), with a 1 km bar and the player's district in the header. It is repainted on open, on
   resize, and when the pixel ratio changes. The dialog takes focus when it opens, so screen
   readers announce its title and the district.
-- While the full map is open the host pauses the game: the FixedLoop keeps running, but
-  `pausable` (`src/hud/hud.ts`) skips the sim update and `main.ts` skips the frame (no world
-  render, so actors do not jitter between `PrevPose` and `Pose`, and no audio tick) and suspends
-  the AudioContext (`speaker.pause`). Each skipped update drains the
-  keyboard's press edges, so a key tapped on the map (F, Enter) does nothing on resume, while a
-  key held through the pause is still held.
-- The debug menu (`src/hud/debug.ts`) sets the handling knobs ([gameplay.md](gameplay.md#handling))
-  in dev builds only: `main.ts` loads it inside its `import.meta.env.DEV` block, beside the Ritmo
+- The settings (`src/hud/settings.ts`), in every build: Esc opens and closes them, except that
+  Esc closes the full map first while it is open, and does nothing on the title card. They pause
+  the game as the map does, the last frame drawn dimmed behind them (drawn again when the window
+  is resized). Their Gameplay section holds "Vehicle physics": a radio button for each preset
+  (`HANDLING_PRESETS`, with its description), the current one checked, and none with a Custom note
+  when the knobs match no preset ([gameplay.md](gameplay.md#presets)).
+- The handling store (`src/hud/handling.ts`) holds the player's handling for the settings and the
+  debug menu, so both show the same choice: it sends each change as `SetHandling` events and
+  keeps it in `localStorage` under `gta-lunigiana/handling`. A preset is stored by its name, so a
+  preset retuned in a later build reaches the player; knobs set by hand are stored as the knobs.
+  At load it sends the stored handling before the first step.
+- While the full map or the settings are open the host pauses the game: the FixedLoop keeps
+  running, but `pausable` (`src/hud/hud.ts`) skips the sim update and `main.ts` skips the frame
+  (no world render, so actors do not jitter between `PrevPose` and `Pose`, and no audio tick) and
+  suspends the AudioContext (`speaker.pause`). Each skipped update drains the keyboard's press
+  edges, so a key tapped on the map (F, Enter) does nothing on resume, while a key held through
+  the pause is still held.
+- The debug menu (`src/hud/debug.ts`) sets the handling ([gameplay.md](gameplay.md#handling)) in
+  dev builds only: `main.ts` loads it inside its `import.meta.env.DEV` block, beside the Ritmo
   monitor, so production builds leave it out. P or the Debug button beside the Ritmo monitor
-  opens and closes it. It reads the knobs from `HandlingView` once, when it mounts, then keeps
-  its own values: the game applies a `SetHandling` event only on its next step, and not while
-  the full map pauses it, so reading again could show and store a stale value. Keys pressed
-  inside it do not reach the game. The knobs it
-  changed persist in `localStorage`, so a reload keeps them.
+  opens and closes it. It has a button for each preset, Custom shown when the knobs match none,
+  and a control for every knob. It reads the handling from the store, not from the game: the game
+  applies a `SetHandling` event only on its next step, and not while the full map or the settings
+  pause it, so reading the game could show and store a stale value. Keys pressed inside it do not
+  reach the game. What it sets goes through the store, so the settings show it and a reload keeps
+  it.
 
 ## Checks
 
@@ -410,8 +424,12 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the dev debug menu 
     transient components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
     into a fresh runtime, and plays on identically.
-  - `src/sim/handling.test.ts`: each handling knob's effect, and `SetHandling` kept in range and
-    through a save.
+  - `src/sim/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
+    `SetHandling` kept in range and through a save.
+  - `src/hud/handling.test.ts`: the handling store (what it stores, restores and sends);
+    `src/hud/settings.test.ts`: the settings' keys (Esc on to the router, every other key kept
+    from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
+    the Esc and M routing (`overlayKey`) and the pause.
   - `src/render/index.test.ts`: every system of every described schedule (`render` and `audio`)
     declares no writes.
   - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).

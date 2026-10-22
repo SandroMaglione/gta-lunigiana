@@ -15,8 +15,9 @@ this WebGL page, so drive headless Chrome over CDP:
    and gets out; `cdp.ts` sends single steps. `.research/` is gitignored, so these scripts live only
    in the main checkout (`git worktree list`): copy them over, then change their hard-coded CDP port
    (9333) and game URL (port 5173).
-4. Dev builds expose `window.gta`: `renderer`, `view`, `scene`, `world`, `heightAt`, `player()` and
-   `audio` (`level()` gives the output in dBFS). Load `?seed=N`, wait for `gta`, then press a key
+4. Dev builds expose `window.gta`: `renderer`, `view`, `scene`, `world`, `effects`, `heightAt`,
+   `player()`, `handling()` (the handling knobs in force) and `audio` (`level()` gives the output in
+   dBFS). Load `?seed=N`, wait for `gta`, then press a key
    to dismiss the title card.
 5. To shoot the spot at (x east, y north), run this, then wait about 6 s:
 

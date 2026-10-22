@@ -75,7 +75,7 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
   }
 })
 
-/** The handling knobs' current values, for the dev debug menu. */
+/** The handling knobs' current values, for the host's handling store (the settings and the dev debug menu). */
 export const HandlingView = Game.Inspector("Lunigiana/HandlingView", {
   resources: { handling: Game.System.readResource(Handling) }
 }, ({ resources }) => resources.handling.get())

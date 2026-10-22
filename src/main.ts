@@ -4,9 +4,9 @@
  * view, makes the runtime with the live keyboard, the render registries, the tyre marks and smoke
  * and the audio director, and drives everything from one FixedLoop: fixed sim steps, then once per
  * animation frame the render and audio schedules, the camera, world streaming, the frame and the
- * HUD. While the full map (M) is open, both are skipped and the sound is suspended: the game is
- * paused. The build runs in steps the title card names; the card says "Press any key" once the
- * first frame is drawn.
+ * HUD. While the full map (M) or the settings (Esc) are open, both are skipped and the sound is
+ * suspended: the game is paused. The build runs in steps the title card names; the card says
+ * "Press any key" once the first frame is drawn.
  *
  * @module main
  */
@@ -21,8 +21,10 @@ import { makeSpeaker } from "./audio/speaker.ts"
 import { VEHICLE_SHOTS, VEHICLE_VOICES } from "./audio/synth/vehicles.ts"
 import { WORLD_SHOTS, WORLD_VOICES } from "./audio/synth/world.ts"
 import type { Shots, Voices } from "./audio/types.ts"
-import { makeHud, pausable, toggleMapOnKey } from "./hud/hud.ts"
-import { step, titleReady } from "./hud/title.ts"
+import { makeHandlingStore } from "./hud/handling.ts"
+import { makeHud, pausable, routeOverlayKeys } from "./hud/hud.ts"
+import { makeSettings } from "./hud/settings.ts"
+import { element, step, titleReady } from "./hud/title.ts"
 import { groundY, terrainY } from "./render/ground.ts"
 import { blend, Effects, makeEffects, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
 import { PALETTE } from "./render/palette.ts"
@@ -69,11 +71,17 @@ const reach = () => Math.hypot(view.view.x, view.view.y) / 2 / WIDEST_ZOOM
 const STREAM_BUDGET_MS = 4
 const resize = () => view.resize(innerWidth, innerHeight, devicePixelRatio)
 resize()
-addEventListener("resize", resize)
+/** A resize clears the canvas, and behind the settings nothing is drawn: draw the frozen scene again (set once the settings exist). */
+let redrawPaused = (): void => {}
+addEventListener("resize", () => {
+  resize()
+  redrawPaused()
+})
 // Moving the window to a screen with another pixel ratio fires no resize.
 let dpr = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
 const onDpr = () => {
   resize()
+  redrawPaused()
   hud.repaintMap()
   dpr = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
   dpr.addEventListener("change", onDpr, { once: true })
@@ -104,6 +112,20 @@ if (!made.ok) throw new Error(`runtime: ${JSON.stringify(made.error)}`)
 const runtime = made.value
 const ready = runtime.tick(setup)
 if (!ready.ok) throw new Error(`setup: ${JSON.stringify(ready.error)}`)
+// The player's handling, set from the settings and the dev debug menu; it sets the stored choice now, which ApplyHandling (in setup)
+// already listens for. UI events and this call run between ticks, never inside one, so `send` is safe there.
+const handling = makeHandlingStore({
+  read: () => runtime.inspect(HandlingView),
+  set: (key, value) => runtime.send(SetHandling, { key, value }),
+  // Read at each call: where the browser blocks storage, `localStorage` itself throws (the store catches it).
+  storage: { getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }
+})
+const settings = makeSettings(document, handling)
+/** The full map and the settings pause the game. */
+const paused = () => hud.mapOpen() || settings.open()
+redrawPaused = () => {
+  if (settings.open()) view.render(scene)
+}
 // Before the first update: the audio system starts reading the Impact, Honk and Skid events from here on.
 const listening = runtime.tick(audio)
 if (!listening.ok) throw new Error(`audio: ${JSON.stringify(listening.error)}`)
@@ -155,34 +177,39 @@ const loop = FixedLoop.start({
   step: STEP,
   maxFrameSeconds: 0.25,
   maxStepsPerFrame: 5,
-  update: pausable(hud.mapOpen, keyboard, () => runtime.tick(update), Result.success(undefined)),
-  // The map covers the screen: no world to draw, and actors stay put (no interpolation jitter).
+  update: pausable(paused, keyboard, () => runtime.tick(update), Result.success(undefined)),
+  // Paused, nothing is drawn: the map covers the screen, the settings dim the last frame drawn, and actors stay put (no interpolation
+  // jitter).
   render: (frame) => {
-    speaker.pause(hud.mapOpen())
-    if (!hud.mapOpen()) draw(frame)
+    speaker.pause(paused())
+    if (!paused()) draw(frame)
   },
   onFailure: (failure) => console.error("loop stopped", failure)
 })
 if (!loop.ok) throw new Error(`loop: ${JSON.stringify(loop.error)}`)
-toggleMapOnKey(window, hud)
+// Before titleReady: the key that dismisses the card finds it still up, so it opens nothing.
+const title = element(document, "title")
+routeOverlayKeys(window, {
+  open: () => ({ title: !title.hidden, map: hud.mapOpen(), settings: settings.open() }),
+  toggleMap: hud.toggleMap,
+  closeMap: hud.closeMap,
+  toggleSettings: settings.toggle
+})
 titleReady(window)
 
 // Dev only: the Ritmo monitor (backslash toggles it), the handling debug menu (P) and a handle for
 // measuring from the console. No HMR hooks: nothing accepts updates, so Vite reloads the page on every edit.
 if (import.meta.env.DEV) {
   Object.assign(window, {
-    gta: { renderer, view, scene, world, effects, heightAt, player: () => runtime.inspect(PlayerView), audio: { speaker, level: speaker.level, context: speaker.context } }
+    gta: {
+      renderer, view, scene, world, effects, heightAt, player: () => runtime.inspect(PlayerView), handling: () => runtime.inspect(HandlingView),
+      audio: { speaker, level: speaker.level, context: speaker.context }
+    }
   })
   const debug = runtime.debug
   const monitor = debug === undefined
     ? Promise.resolve()
     : import("@typeonce/ritmo-devtools").then(({ Monitor }) => void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }))
   // After the monitor: the menu's button is anchored beside the monitor's, which must come first in the page.
-  // UI events run between frames, never inside a tick, so `send` is safe there.
-  void monitor.then(() => import("./hud/debug.ts")).then(({ mountDebugMenu }) => mountDebugMenu({
-    window,
-    storage: localStorage,
-    read: () => runtime.inspect(HandlingView),
-    set: (key, value) => runtime.send(SetHandling, { key, value })
-  }))
+  void monitor.then(() => import("./hud/debug.ts")).then(({ mountDebugMenu }) => mountDebugMenu({ window, store: handling }))
 }

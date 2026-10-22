@@ -68,6 +68,9 @@ export interface Rig {
   /** Multipliers of the steering lock at speed and of the steering's speed. */
   readonly steering: number
   readonly steeringRate: number
+  /** The arcade assists (`assists.ts`): the stability assist's strength (0 off … 1), and self-righting (0 off, 1 on). */
+  readonly stability: number
+  readonly selfRighting: number
 }
 
 const rig = (model: VehicleModel, handling: HandlingValue): Rig => {
@@ -104,7 +107,8 @@ const rig = (model: VehicleModel, handling: HandlingValue): Rig => {
     ix: (m * (w * w + h * h)) / 12, iy: (m * (l * l + h * h)) / 12, iz: (m * (l * l + w * w)) / 12,
     wheelbase, rear,
     lock: Ops.atan(wheelbase / Math.sqrt(Math.max(0.25, spec.turnRadius * spec.turnRadius - rear * rear))),
-    corners, grips: gripsFor(handling.looseGround), transfer: handling.weightTransfer, steering: handling.steering, steeringRate: handling.steeringRate
+    corners, grips: gripsFor(handling.looseGround), transfer: handling.weightTransfer, steering: handling.steering, steeringRate: handling.steeringRate,
+    stability: handling.stability, selfRighting: handling.selfRighting
   }
 }
 

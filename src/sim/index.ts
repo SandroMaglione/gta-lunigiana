@@ -99,6 +99,6 @@ export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, type
   const { render } = await import("../render/index.ts")
   // oxlint-disable-next-line no-restricted-imports -- and the audio schedule, the reader of the sim's events
   const { audio } = await import("../audio/index.ts")
-  // The dev debug menu sends SetHandling with runtime.send.
+  // The host's handling store (src/hud/handling.ts, behind the settings and the dev debug menu) sends SetHandling with runtime.send.
   return { runtime: made.value, schedules: { setup, update }, describe: { render, audio }, hostEvents: [SetHandling] }
 }

@@ -115,10 +115,11 @@ export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode
  */
 export const Handling = Descriptor.ConstructedResource(Decode.struct({
   grip: Decode.number, looseGround: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
+  stability: Decode.number, selfRighting: Decode.number,
   traction: Decode.number, steering: Decode.number, steeringRate: Decode.number, weightTransfer: Decode.number, antiRoll: Decode.number,
   stiffness: Decode.number, damping: Decode.number
 } satisfies Record<HandlingKey, typeof Decode.number>))("Lunigiana/Handling")
-/** A request to set one handling knob, sent by the host (the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
+/** A request to set one handling knob, sent by the host's handling store (the settings, the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
 export const SetHandling = Descriptor.Event<{ readonly key: HandlingKey; readonly value: number }>()("Lunigiana/SetHandling")
 
 /**

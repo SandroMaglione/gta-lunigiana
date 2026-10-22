@@ -121,7 +121,8 @@ The same keys walk and drive; the table shows what each does in both modes:
 | Space | | handbrake |
 | H | | horn while held; in the Carabinieri car, siren on or off |
 | M | full map (pauses the game); M or Esc closes it | same |
-| P (dev builds only) | debug menu: the vehicle handling knobs, for every vehicle at once; P or Esc closes it | same |
+| Esc | settings, which pause the game: the vehicle physics (Simulation, Balanced or Arcade; a new game starts on Balanced); Esc or Resume closes them. With the full map open, Esc closes the map instead | same |
+| P (dev builds only) | debug menu: the vehicle physics presets and the handling knobs, for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
 
 The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. M opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
@@ -156,12 +157,12 @@ The simulation, the browser hosts and the map tools live in separate folders:
 
 | Path | Contents |
 |---|---|
-| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain), tuning. Headless and deterministic |
+| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, tuning. Headless and deterministic |
 | `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, populate) |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
 | `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule |
 | `src/audio/` | Web Audio host code: the audio schedule, the acoustics director, the speaker and mixer, the synths, the audition page |
-| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), and the dev-only debug menu (P) for the vehicle handling |
+| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the vehicle handling, both setting it through one store |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
 | `src/main.ts` | browser host: builds the scene, makes the runtime, runs the fixed loop |

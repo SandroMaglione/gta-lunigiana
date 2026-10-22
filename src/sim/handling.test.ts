@@ -1,13 +1,17 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { overturned } from "./chassis.ts"
+import { Ops } from "@typeonce/ritmo-math"
+
+import { overturned, settle, uprightness } from "./chassis.ts"
 import type { Ground } from "./dynamics.ts"
-import { clampKnob, DEFAULT_HANDLING, HANDLING, HANDLING_KEYS, type HandlingKey, REAL_HANDLING } from "./handling.ts"
+import {
+  clampKnob, DEFAULT_HANDLING, HANDLING, HANDLING_KEYS, HANDLING_PRESETS, type HandlingKey, type HandlingValue, PRESET_IDS, presetOf, REAL_HANDLING
+} from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
-import { Game, SetHandling } from "./schema.ts"
+import { CarInput, Chassis, Game, Motion, Pose, PrevPose, SetHandling, Vehicle } from "./schema.ts"
 import { drive, forward, ON_BATTISTI, rolling, start } from "./testing.ts"
-import type { VehicleModel } from "./vehicles.ts"
+import { VEHICLES, type VehicleModel } from "./vehicles.ts"
 
 /** `REAL_HANDLING` with `knobs` changed. */
 const With = (knobs: Partial<Record<HandlingKey, number>>) => ({ ...REAL_HANDLING, ...knobs })
@@ -37,9 +41,59 @@ test("knobs: each has a group, a name, a description of its effect, a range hold
   }
 })
 
-test("a new game starts at the default handling: real, but off-road grip loss at half", () => {
-  assert.deepEqual(start().world().handling, DEFAULT_HANDLING)
-  assert.deepEqual(DEFAULT_HANDLING, { ...REAL_HANDLING, looseGround: 0.5 })
+test("presets: simulation is the real data, a new game starts on balanced, and each preset is a valid set of knobs it is known by", () => {
+  assert.deepEqual(HANDLING_PRESETS.simulation.values, REAL_HANDLING)
+  assert.deepEqual(start().world().handling, HANDLING_PRESETS.balanced.values)
+  assert.equal(DEFAULT_HANDLING.looseGround, 0.5)
+  for (const id of PRESET_IDS) {
+    const { label, description, values } = HANDLING_PRESETS[id]
+    assert.ok(label.length > 0 && description.length >= 60, id)
+    for (const key of HANDLING_KEYS) assert.equal(clampKnob(key, values[key]), values[key], `${id}: ${key} in range`)
+    assert.equal(presetOf(values), id)
+  }
+  assert.equal(presetOf(With({ grip: 1.05 })), undefined, "a knob set by hand is no preset")
+})
+
+/** Whether `model` rolls over driven at `kmh` under `handling`: holding the speed at full lock, or in a handbrake turn. */
+const rolls = (model: VehicleModel, kmh: number, handling: HandlingValue, how: "lock" | "handbrake") => {
+  const v = kmh / 3.6
+  let over = false
+  drive(model, how === "lock" ? 600 : 240, (frame, s) => how === "lock"
+    ? { throttle: Math.max(-1, Math.min(1, (v - forward(s)) * 0.5)), steer: frame > 30 ? 1 : 0, handbrake: false }
+    : { throttle: 0, steer: frame > 10 ? 1 : 0, handbrake: frame > 10 }, {
+    speed: v, handling, each: (_, s) => {
+      over ||= overturned(s.chassis)
+    }
+  })
+  return over
+}
+
+test("presets: from simulation to arcade a Panda accelerates harder and stops shorter, on gravel most of all", () => {
+  const zeroTo100 = (handling: HandlingValue) => {
+    let at = Infinity
+    drive("panda", 1200, () => full, { handling, each: (frame, s) => {
+      if (at === Infinity && forward(s) >= 100 / 3.6) at = frame
+    } })
+    return at
+  }
+  const [sim, balanced, arcade] = PRESET_IDS.map((id) => HANDLING_PRESETS[id].values)
+  assert.ok(zeroTo100(arcade) < zeroTo100(balanced) && zeroTo100(balanced) < zeroTo100(sim))
+  const gravel = (handling: HandlingValue) => stopping("panda", 100 / 3.6, "gravel", handling)
+  assert.ok(gravel(arcade) < gravel(balanced) && gravel(balanced) < gravel(sim) * 0.75, `${gravel(sim)}, ${gravel(balanced)}, ${gravel(arcade)} m`)
+})
+
+test("presets: in simulation the Ape and the truck roll over in sharp turns; balanced keeps the cars upright but the Ape still tips in a hard handbrake turn; arcade tips nothing", () => {
+  const { simulation, balanced, arcade } = HANDLING_PRESETS
+  assert.equal(rolls("ape", 42, simulation.values, "handbrake"), true)
+  assert.equal(rolls("truck", 70, simulation.values, "lock"), true)
+  for (const model of ["panda", "carabinieri"] as const) for (const kmh of [30, 60, 90]) {
+    assert.equal(rolls(model, kmh, balanced.values, "lock") || rolls(model, kmh, balanced.values, "handbrake"), false, `balanced ${model} at ${kmh} km/h`)
+  }
+  assert.equal(rolls("ape", 42, balanced.values, "handbrake"), true, "the Ape near its top speed")
+  assert.equal(rolls("truck", 88, balanced.values, "lock"), true, "the laden truck at full lock just under its limiter")
+  for (const model of ["panda", "carabinieri", "ape", "truck"] as const) for (const kmh of [30, 45, 60, 90]) {
+    assert.equal(rolls(model, kmh, arcade.values, "lock") || rolls(model, kmh, arcade.values, "handbrake"), false, `arcade ${model} at ${kmh} km/h`)
+  }
 })
 
 test("knobs: a value is kept inside its knob's range, a switch is on or off, and a non-number is dropped", () => {
@@ -209,4 +263,109 @@ test("SetHandling: a request sent before the first update still applies after an
   assert.ok(runtime.tick(Game.Schedule(Game.System("Test/Draw", {}, () => {}))).ok)
   run(1)
   assert.equal(world().handling.grip, 1.5)
+})
+
+// Regression: arcade's low weight transfer and quick steering at speed let a half-second full-lock tap spin a car round at 90-100 km/h,
+// where the real data never spins it.
+test("presets: in arcade a half-second full-lock tap at 100 km/h does not spin a Giulia on the throttle or a Panda off it", () => {
+  const spins = (model: VehicleModel, lift: boolean) => {
+    const v = 100 / 3.6
+    let most = 0
+    drive(model, 480, (frame, s) => ({ throttle: lift && frame > 30 ? 0 : Math.max(-1, Math.min(1, (v - forward(s)) * 0.5)), steer: frame > 30 && frame <= 60 ? 1 : 0, handbrake: false }), {
+      speed: v, handling: HANDLING_PRESETS.arcade.values, each: (frame, s) => {
+        // The angle between the heading and the motion, past which the car is sliding sideways or backwards.
+        const c = Ops.cos(s.pose.angle), n = Ops.sin(s.pose.angle)
+        if (frame > 30) most = Math.max(most, Math.abs(Ops.atan2(-s.motion.vx * n + s.motion.vy * c, s.motion.vx * c + s.motion.vy * n)))
+      }
+    })
+    return most > Math.PI / 4
+  }
+  assert.equal(spins("carabinieri", false), false)
+  assert.equal(spins("panda", true), false)
+})
+
+/** Whether a `model` tapped to full lock for half a second at `kmh`, throttle lifted, slides past 45° from its heading. */
+const spinsOnTap = (model: VehicleModel, kmh: number, handling: HandlingValue) => {
+  const v = kmh / 3.6
+  let most = 0
+  drive(model, 480, (frame, s) => ({ throttle: frame > 30 ? 0 : Math.max(-1, Math.min(1, (v - forward(s)) * 0.5)), steer: frame > 30 && frame <= 60 ? 1 : 0, handbrake: false }), {
+    speed: v, handling, each: (frame, s) => {
+      const c = Ops.cos(s.pose.angle), n = Ops.sin(s.pose.angle)
+      if (frame > 30) most = Math.max(most, Math.abs(Ops.atan2(-s.motion.vx * n + s.motion.vy * c, s.motion.vx * c + s.motion.vy * n)))
+    }
+  })
+  return most > Math.PI / 4
+}
+
+test("stability assist: at 1 a Panda tapped to full lock at 160 km/h, off the throttle, does not spin round as the real one does", () => {
+  assert.equal(spinsOnTap("panda", 160, REAL_HANDLING), true, "real: it spins")
+  assert.equal(spinsOnTap("panda", 160, With({ stability: 1 })), false)
+})
+
+test("stability assist: it lets go while the handbrake is held, so a handbrake turn swings a car round as it does without it", () => {
+  const turn = (stability: number) => drive("panda", 120, (frame) => ({ throttle: 0, steer: frame > 10 ? 1 : 0, handbrake: frame > 10 }), { speed: 20, handling: With({ stability }) }).pose.angle
+  assert.equal(turn(1), turn(0))
+  assert.ok(turn(1) > Math.PI / 2, `turned ${turn(1)} rad`)
+})
+
+// Regression: the assist aimed the yaw at the steering's kinematic rate, which at speed asks for 4–9 g, so held lock spun the car round.
+test("stability assist: on arcade, full lock held for 5 s at 100–160 km/h, on or off the throttle, never slides a Giulia or a Panda past 10°", () => {
+  for (const model of ["carabinieri", "panda"] as const) for (const kmh of [100, 130, 160]) for (const mode of ["hold", "floor"] as const) {
+    const v = kmh / 3.6
+    let most = 0
+    drive(model, 330, (frame, s) => ({ throttle: mode === "floor" ? 1 : Math.max(-1, Math.min(1, (v - forward(s)) * 0.5)), steer: frame > 30 ? 1 : 0, handbrake: false }), {
+      speed: v, handling: HANDLING_PRESETS.arcade.values, each: (frame, s) => {
+        const c = Ops.cos(s.pose.angle), n = Ops.sin(s.pose.angle)
+        if (frame > 30) most = Math.max(most, Math.abs(Ops.atan2(-s.motion.vx * n + s.motion.vy * c, s.motion.vx * c + s.motion.vy * n)))
+      }
+    })
+    assert.ok(most < (10 * Math.PI) / 180, `${model} at ${kmh} km/h, ${mode}: slid ${(most * 180) / Math.PI}°`)
+  }
+})
+
+// Regression: the assist damped the centre of mass's sideways speed, which a clean turn has too, so it scrubbed held corners to walking pace.
+test("stability assist: an arcade Giulia floored at full lock keeps circling fast, faster than without the assist", () => {
+  const circling = (stability: number) => forward(drive("carabinieri", 600, (frame) => ({ throttle: 1, steer: frame > 10 ? 1 : 0, handbrake: false }), {
+    speed: 3, handling: { ...HANDLING_PRESETS.arcade.values, stability }
+  }))
+  assert.ok(circling(1) > 100 / 3.6 && circling(1) > circling(0), `${circling(1) * 3.6} km/h against ${circling(0) * 3.6} without`)
+})
+
+test("self-righting: on, every vehicle left on its roof or side is back on its wheels and settled within 4 s; off, it stays there", () => {
+  for (const model of ["panda", "carabinieri", "ape", "truck"] as const) for (const roll of [Math.PI, Math.PI / 2, -Math.PI / 2]) {
+    const { height, cg, width } = VEHICLES[model], chassis = { roll, pitch: 0, z: 100 + (roll === Math.PI ? height - cg : width / 2) }
+    const after = (selfRighting: number) => drive(model, 240, () => coast, { chassis, handling: With({ selfRighting }) }).chassis
+    assert.equal(overturned(after(0)), true, `${model} at roll ${roll}: real, it stays over`)
+    assert.ok(uprightness(after(1)) > 0.95, `${model} at roll ${roll}: righted`)
+  }
+})
+
+// Regression: righting stopped once the hull lifted, so a laden truck on a cross slope rocked between its side and its wheels for good.
+test("self-righting: the laden truck left on its roof or either side across a 20% slope, handbrake on, ends on its wheels and stays there", () => {
+  const { height, cg, width } = VEHICLES.truck
+  for (const roll of [Math.PI, Math.PI / 2, -Math.PI / 2]) {
+    let changes = 0, was = true
+    const end = drive("truck", 600, () => ({ throttle: 0, steer: 0, handbrake: true }), {
+      ground: (_, y) => 100 + 0.2 * y, chassis: { roll, pitch: 0, z: 100 + (roll === Math.PI ? height - cg : width / 2) + 0.3 }, handling: With({ selfRighting: 1 }),
+      each: (_, s) => {
+        if (overturned(s.chassis) !== was) changes++
+        was = overturned(s.chassis)
+      }
+    })
+    assert.ok(!overturned(end.chassis) && changes <= 1, `roll ${roll}: ${changes} changes, ended overturned: ${overturned(end.chassis)}`)
+  }
+})
+
+test("self-righting: a car asleep on its roof wakes and rolls back onto its wheels once the knob is switched on", () => {
+  const roof = { ...settle("panda", ON_BATTISTI), roll: Math.PI, z: settle("panda", ON_BATTISTI).z - VEHICLES.panda.cg + VEHICLES.panda.height - VEHICLES.panda.cg + 0.02 }
+  const wreck = Game.Command.spawn(
+    [Vehicle, { model: "panda", color: 0xb8312b }], [Pose, ON_BATTISTI], [PrevPose, ON_BATTISTI], [Motion, { vx: 0, vy: 0, spin: 0.01 }],
+    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, roof]
+  )
+  const { runtime, run, world } = start([], [{ x: -2800, y: -6000, angle: 0 }, { cars: [wreck] }])
+  run(240)
+  assert.equal(world().vehicles[0]!.chassis.rollRate, 0, "asleep on its roof")
+  runtime.send(SetHandling, { key: "selfRighting", value: 1 })
+  run(180)
+  assert.equal(overturned(world().vehicles[0]!.chassis), false)
 })
