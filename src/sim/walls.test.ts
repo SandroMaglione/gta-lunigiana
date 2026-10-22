@@ -12,7 +12,7 @@ import { CarInput, Chassis, Game, Motion, Pose, PrevPose, Vehicle } from "./sche
 import { edgeIndex, facesForward, laneOf, lanePoint, laneSide, roadOf, walkIndex, walkSide } from "./route.ts"
 import { parkedCar, pedestrian } from "./spawning.ts"
 import { HONK_STEPS } from "./systems/traffic.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, start, walkClear } from "./testing.ts"
+import { BATTISTI, battistiTraffic, door, LOOK, ON_BATTISTI, press, rolling, start, walkClear } from "./testing.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES } from "./vehicles.ts"
 
@@ -56,12 +56,11 @@ const facing = (out: number) => ({ x: MID.x - INTO.x * out, y: MID.y - INTO.y * 
 const TOWARD = Ops.atan2(INTO.y, INTO.x)
 const BESIDE = Ops.atan2(ALONG.y, ALONG.x)
 const FAR = { ...facing(30), angle: 0 }
-const LOOK = { skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }
 
 test("contacts: a car pushing or knocking a pedestrian against a house wall never puts them through it", () => {
   for (const speed of [2.5, 8]) {
     const at = { ...facing(0.4), angle: 0 }
-    const walker = pedestrian(LOOK, at, { edge: walkIndex.nearest(at.x, at.y), forward: true, side: 0 }, { mood: "walk", until: 0 })
+    const walker = pedestrian(LOOK, at, { edge: walkIndex.nearest(at.x, at.y), forward: true, side: 0 }, { mood: "walk", until: 0, fx: 0, fy: 0 })
     const { run, world } = start([], [FAR, { cars: [rolling("panda", { ...facing(4), angle: TOWARD }, speed, speed > 5 ? 1 : 0.3)], peds: [walker] }])
     const { peds: [{ id: pedId }], vehicles: [{ id: carId }] } = world()
     const ped = () => world().peds.find((p) => p.id === pedId)!
@@ -69,7 +68,8 @@ test("contacts: a car pushing or knocking a pedestrian against a house wall neve
       assert.ok(depth(ped()) < -PERSON_RADIUS + 0.02 && walkClear(ped()), `${speed} m/s: pedestrian at ${depth(ped())}`)
       assert.ok(carClear("panda", world().vehicles.find((v) => v.id === carId)!, 0.1))
     })
-    if (speed > 5) assert.ok(ped().down, "knocked down")
+    // Down or, at 8 m/s about 1 time in 20, dead: which one is the death roll's, not the walls'.
+    if (speed > 5) assert.ok(ped().down || ped().dead !== undefined, "knocked down")
   }
 })
 
@@ -190,7 +190,7 @@ test("pedestrians: a walker whose verge is blocked by a parked car gets past it"
   const at = { ...lanePoint(lane, 2, side), angle: heading }
   const blocker = { ...lanePoint(lane, 8, side), angle: heading }
   assert.ok(walkClear(at) && carClear("panda", blocker), "a clear verge to stage on")
-  const walker = pedestrian(LOOK, at, { ...BATTISTI, side }, { mood: "walk", until: 0 })
+  const walker = pedestrian(LOOK, at, { ...BATTISTI, side }, { mood: "walk", until: 0, fx: 0, fy: 0 })
   const { run, world } = start([], [FAR, { cars: [parkedCar("panda", 0x3d6155, blocker)], peds: [walker] }])
   const id = world().peds[0]!.id
   let progress = 0
@@ -211,7 +211,7 @@ test("pedestrians: a walker wedged in a house corner on its verge turns back", (
   const at = { ...lanePoint(lane, 17, side), angle: Ops.atan2(lane.dy, lane.dx) }
   assert.ok(walkClear(at))
   // The player 100 m away: out of view, so nothing but the walls moves the walker.
-  const { run, world } = start([], [{ x: at.x + 100, y: at.y, angle: 0 }, { peds: [pedestrian(LOOK, at, { edge, forward, side }, { mood: "walk", until: 0 })] }])
+  const { run, world } = start([], [{ x: at.x + 100, y: at.y, angle: 0 }, { peds: [pedestrian(LOOK, at, { edge, forward, side }, { mood: "walk", until: 0, fx: 0, fy: 0 })] }])
   const id = world().peds[0]!.id
   let away = 0
   run(600, () => {

@@ -1,9 +1,10 @@
 /**
- * Actor meshes: box-figure people (three walk frames) and one low-poly model per vehicle model.
- * Everything faces local +X, so `rotation.y = heading` (radians CCW from east). Each node carries
- * an x-ray proxy: a flat silhouette drawn only where the world hides the actor. A vehicle's mesh
- * stands on y = 0 at rest, centred on its centre of mass, with its wheels where `VEHICLES` puts
- * them; its node sits at the centre of mass, so body and proxy hang `cg` below it.
+ * Actor nodes and the vehicle models: one low-poly model per vehicle model (people are in
+ * `people.ts`, animals in `animals.ts`). Everything faces local +X, so `rotation.y = heading`
+ * (radians CCW from east). The player's node and their car's show an x-ray proxy: a flat
+ * silhouette drawn only where the world hides the actor. A vehicle's mesh stands on y = 0 at rest,
+ * centred on its centre of mass, with its wheels where `VEHICLES` puts them; its node sits at the
+ * centre of mass, so body and proxy hang `cg` below it.
  *
  * @module render/actors
  */
@@ -11,27 +12,12 @@ import {
   Box3, BoxGeometry, CylinderGeometry, GreaterDepth, Group, Mesh, MeshBasicMaterial, Vector3, type BufferGeometry, type Material
 } from "three"
 
-import type { Look } from "../sim/index.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { merge, paint } from "./geometry.ts"
 import { PALETTE } from "./palette.ts"
 
 const box = (w: number, h: number, d: number, x: number, y: number, z: number, hex: number): BufferGeometry =>
   paint(new BoxGeometry(w, h, d).translate(x, y + h / 2, z), hex)
-
-/** Walk frames: standing, left leg forward, right leg forward. */
-const personFrames = (look: Look): readonly [BufferGeometry, BufferGeometry, BufferGeometry] => {
-  const body = (stride: number) => merge([
-    box(0.2, 0.82, 0.18, stride, 0, 0.11, look.pants),
-    box(0.2, 0.82, 0.18, -stride, 0, -0.11, look.pants),
-    box(0.3, 0.6, 0.5, 0, 0.82, 0, look.shirt),
-    box(0.16, 0.56, 0.12, -stride, 0.84, 0.32, look.shirt),
-    box(0.16, 0.56, 0.12, stride, 0.84, -0.32, look.shirt),
-    box(0.34, 0.34, 0.34, 0.02, 1.42, 0, look.skin),
-    box(0.38, 0.12, 0.38, -0.02, 1.72, 0, look.hair)
-  ])
-  return [body(0), body(0.16), body(-0.16)]
-}
 
 /** How far either side of the sim's axle a drawn tandem's two axles sit: the truck's rear pair is one axle in the sim. */
 const TANDEM: Partial<Record<VehicleModel, number>> = { truck: 0.65 }
@@ -95,61 +81,74 @@ const VEHICLE_BODIES = {
 } as const satisfies Record<VehicleModel, (paint: number) => Array<BufferGeometry>>
 
 const xrayMaterial = new MeshBasicMaterial({ color: PALETTE.signYellow, depthFunc: GreaterDepth, depthWrite: false })
+/** How far over the ground an x-ray proxy's bottom stays, m: sloped terrain at the feet would light it up. */
+const XRAY_FLOOR = 0.15
+
 /**
  * A silhouette box drawn only where something nearer covers it. It encloses every given shape, so
  * the actor's own body is always behind its front faces and never shows through; its bottom stays
- * a little above the ground so sloped terrain at the feet does not light it up.
+ * a little above the ground.
  */
-const xray = (shapes: ReadonlyArray<BufferGeometry>): Mesh => {
+export const xray = (shapes: ReadonlyArray<BufferGeometry>): Mesh => {
   const bounds = new Box3()
   for (const shape of shapes) {
     shape.computeBoundingBox()
     if (shape.boundingBox !== null) bounds.union(shape.boundingBox)
   }
   bounds.expandByScalar(0.05)
-  bounds.min.y = 0.15
+  bounds.min.y = XRAY_FLOOR
   const size = bounds.getSize(new Vector3()), centre = bounds.getCenter(new Vector3())
   const proxy = new Mesh(new BoxGeometry(size.x, size.y, size.z).translate(centre.x, centre.y, centre.z), xrayMaterial)
   proxy.renderOrder = 1 // after the opaque world, so the depth buffer is complete
-  proxy.visible = false
   return proxy
 }
 
-/** A rendered actor: its body and its x-ray proxy. */
+/**
+ * A rendered actor: its body, and the x-ray proxies it shows while the world hides it. A proxy is
+ * built the first time it shows: only the player and the car they drive ever show one, so the
+ * other people, animals and cars never build one.
+ */
 export class ActorNode extends Group {
   readonly body: Mesh
-  readonly xray: Mesh
-  constructor(geometry: BufferGeometry, material: Material, proxy: Mesh) {
+  private readonly proxies = new Map<string, Mesh>()
+  private shown: Mesh | undefined = undefined
+  constructor(geometry: BufferGeometry, material: Material) {
     super()
     this.body = new Mesh(geometry, material)
     this.body.castShadow = true
-    this.xray = proxy
     this.rotation.order = "YZX" // heading outermost, then pitch (or lying down) about the right axis, then roll about the forward one
-    this.add(this.body, proxy)
+    this.add(this.body)
   }
-  /** Frees the node's own geometry: its x-ray proxy (a vehicle's body is shared per model and paint). */
-  dispose(): void {
-    this.xray.geometry.dispose()
-  }
-}
 
-/** A person node: walk frames swap as it covers ground. */
-export class PersonNode extends ActorNode {
-  readonly frames: readonly [BufferGeometry, BufferGeometry, BufferGeometry]
-  /** Render height last frame (keeps the person on the deck or lane they were on). */
-  elevation: number | undefined = undefined
-  /** Metres walked (drives the frame) and where it was last frame. */
-  walked = 0
-  last: { x: number; y: number } | undefined = undefined
-  constructor(look: Look, material: Material) {
-    const frames = personFrames(look)
-    super(frames[0], material, xray(frames))
-    this.frames = frames
+  /** Shows its x-ray silhouette (`on`) or hides it. */
+  showXray(on: boolean): void {
+    this.showProxy(on ? "body" : undefined)
   }
-  /** Frees the per-person geometry: x-ray proxy and walk frames. */
-  override dispose(): void {
-    super.dispose()
-    for (const frame of this.frames) frame.dispose()
+
+  /** Shows the proxy named `key`, built by `proxy` the first time, in place of the one shown before; `undefined` shows none. */
+  protected showProxy(key: string | undefined): void {
+    let next = key === undefined ? undefined : this.proxies.get(key)
+    if (key !== undefined && next === undefined) {
+      next = this.proxy(key)
+      this.proxies.set(key, next)
+      this.add(next)
+    }
+    if (next === this.shown) return
+    if (this.shown !== undefined) this.shown.visible = false
+    if (next !== undefined) next.visible = true
+    this.shown = next
+  }
+
+  /** Builds the proxy named `key`: here the one there is, round the body where it hangs. */
+  protected proxy(_key: string): Mesh {
+    const proxy = xray([this.body.geometry])
+    proxy.position.copy(this.body.position)
+    return proxy
+  }
+
+  /** Frees the node's own geometry: its x-ray proxies (a vehicle's body is shared per model and paint). */
+  dispose(): void {
+    for (const proxy of this.proxies.values()) proxy.geometry.dispose()
   }
 }
 
@@ -157,9 +156,9 @@ export class PersonNode extends ActorNode {
 export class VehicleNode extends ActorNode {
   readonly model: VehicleModel
   constructor(model: VehicleModel, geometry: BufferGeometry, material: Material) {
-    super(geometry, material, xray([geometry]))
+    super(geometry, material)
     this.model = model
-    this.body.position.y = this.xray.position.y = -VEHICLES[model].cg
+    this.body.position.y = -VEHICLES[model].cg
   }
 }
 

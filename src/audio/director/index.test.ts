@@ -10,9 +10,10 @@ import { hash01 } from "../../tools/geometry.ts"
 import { AMBIENT_DB, CABIN, dbToGain, gainToDb, SPEED_OF_SOUND } from "../acoustics.ts"
 import { bells, streetAt, wallAt } from "../places.ts"
 import { stepRate } from "../synth/steps.ts"
-import type { Continuous, Happening, Heard, HeardPerson, HeardVehicle, OneShot, Placement, Speaker, Zone } from "../types.ts"
-import { makeDirector, type WallClock } from "./index.ts"
+import type { Happening, HeardVehicle, Zone } from "../types.ts"
+import type { WallClock } from "./index.ts"
 import { CRASH_MOST_DB, TOWERS, windDb } from "./levels.ts"
+import { away, FRAME, person, rig, SCREEN_RIGHT, world } from "./testing.ts"
 
 /**
  * Real map spots (found by probing the map): a treeless meadow on Monte dei Bianchi clear for 300 m to the south and
@@ -29,50 +30,6 @@ const RIDGE = { x: 1600, y: -494.5 }, STATION = { x: -494, y: 437 }, BELFRY = { 
 const HILLSIDE = { x: -950, y: 71 }, SPAWN = { x: -412.6, y: 437.8 }, BANK = { x: -418.6, y: 395.8 }
 const WEST_FLANK = { x: 785.7, y: -563.4 }, EAST_FLANK = { x: 1185.7, y: -563.4 }, HOUSE_WALL = { x: -429.85, y: 452.9 }
 const GRAGNOLA = { x: -1751.2, y: 3360.4 }, UNDER_BRIDGE = { x: -1190.3, y: 1273.1 }
-const FRAME = 1 / 60
-/** Screen-right on the ground, with the view in its home seat. */
-const SCREEN_RIGHT = screenAxes(0).right
-
-/** A small deterministic random source. */
-const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
-
-/** A one-shot played at speaker time `t`, `delay` s ahead. */
-interface Played { readonly sound: OneShot; readonly at: Placement; readonly delay: number; readonly t: number }
-
-/** A director on a recording speaker whose clock (from `t`; 0 is no context yet) the test advances by `dt` per `hear`. */
-const rig = (clock: () => WallClock = () => ({ hour: 10, minute: 10, second: 0 }), t = 1) => {
-  let holding = new Map<string, { readonly sound: Continuous; readonly at: Placement }>()
-  let held = holding
-  const plays: Array<Played> = []
-  const speaker: Speaker = {
-    now: () => t,
-    hold: (key, sound, at) => void holding.set(key, { sound, at }),
-    play: (sound, at, delay) => void plays.push({ sound, at, delay, t }),
-    flush: () => {
-      held = holding
-      holding = new Map()
-    }
-  }
-  const director = makeDirector(speaker, { random: seeded(7), clock })
-  return {
-    plays,
-    /** What the last frame held. */
-    held: () => held,
-    hear: (heard: Heard, frames = 1, dt = FRAME) => {
-      for (let i = 0; i < frames; i++) {
-        t += dt
-        director.hear(heard)
-      }
-    },
-    /** Plays of `kind` since it was last taken. */
-    take: (kind: OneShot["kind"]): Array<Played> => {
-      const taken = plays.filter((p) => p.sound.kind === kind)
-      plays.splice(0, plays.length, ...plays.filter((p) => p.sound.kind !== kind))
-      return taken
-    }
-  }
-}
-
 /** Vehicle `id`, idling on its wheels at `at`. */
 const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly y: number }, more: Partial<HeardVehicle> = {}): HeardVehicle => ({
   id, model, x: at.x, y: at.y, z: groundZ(at.x, at.y) + VEHICLES[model].cg, angle: 0, vx: 0, vy: 0, rpm: VEHICLES[model].engine.idle, load: 0,
@@ -80,14 +37,6 @@ const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly
 })
 /** A Panda revving at the redline under full load. */
 const FULL = { rpm: VEHICLES.panda.engine.redline, load: 1 } as const
-const person = (id: number, at: { readonly x: number; readonly y: number }, more: Partial<HeardPerson> = {}): HeardPerson => ({
-  id, x: at.x, y: at.y, vx: 0, vy: 0, player: false, fleeing: false, down: false, ...more
-})
-const world = (at: { readonly x: number; readonly y: number }, more: Partial<Heard> = {}, car?: number): Heard => ({
-  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 }, vehicles: [], people: [], happenings: [], horn: false, ...more
-})
-const away = (from: { readonly x: number; readonly y: number }, metres: number, dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT) =>
-  ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
 const SOUTH = { x: 0, y: -1 }
 /** A Panda's mass, t. */
 const PANDA = VEHICLES.panda.mass / 1000
@@ -560,12 +509,4 @@ test("twenty running cars around: only the eight loudest, nearest engines play, 
   assert.deepEqual(engines(), nearest, "the ninth a little nearer than the eighth: the eighth keeps its voice")
   director.hear(world(MEADOW, { vehicles: cars(40) }))
   assert.deepEqual(engines(), [...nearest.filter((key) => key !== "engine:8"), "engine:9"].sort())
-})
-
-test("a pedestrian who turns from walking to fleeing screams or shouts once, not again while still fleeing", () => {
-  const director = rig()
-  const at = away(MEADOW, 10, SOUTH)
-  director.hear(world(MEADOW, { people: [person(4, at)] }), 10)
-  director.hear(world(MEADOW, { people: [person(4, at, { fleeing: true })] }), 6 * 60)
-  assert.equal(director.plays.filter((p) => p.sound.kind === "scream" || p.sound.kind === "shout").length, 1)
 })

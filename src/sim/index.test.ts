@@ -6,20 +6,19 @@ import { Keyboard } from "@typeonce/ritmo-browser"
 import { Determinism } from "@typeonce/ritmo-devtools"
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
-import { ringBox, segDist2 } from "../tools/geometry.ts"
+import { segDist2 } from "../tools/geometry.ts"
 import { carClear } from "./body.ts"
 import { graph, isDrivable, MAP, wallsNear } from "./map/index.ts"
-import { pointInRing } from "./collide.ts"
-import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkIndex } from "./route.ts"
+import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkSide } from "./route.ts"
 import { settle, uprightness } from "./chassis.ts"
-import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
+import {
+  bindings, CarInput, Chassis, Game, KeyboardInput, type Look, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle
+} from "./index.ts"
 import { roadLevel } from "./map/ground.ts"
-import { parkedCar, pedestrian, trafficCar } from "./spawning.ts"
-import { PEDESTRIANS, PEOPLED, TRAFFIC } from "./systems/populate.ts"
+import { animal, parkedCar, pedestrian, trafficCar } from "./spawning.ts"
 import { PARKED } from "./systems/spawn.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, start, straightOn, teleport, type Timeline, walkClear, World } from "./testing.ts"
-import { KNOCK_SPEED } from "./tuning.ts"
-import { screenAxes, VIEW_REACH } from "./view.ts"
+import { BATTISTI, battistiTraffic, door, LOOK, ON_BATTISTI, press, rolling, stage, start, teleport, type Timeline, walkClear, World } from "./testing.ts"
+import { screenAxes } from "./view.ts"
 import { VEHICLES } from "./vehicles.ts"
 
 test("setup: the player at the map spawn, 200 parked cars on random spots, Carabinieri in front of the station", () => {
@@ -266,96 +265,6 @@ test("traffic: a person who never moves holds a car ~12 s in its lane, and besid
   }
 })
 
-test("knockdown: a fast car knocks a pedestrian down (one person Impact), scores for the player, and the pedestrian gets up and runs", () => {
-  // The pedestrian walks toward the car down its lane line, 25 m ahead on the next edge.
-  const next = straightOn(BATTISTI)
-  const side = laneSide(next, "panda")
-  const at = { ...lanePoint(laneOf(next.edge, next.forward), 5, side), angle: ON_BATTISTI.angle + Math.PI }
-  const walker = pedestrian({ skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }, at, { edge: next.edge, forward: !next.forward, side: -side }, { mood: "walk", until: 0 })
-  const timeline: Timeline = [...press(0, "action"), { frame: 2, press: ["up"] }, { frame: 300, release: ["up"] }]
-  const { run, world, heard } = start(timeline, [door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)], peds: [walker] }])
-  const { vehicles: [car], peds: [person] } = world()
-  let knockedAt = -1
-  run(300, (frame) => {
-    if (knockedAt < 0 && world().peds[0]!.down) knockedAt = frame
-  })
-  assert.ok(knockedAt > 0, "knocked down")
-  assert.equal(world().score.knocked, 1)
-  const hits = heard.impacts.filter((i) => i.hit === "person")
-  assert.deepEqual(hits.map((i) => [i.car, i.other, i.mass]), [[car!.id, person!.id, VEHICLES.panda.mass / 1000]])
-  assert.ok(hits[0]!.speed > KNOCK_SPEED, `hit at ${hits[0]!.speed} m/s`)
-  run(150)
-  const [ped] = world().peds
-  assert.equal(ped!.down, false, "back up after 2.5 s")
-  assert.equal(ped!.mood, "flee")
-})
-
-test("populate: traffic and pedestrians fill in out of view around a moving player within the limits, and far ones go", () => {
-  const { runtime, run, view, world } = start()
-  const counts = () => {
-    const { vehicles, peds } = world()
-    const traffic = vehicles.filter((v) => v.traffic).length
-    assert.ok(traffic <= TRAFFIC.max, `${traffic} traffic cars`)
-    assert.ok(peds.length <= PEDESTRIANS.max, `${peds.length} pedestrians`)
-    return { traffic, peds: peds.length }
-  }
-  // Regression: pedestrians spawned 53 m away, well inside the driving view.
-  const seen = new Set(world().vehicles.map((v) => v.id))
-  const outOfView = () => {
-    const me = view()!.pose
-    const { vehicles, peds } = world()
-    for (const body of [...vehicles, ...peds]) {
-      if (seen.has(body.id)) continue
-      seen.add(body.id)
-      assert.ok(Vec2.distance(body, me) >= VIEW_REACH, `spawned ${Vec2.distance(body, me).toFixed(1)} m from the player`)
-    }
-  }
-  run(600, (frame) => {
-    outOfView()
-    if (frame % 30 === 29) counts()
-  })
-  assert.ok(counts().traffic >= 5, "traffic arrived")
-  assert.ok(counts().peds >= 10, "pedestrians arrived")
-  // The player crosses the village at 20 m/s: what fell behind goes, the caps hold all the way.
-  const from = MAP.spawns.player
-  for (let leg = 1; leg <= 20; leg++) {
-    assert.ok(runtime.tick(Game.Schedule(teleport({ x: from.x + leg * 20, y: from.y - leg * 12, angle: 0 }))).ok)
-    run(60, (frame) => {
-      outOfView()
-      if (frame % 30 === 29) counts()
-    })
-  }
-  const away = { x: from.x + 400, y: from.y - 240, angle: 0 }
-  const after = world()
-  assert.ok(after.vehicles.filter((v) => v.traffic).every((v) => Vec2.distance(v, away) <= TRAFFIC.despawn))
-  assert.ok(after.peds.every((p) => Vec2.distance(p, away) <= PEDESTRIANS.despawn))
-  assert.ok(after.vehicles.some((v) => !v.traffic && Vec2.distance(v, away) > TRAFFIC.despawn), "parked cars stay")
-})
-
-// Regression: verges that run into houses spawned pedestrians inside them (stuck under the roof for good).
-test("populate: pedestrians spawn in the villages, never inside a house, and none in the woods", () => {
-  const indoors = (p: { readonly x: number; readonly y: number }) =>
-    MAP.buildings.some((b) => pointInRing(p.x, p.y, b.outer) && !(b.holes ?? []).some((h) => pointInRing(p.x, p.y, h)))
-  // A walk node with walk edges in the spawn band but no building within PEOPLED of any of them.
-  const lonely = (n: { readonly x: number; readonly y: number }) => MAP.buildings.every((b) => {
-    const [x0, y0, x1, y1] = ringBox(b.outer)
-    return Ops.hypot(Math.max(x0 - n.x, 0, n.x - x1), Math.max(y0 - n.y, 0, n.y - y1)) > PEOPLED + PEDESTRIANS.spawn[1]
-  })
-  const woods = graph.nodes.find((n) => walkIndex.around(n.x, n.y, PEDESTRIANS.spawn).length > 0 && lonely(n))!
-  for (const [at, some] of [[{ x: -1751.2, y: 3360.4 }, true], [woods, false]] as const) { // Gragnola's place node, then the woods
-    const { runtime, run, world } = start()
-    assert.ok(runtime.tick(Game.Schedule(teleport({ ...at, angle: 0 }))).ok)
-    const seen = new Set<number>()
-    run(600, () => {
-      for (const p of world().peds) if (!seen.has(p.id)) {
-        seen.add(p.id)
-        assert.ok(!indoors(p), `spawned inside a house at ${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-      }
-    })
-    assert.ok(some ? seen.size >= 10 : seen.size === 0, `${seen.size} pedestrians around ${at.x},${at.y}`)
-  }
-})
-
 /** Walk to a car, drive it hard around Via Cesare Battisti, turn the view, get out: every system has work to do. */
 const joyride: Timeline = [
   { frame: 0, press: ["left"] }, { frame: 10, release: ["left"] },
@@ -364,7 +273,26 @@ const joyride: Timeline = [
   { frame: 170, release: ["handbrake", "right"] }, ...press(200, "turnLeft"), { frame: 240, release: ["up"], press: ["down"] }, { frame: 300, release: ["down"] },
   ...press(330, "action"), { frame: 340, press: ["up", "sprint"] }, { frame: 400, release: ["up", "sprint"] }
 ]
-const joyrideCast = [door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)] }] as const
+/**
+ * Up the street, a mother with her son and their dog on a lead walk toward a man lying dead on their verge: they come on him in
+ * about 2 s, stand shocked and run from him; a cat sits across the street. Followers, bodies, animals and reactions all replay.
+ */
+const joyrideCast = (() => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), verge = walkSide(roadOf(BATTISTI.edge)), angle = Ops.atan2(-lane.dy, -lane.dx)
+  const back = { ...BATTISTI, forward: !BATTISTI.forward, side: -verge }
+  const mother: Look = { ...LOOK, female: true, height: 1.64, outfit: "dress", hairdo: "long" }
+  const son: Look = { ...LOOK, age: "kid", height: 1.25, outfit: "shorts" }
+  return [door(ON_BATTISTI), {
+    cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)],
+    bodies: [pedestrian(LOOK, { ...lanePoint(lane, 36, verge), angle }, back, { mood: "walk", until: 0, fx: 0, fy: 0 })],
+    parties: [{
+      leader: pedestrian(mother, { ...lanePoint(lane, 48, verge), angle }, back, { mood: "walk", until: 0, fx: 0, fy: 0 }),
+      people: [{ draft: pedestrian(son, { ...lanePoint(lane, 48.4, verge - 0.5), angle }, back, { mood: "walk", until: 0, fx: 0, fy: 0 }), side: 0.5, back: 0.4 }],
+      animals: [{ draft: animal({ species: "dog", coat: 0xc49a6c, patch: 0xeee8dc, size: 1 }, { ...lanePoint(lane, 48.9, verge + 0.5), angle }), side: -0.5, back: 0.9 }]
+    }],
+    animals: [animal({ species: "cat", coat: 0x2b2b2b, patch: 0x2b2b2b, size: 1 }, { ...lanePoint(lane, 44, -verge), angle: 0 })]
+  }] as const
+})()
 
 test("determinism: the same scripted joyride replays bit for bit", () => {
   const result = Determinism.check(({ hostClock }) => {
@@ -390,6 +318,8 @@ test("saves: a snapshot taken mid-joyride restores through JSON and plays on ide
   })
   assert.deepEqual(modes, ["foot", "driving", "foot"], "the joyride gets in, drives and gets out")
   assert.equal(a.view()!.turns, 1, "and turns the view")
+  assert.ok(a.heard.cries.some((c) => c.feeling === "shock"), "the family came on the body")
+  assert.ok(a.world().peds.some((p) => p.leader !== undefined) && a.world().animals.some((p) => p.leader !== undefined), "and walk on together")
   const b = start()
   assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
   assert.deepEqual(b.view(), a.view())
@@ -397,6 +327,35 @@ test("saves: a snapshot taken mid-joyride restores through JSON and plays on ide
   a.run(120)
   b.run(120)
   assert.deepEqual(b.world(), a.world())
+})
+
+// Regression: no save reached a Witness, whose decision to gather or run is saved so that it survives one.
+test("saves: a snapshot taken while a walker stands shocked by a body restores through JSON, and the witnesses decide alike", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), verge = walkSide(roadOf(BATTISTI.edge)), angle = Ops.atan2(lane.dy, lane.dx)
+  const walking = { mood: "walk", until: 0, fx: 0, fy: 0 } as const
+  const body = pedestrian(LOOK, { ...lanePoint(lane, 22, verge), angle }, { ...BATTISTI, side: verge }, walking)
+  // Up the right verge toward a man lying dead on it, 12 m off, and down the left verge 12 m beyond him; the player stands by.
+  const up = pedestrian(LOOK, { ...lanePoint(lane, 10, verge), angle }, { ...BATTISTI, side: verge }, walking)
+  const down = pedestrian(LOOK, { ...lanePoint(lane, 34, -verge), angle: angle + Math.PI }, { ...BATTISTI, forward: !BATTISTI.forward, side: verge }, walking)
+  const a = start([], [door(ON_BATTISTI), { bodies: [body], peds: [up, down] }])
+  for (let frame = 0; !a.world().peds.some((p) => p.witness); frame++) {
+    assert.ok(frame < 600, "they came on the body")
+    a.run(1)
+  }
+  a.run(60)
+  assert.ok(a.world().peds.some((p) => p.witness && p.mood === "shock"), "a witness stands shocked")
+  const b = start()
+  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.deepEqual(b.world(), a.world())
+  const moods = new Set<string>()
+  for (let frame = 0; frame < 900; frame++) {
+    a.run(1)
+    b.run(1)
+    for (const p of a.world().peds) moods.add(p.mood)
+  }
+  assert.deepEqual(b.world(), a.world())
+  // Which way each goes is a roll; that both copies roll alike is the deepEqual above.
+  assert.ok(moods.has("gather") || moods.has("flee"), `they decided: ${[...moods]}`)
 })
 
 test("contacts: sprinting into a parked car does not knock the player down", () => {

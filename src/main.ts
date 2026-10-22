@@ -28,7 +28,7 @@ import { makeSettings } from "./hud/settings.ts"
 import { element, step, titleReady } from "./hud/title.ts"
 import { holdLandscape, makeTouchControls, withTouch } from "./hud/touch.ts"
 import { groundY, terrainY } from "./render/ground.ts"
-import { blend, Effects, makeEffects, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
+import { Animals, blend, Effects, makeEffects, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
 import { PALETTE } from "./render/palette.ts"
 import { followSun, PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
 import { World } from "./render/world.ts"
@@ -95,7 +95,7 @@ const keyboard = Keyboard.actions(window, bindings)
 const pad = document.documentElement.classList.contains("touch") ? makeTouchControls(document, canvas) : undefined
 const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch, pad.shown)
 const renderClock = { alpha: 0 }
-const { people, vehicles } = makeRegistries(scene)
+const { people, animals, vehicles } = makeRegistries(scene)
 const effects = makeEffects(scene)
 // The speaker starts its AudioContext on the first key, click or tap from here on: pressed while loading, or the one that dismisses the title card.
 const speaker = makeSpeaker(window, { ...VEHICLE_VOICES, ...WORLD_VOICES } satisfies Voices, { ...VEHICLE_SHOTS, ...WORLD_SHOTS } satisfies Shots)
@@ -106,6 +106,7 @@ const made = makeRuntime({
   services: Game.Runtime.services(
     Game.Runtime.service(KeyboardInput, controls),
     Game.Runtime.service(People, people),
+    Game.Runtime.service(Animals, animals),
     Game.Runtime.service(Vehicles, vehicles),
     Game.Runtime.service(RenderClock, renderClock),
     Game.Runtime.service(Effects, effects),

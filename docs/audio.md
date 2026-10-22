@@ -1,15 +1,16 @@
 # Audio
 
 Every sound in the game is synthesised at run time with Web Audio; there are no sample files.
-Vehicles, people, the wind, crickets, birds, dogs, church bells and running water all make sound,
-and each one reaches the player's ears through a model of outdoor acoustics. A sound gets quieter
+Vehicles, people (their steps, and their chatter and cries in Italian-sounding speech), animals,
+the wind, crickets, birds, farm dogs, church bells and running water all make sound, and each one
+reaches the player's ears through a model of outdoor acoustics. A sound gets quieter
 and duller with distance, is muffled by houses, hills and woods, shifts in pitch when it moves,
 arrives late from far away, and fades out under the background noise. That last step is what lets
 the player hear only what is near.
 
 Audio is host code beside render and the HUD (`src/audio`). The simulation never imports it; the
-audio reads three of its events (`Impact`, `Skid`, `Honk`) and its components. No sound has a
-gameplay effect.
+audio reads four of its events (`Impact`, `Skid`, `Honk`, `Cry`) and its components. No sound has
+a gameplay effect.
 
 ## Data flow
 
@@ -17,6 +18,7 @@ gameplay effect.
 VehiclePhysics, Contacts ──Impact──┐
 VehiclePhysics ─────────────Skid───┤
 TrafficAI ──────────────────Honk───┤
+Perceive, Animals, Startle ──Cry───┤
 components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/Hear) ──Heard──► director
                                                                                      │
                                        hold / play / flush, each with a Placement    │
@@ -24,10 +26,11 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
           speakers ◄── mixer (reverb, limiter) ◄── emitters ◄── synths ◄── Speaker (Web Audio)
 ```
 
-1. **Simulation events** (`src/sim/schema.ts`). Three events carry moments that leave no trace in
+1. **Simulation events** (`src/sim/schema.ts`). Four events carry moments that leave no trace in
    the world's state:
-   - `Impact` (`hit`, `x`, `y`, `speed`, `mass`, `car`, `other?`, `face?`): a vehicle hit something
-     this step, with the mass behind it in tonnes (the vehicle's, or the reduced mass of two).
+   - `Impact` (`hit`, `x`, `y`, `speed`, `mass`, `car`, `other?`, `face?`, `fatal?`): a vehicle
+     hit something this step, with the mass behind it in tonnes (the vehicle's, or the reduced
+     mass of two).
      `VehiclePhysics` emits `ground` when a car lands hard or its body strikes the ground rolling
      over, naming the `face` that struck: `under` (the suspension bottoming out over a hump or on a
      landing: routinely 1.5–4 m/s on rough roads, a few steps a landing), `roof`, `side`, `front` or
@@ -41,14 +44,19 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      front corner, on the wall itself, and a square-on side hit in the middle of the side.
      `Contacts` emits `car` when two vehicles close on each other: the closing speed, the reduced
      mass 1/(1/m₁ + 1/m₂), at the contact point (`car` and `other` follow query order, not who
-     struck whom). It emits `person` for each knockdown: the car's speed before a pin stops it, the
-     car's mass, at the person.
+     struck whom). It emits `person` or `animal` for each person or light animal it knocks down or
+     kills (`fatal`): the car's speed before a pin stops it, the car's mass, at the body; and
+     `animal` for a cow it closes on faster than 3 m/s, at the closing speed.
    - `Skid` (`car`, `wheel`, `x`, `y`, `z`, `slip`, `amount`, `surface`, `step`): a tyre slid this
      step, sideways past its grip, spinning or locked: `slip` its sliding speed in m/s, `amount`
      0…1 how far past its grip (0.25 an ABS stop at the limit, 1 sliding, locked or spinning), on
      `surface`. The render lays tyre marks from it too.
    - `Honk` (`car`, `model`, `x`, `y`): `TrafficAI` emits it once per stuck episode, when a driver
      has been held up for `HONK_STEPS` (1.5 s; see [gameplay.md](gameplay.md#traffic-ai)).
+   - `Cry` (`who`, `x`, `y`, `feeling`): a person or an animal cried out this step, in `fright`,
+     `shock`, `anger` or `surprise`. `Perceive` emits it when a pedestrian's mood changes into a
+     reaction ([gameplay.md](gameplay.md#reactions)), `Animals` and `Startle` when an animal takes
+     fright or a dog barks ([gameplay.md](gameplay.md#animals)).
    - The `horn` binding (H) is read only by the audio schedule.
 
    Events are not saved: snapshots hold components and resources only. Emitting them changes
@@ -69,11 +77,16 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      take it: on its roof, side or belly, never on the bump stops alone), and its skid: of the
      `Skid` events since the last frame, the most any wheel went past its grip, the fastest any
      slid, and the surface under the one furthest past;
-   - `people`: everyone on foot (pedestrians, and the player when not driving), with their
-     fleeing and knocked-down flags;
-   - `happenings`: the `Impact` and `Honk` events since its last run, impacts first. Each impact
-     carries the `body` of the vehicle `car` (and `otherBody` of `other`, for a `car` hit): its
-     model, and the zone of its L × W box the contact point lies on, by the face it is nearest in
+   - `people`: everyone on foot (pedestrians, and the player when not driving), living or dead:
+     age group and sex (the voice), the mood and the point (fx, fy) it is about (the player walks,
+     about their own position), knocked down, dead, and `with`, the person they walk with: a
+     follower's leader, and for a leader its first follower who is a person (a dog on a lead is no
+     partner);
+   - `animals`: every animal: species, position, velocity, size, its `Roam` mood, knocked down,
+     dead;
+   - `happenings`: the `Impact`, `Honk` and `Cry` events since its last run, in that order. Each
+     impact carries the `body` of the vehicle `car` (and `otherBody` of `other`, for a `car` hit):
+     its model, and the zone of its L × W box the contact point lies on, by the face it is nearest in
      proportion (front when along/L exceeds |across|/W, rear when −along/L does, else the side: a
      Panda's wall hit is front to about 54° off square, a T-bone on its front door a side). A
      ground hit's zone is its face's: `under` under, the roof and a side the side (no bumper and
@@ -93,8 +106,9 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      and notes the cabin around them;
    - asks the world part for the masking floor and how enclosed the street is (`world.ts`), and
      every 1 s or 10 m looks up the rock faces that echo;
-   - lets its vehicle (`vehicles.ts`), people (`people.ts`) and world (`world.ts`) parts place
-     their sounds through the acoustic chain (`hearing.ts`);
+   - lets its vehicle (`vehicles.ts`), people (`people.ts`: steps and cries), talk (`talk.ts`:
+     conversations), animal (`animals.ts`) and world (`world.ts`) parts place their sounds through
+     the acoustic chain (`hearing.ts`);
    - plays one-shots at once (with their echoes; a crash's direct sound at most 8 dB over gain 1,
      `CRASH_MOST_DB`), and keeps the loudest offered continuous voices of each kind up to its cap
      (`frame.ts`);
@@ -133,23 +147,31 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
     display, reports none, and the squeal would flutter). Each
     entry ends when its time is over or its vehicle stops running. Each crashed vehicle's wear,
     the hardest crush each of its zones took, is kept for the 256 most recently crashed;
-  - people: per person on foot, the last position, the step phase, the mood and the last voice
-    cue. A person not heard in a frame (despawned, or the player now in a car) is dropped;
-  - the valley: the water and dogs near the ears (looked up again every 0.25 s or 2 m), the eased
-    street, the loudest water heard last frame, the last bell ring and its strokes to come;
+  - people: per person on foot, the last position, the step phase, the last voice cue and the
+    person last heard walking with them (so a death, when the sim takes the party's `Follows`
+    away, still finds their own), and the lines waiting for their frame. A person not heard in a
+    frame (despawned, or the player now in a car) is dropped;
+  - conversations: per pair talking, who speaks first and whose turn it is, when the next line
+    may start, the lines said, a party's burst and whether the last line asked; dropped once the
+    pair no longer talks;
+  - animals: each animal's last call, and the calls waiting for their frame;
+  - the valley: the water and farm dogs near the ears (looked up again every 0.25 s or 2 m), the
+    eased street, the loudest water heard last frame, the last bell ring and its strokes to come;
   - the occluder: the obstacles of each source's path, forgotten 2 s after nobody asks for them;
   - the echoes around the ears, looked up again every 1 s or 10 m.
 - **The speaker:** the live voices by key, the one-shots playing, and the kinds muted after a
-  failure.
+  failure. The crash, speech and animal-call shots keep each render per params object (a
+  `WeakMap`), so an echo replays its sound.
 - **Static data** never changes once built. The bells are found at load; the ambience grid, the
-  water reaches and the dogs in the first `hear`, during the audio tick after `setup` (≈ 155 ms in
-  Node, ≈ 100 of it the cover raster, which the browser has already built for the renderer); the
-  road-surface index on the first footstep or tyre, unless the physics built it first. The
-  land-cover raster and `surfaceAt` are the sim's (`src/sim/map/cover.ts` and `surface.ts`), built
-  once and shared with the tyres' grip and the renderer.
-- **Randomness** in the director (birds, dogs) and the synths (variants, jitter) is `Math.random`:
-  `?seed=N` replays the world, not the birds. The crash renderer takes its random source as a
-  parameter (the game passes `Math.random`), so its tests seed it and every render is reproducible.
+  water reaches and the farm dogs in the first `hear`, during the audio tick after `setup`
+  (≈ 155 ms in Node, ≈ 100 of it the cover raster, which the browser has already built for the
+  renderer); the road-surface index on the first footstep or tyre, unless the physics built it
+  first. The land-cover raster and `surfaceAt` are the sim's (`src/sim/map/cover.ts` and
+  `surface.ts`), built once and shared with the tyres' grip and the renderer.
+- **Randomness** in the director (birds, farm dogs, animal calls, what people say) and the synths
+  (variants, jitter) is `Math.random`: `?seed=N` replays the world, not the birds. The crash, speech
+  and animal-call renderers take their random source as a parameter (the game passes
+  `Math.random`), so their tests seed it and every render is reproducible.
 
 ## How sound travels
 
@@ -167,8 +189,9 @@ summed and converted once:
 Distances are three-dimensional. The ears are 1.6 m above the ground; sources stand at their own
 height above theirs: a vehicle's voices at its centre of mass (`Chassis.z`: at rest the Panda's
 0.56 m up, the truck's 1.7 m, and in the air wherever it flies), a vehicle's one-shots 0.8 m over
-the contact point, a person 1 m, water 2 m (lifted out of its carved bed), a bell at its tower's
-top, a bird 6–12 m up a tree, a dog 0.5 m.
+the contact point, a person 1 m (the thud of anyone hit, an animal too), an animal's mouth
+(`MOUTH`: a dog 0.5 m, a cat 0.25, a cow 1.3, a pig 0.5), water 2 m (lifted out of its carved bed),
+a bell at its tower's top, a bird 6–12 m up a tree, a farm dog 0.5 m.
 
 Each class of sound behaves differently:
 
@@ -176,9 +199,10 @@ Each class of sound behaves differently:
 |---|---|---|---|---|---|
 | Vehicle voices: engine, tyres, horn, siren, beeper, scrape | point | yes | no (continuous) | no | yes, except the player's own car |
 | Vehicle one-shots: crash, clunk, thud, door, ignition, honk | point | no | past 40 m | crashes from 6 m/s, honks | yes, except the player's own crashes, clunks, doors and starter |
-| People: steps, scream, shout, groan | point | no | past 40 m | screams, shouts | yes, except the player's own steps |
+| People: steps, talk, yell, scream, groan | point | no | past 40 m | yells, screams | yes, except the player's own steps |
+| Animals: moo, grunt, squeal, yelp, meow, hiss, bark | point | no | past 40 m | barks, moos, squeals | yes |
 | Water | line (rivers, streams), point (fountains, the Cascata di Equi) | no | no (continuous) | no | yes |
-| Birds, dogs, bells | point | no | past 40 m | barks, bells | yes |
+| Birds, farm dogs, bells | point | no | past 40 m | barks, bells | yes |
 | Wind, crickets | a bed at the ears, centred | no | no | no | no (through the cabin only) |
 
 ### Point and line sources
@@ -281,18 +305,28 @@ Over flat, open ground with nothing in the way, at the 35 dB(A) floor:
 
 | Source (dB(A) at 1 m) | Full level up to | Silent beyond |
 |---|---|---|
+| talk, a woman or a child (55) | 18 m | 39 m |
 | walking step (58) | 22 m | 52 m |
+| talk, a man (58) | 22 m | 52 m |
 | running step (62) | 30 m | 80 m |
+| meow (63) | 33 m | 87 m |
+| hiss (65) | 39 m | 108 m |
+| grunt (70) | 64 m | 187 m |
 | groan (72) | 80 m | 240 m |
-| shout (88) | 460 m | 1.5 km |
+| a cat's yowl (75) | 108 m | 329 m |
+| yell, a woman or a child (82) | 234 m | 730 m |
+| yell, a man (89) | 518 m | 1.6 km |
 | Panda engine at the redline under full load (90) | 580 m | 1.8 km |
+| yelp (90) | 581 m | 1.8 km |
+| moo (92) | 730 m | 2.3 km |
 | scream (100) | 1.8 km | 5.8 km |
+| squeal (105) | 3.2 km | 10 km |
 | crash, horn, bell (115–118) | over 10 km | |
 
 At a ridge's 57 dB(A) floor every radius is about ten times shorter. In the valley the obstacles
 shorten them more (a house or a spur in the way takes up to 15 dB, the woods up to 12), and so do
-the sim's ranges: traffic despawns beyond 320 m and pedestrians beyond 140 m. Far sounds are faint
-in the mix long before they are culled.
+the sim's ranges: traffic despawns beyond 320 m, pedestrians and animals beyond 140 m (cows
+180 m). Far sounds are faint in the mix long before they are culled.
 
 ### Voice caps
 
@@ -312,11 +346,12 @@ earshot ring (`TOWERS`).
 ### Echoes
 
 Loud impulsive one-shots answer off rock faces (`echoesAt` in `places.ts`): crashes from 6 m/s,
-honks, barks, shouts, screams and bells. The search runs along 16 directions from 40 to 400 m in
-8 m steps and takes the first face the listener can see (rising above every sight line before it)
-that climbs at least 50°, the slope the terrain paints as bare rock, and stands at least 10 m above
-the ears. A gentler slope, grassed or wooded, mirrors sound up into the sky and scatters back too
-little to hear (even a forest edge returns 16–31 dB under the direct sound), so it does not echo.
+honks, bells, yells, screams, barks, moos and squeals. The search runs along 16 directions from 40
+to 400 m in 8 m steps and takes the first face the listener can see (rising above every sight line
+before it) that climbs at least 50°, the slope the terrain paints as bare rock, and stands at least
+10 m above the ears. A gentler slope, grassed or wooded, mirrors sound up into the sky and scatters
+back too little to hear (even a forest edge returns 16–31 dB under the direct sound), so it does not
+echo.
 Rock is in sight from about half of the map. Up to two echoes play, the strongest first and
 at least 45° apart:
 
@@ -427,16 +462,24 @@ One-shots:
 |---|---|---|---|
 | `crash` | `synth/crash/`: rendered on demand from its exact params (pure TypeScript, a few ms; an echo replays the same render): each body's crunch, the parts that break and fall, what it hit: a wall's or the ground's material, or the other car's shell ([Crashes](#crashes)) | a `wall`, `car` or `ground` Impact of 1.5 m/s or more, but an underbody one under 5 m/s (a clunk). One hit spans a few steps: within 0.1 s of a car's crash or clunk only a 1.5× harder hit plays again. Its params (below): the closing speed, the mass behind it (t), both bodies and their wear, the wall's or the ground's material, the surface debris lands on | 115 (2 m) for the reference crash; the render plays its own level under or over that. Its direct sound plays at most 8 dB over gain 1 (`CRASH_MOST_DB`) |
 | `clunk` | `synth/impacts.ts`: the bump stops' rubber thump (110 → 55 Hz, the truck's a third lower), the suspension's steel clunking at about 330 and 760 Hz, loose trim ticking; three variants each, light and heavy | an underbody `ground` Impact of 1.5–5 m/s: the suspension bottoming out over a hump or on a light landing, several a second on a rough road, a landing's few steps merged like a crash's | 85 (1.5 m) at 5 m/s, 20 dB under a Panda's crash at that speed, 6 dB less per halving of speed down to 14 dB under; estimated, not measured against a recording |
-| `thud` | a low thump and a cloth swish, full level from 12 m/s | a `person` Impact (a knockdown) | 85 (1 m) |
-| `groan` | `synth/voices.ts`, a formant voice | 0.25 s after a thud, from the person hit | 72 (1 m) |
+| `thud` | a low thump and a cloth swish, full level from 12 m/s | a `person` or `animal` Impact (a knockdown, a kill, a cow struck) | 85 (1 m) |
+| `groan` | `synth/voices.ts`, a formant voice in the person's own register (`cueVoice`: a man's from the lower half of the voice range, a woman's from the upper, a child's from its top) | 0.25 s after a thud, from a person hit who lives; a killed one is silent | 72 (1 m) |
 | `door` | per model: opening (latch clicks, the seal), closing (thump, latch, panel ring) | the player gets in (open, then close 0.7 s later) or out (at their new spot) | 82 (1 m) |
 | `ignition` | the starter whirring with a dip at each compression, then the engine catching: the engine voice blipped 70 % of the way from idle to the gearbox's `launch` revs at 70 % load for 0.12 s, settling back with a 0.25 s time constant | the player gets into a car whose engine was off; the engine voice takes over after `CRANK` (Panda 0.8 s, Ape 0.4 s, truck 1.5 s, Giulia 0.6 s). Carjacking a running car plays doors only | 85 (1 m) |
 | `honk` | one long or two short presses of the model's horn | a `Honk` event | 116 (2 m) |
-| `step` | `synth/steps.ts`: heel then ball, per surface (asphalt, stone, gravel, dirt, grass, leaves) and gait, four variants each, played ±8 % in rate and ±2 dB | everyone on foot, at 2 steps a second at a 2.2 m/s walk and 3 at a 5.5 m/s sprint, counted from the distance actually moved (none while down, none for a jump of more than 3 m in a frame); a run above 3.5 m/s. The player's steps come from under the ears | 62 (0.5 m) for a running step on stone; walking 4 dB under |
-| `scream`, `shout` | `synth/voices.ts`: a sawtooth glottis on a pitch contour, breath noise, three vowel formants and a fast roughness; each person keeps one voice (sex and pitch from their id) | a pedestrian starts to flee (scared by a fast car, or back on their feet after a knockdown) screams or shouts "Ehi!"; a carjacked driver within 15 m shouts. At most one cue per person per 4 s | scream 100 (1 m), shout 88 (1 m) |
+| `step` | `synth/steps.ts`: heel then ball, per surface (asphalt, stone, gravel, dirt, grass, leaves) and gait, four variants each, played ±8 % in rate and ±2 dB | everyone on foot, at 2 steps a second at a 2.2 m/s walk and 3 at a 5.5 m/s sprint, counted from the distance actually moved (none while down or dead, none for a jump of more than 3 m in a frame); a run above 3.5 m/s. The player's steps come from under the ears | 62 (0.5 m) for a running step on stone; walking 4 dB under |
+| `scream` | `synth/voices.ts`: a sawtooth glottis on a pitch contour, breath noise, three vowel formants and a fast roughness, in the person's own register (`cueVoice`), so a child screams at the top of a woman's range; each person keeps one voice | a fright `Cry` from a child, and from 35 % of grown-ups (by id, `SCREAMERS`, TUNED); at most one cue per person per 4 s | 100 (1 m) |
+| `talk` | `src/audio/speech`: a line of Italian-sounding speech in the speaker's own voice ([Speech](#speech)) | a turn in a conversation, a gatherer's question to the victim ([Conversations and cries](#conversations-and-cries)) | 58 (1 m) for a man, 55 for a woman or a child (Pearsons, Bennett and Fidell 1977: normal effort) |
+| `yell` | the same line, yelled: higher, brighter, its vowels longer | a person's `Cry` that is not a scream, a gatherer's call, a robbed driver ([Conversations and cries](#conversations-and-cries)) | 89 (1 m) for a man, 82 for a woman or a child (Pearsons et al. 1977: shouted) |
 | `bell` | `synth/nature.ts`: a bell's inharmonic partials (hum, prime, tierce, quint, nominal...), each split to beat; four primes rendered, any pitch resampled from the nearest | the computer's local clock: the hours (1–12 strokes, 2.5 s apart) on the hour and one stroke on the half hour, from the 4 loudest towers in earshot, each starting up to 6 s late | 118 (5 m) |
 | `bird` | `synth/nature.ts`: autumn calls of the robin, great tit, blackbird ("chink" or "seee") and chaffinch ("pink"), 35/30/20/15 % | from a tree 15–70 m away: 0.3 calls a second in full forest, plus 0.05 near houses | 85 (1 m) |
-| `bark` | `synth/nature.ts`: two to five barks of a big or a small dog through a formant tract | 225 farm dogs (about one in eight barns, sheds, houses and farm buildings with open ground and no paving 5 m out): those within 200 m bark every 45 s on average, four times as often while the player runs or drives within 30 m | 96 (1 m) |
+| `bark` | `synth/nature.ts`: two to five barks of a big or a small dog through a formant tract | 225 farm dogs (about one in eight barns, sheds, houses and farm buildings with open ground and no paving 5 m out): those within 200 m bark every 45 s on average, four times as often while the player runs or drives within 30 m; and a free dog's anger `Cry` in the sim, a big dog's bark from 0.95 of the usual size (`BIG_DOG`), a small dog's under it | 96 (1 m) |
+| `moo` | `synth/animals.ts` ([Animal calls](#animal-calls)) | a cow on its own (every 40 s on average), its `Cry`, its pain after a hit | 92 (1 m), an estimate between a man's shout and a bark |
+| `grunt` | `synth/animals.ts` | a pig on its own (every 6 s on average), a `Cry` that is not a fright | 70 (1 m), an estimate within pigs' 60–90 dB |
+| `squeal` | `synth/animals.ts` | a pig's fright `Cry`, its pain after a hit | 105 (1 m): piglets peaked at 101.9 dB (Engenharia Agrícola 2018), a grown pig's squeal is commonly put at 110–115 |
+| `yelp` | `synth/animals.ts` | a dog's fright `Cry`, its pain after a hit | 90 (1 m), an estimate |
+| `meow` | `synth/animals.ts`: a meow, or a cat's yowl of pain (`yowl`) | a cat on its own (every 60 s on average) and half its fright `Cry`s; the yowl after a hit | 75 (0.5 m) for the yowl, an estimate; a plain meow 12 dB under it (`MEOW_QUIET`) |
+| `hiss` | `synth/animals.ts` | half a cat's fright `Cry`s | 65 (0.5 m), an estimate |
 
 A crash's params say what met: `body` is the Impact's `car` (query order, not necessarily the one
 that struck; model and zone), `against` either the wall's or the ground's `material` or the other
@@ -638,6 +681,141 @@ browser shows long tasks.
 The bells are the tallest church or tower of each district, 27 in all. A tower of 10 m or less
 rings an 800 Hz prime; taller towers ring lower, down to 400 Hz at 30 m.
 
+### Speech
+
+People talk the way The Sims do: Italian-sounding gibberish with a real Italian word now and then,
+and their cries in real Italian. `src/audio/speech` picks the line (`lineFor`), times it
+(`lineSeconds`) and renders it in pure TypeScript into a buffer, like the crash, so it is tested
+in Node and reproducible with a seeded random source. It is tuned by the numbers below and the
+tests' measurements, not by ear.
+
+- **What is said** (`lines.ts`), by situation: `greet`, `chat`, `reply`, `laugh` and `farewell`
+  in a conversation; `fright`, `shock`, `anger` and `surprise` for a cry; `pity` (shock at a killed
+  animal); `helpMan`, `helpWoman` and `helpKid` (a stranger asking after someone struck down);
+  `grieve`; `mum`, `dad`, `nonna` and `nonno` (a child calling its parent or grandparent); `thief`
+  (a robbed driver). Every line but chat, reply and laugh is a real phrase in its tune: "Aiuto!",
+  "Attento!", "No!"; "Oddio!", "Madonna!", "Oh no!", "Chiamate un'ambulanza!"; "Vai piano!", "Ma
+  sei matto?", "Rallenta!", "Ehi!", "Guarda dove vai!"; "Mamma mia!", "Ma che…"; "Tutto bene?",
+  "Respira?", "Signore, mi sente?", "Signora, mi sente?", "Mi senti?" to a child; "Povera bestia!";
+  "No, no, no!", "Ti prego!", "Svegliati!", "Amore!"; "Mamma!", "Papà!", "Nonna!", "Nonno!";
+  "Ladro!", "Al ladro!", "Fermo!", "Ehi! La mia macchina!"; "Ciao!", "Buongiorno!", "Salve!",
+  "Ehilà!"; "Ciao ciao!", "A dopo!", "Arrivederci!", "Ci vediamo!".
+- **Chat** is 1–3 s of gibberish with real fillers ("allora", "boh", "magari", "eh già",
+  "comunque", "figurati", "che ne so"…) for 15 % of the draws (10–25 % of the words measured); a
+  pause follows half the fillers and 12 % of the gibberish words. A reply is 0.6–1.8 s, half of
+  them opening on an answer ("Sì,", "Beh,", "Mah,"…); a laugh is 3–6 breathy calls on one vowel.
+- **Gibberish follows Italian phonotactics** (Krämer 2009), so it sounds Italian without being it:
+  open (C)CV syllables, onset clusters such as pr, st, kw, or a coda n, r, l or s before a stop;
+  /n/ is [m] before /p b/; every word ends in a vowel; one stress at most, 80 % on the penultimate
+  syllable and 15 % the antepenultimate; /ɛ ɔ/ only under stress; 20 % of the consonants between
+  vowels doubled (estimate) and /ʃ ɲ ʎ ts dz/ always long there. Words are spelt the Italian way
+  (ch, gh, gn, gli, sc, zz, a final stress accented). A word whose spelling, accents aside, holds
+  the stem of an Italian profanity or slur (`PROFANE`) is drawn again: the tests find none in
+  200,000 words.
+- **Timing** (`plan.ts`) is deterministic, so `lineSeconds` is the rendered length: a stressed
+  vowel ×1.7 in an open syllable and ×1.25 in a closed one (Bertinetto 1981; D'Imperio and
+  Rosenthall 1999), a doubled closure ×2 (Esposito and Di Benedetto 1999), the last syllable of a
+  phrase ×1.4 and a call's last vowel ×3 (estimates), a phrase break 0.18 s, 30 ms of silence at
+  each end. The tempo is TUNED to Italian's 6.99 syllables a second (Pellegrino, Coupé and Marsico
+  2011): chat lines run at 6.3–7.7 (tested). Kids speak ×1.15 and elders ×1.12 slower (estimates). Mean lengths
+  for a man: chat 2.19 s, reply 1.34, greet 0.39, farewell 0.58, fright 0.41, shock 0.65, anger
+  0.57, surprise 0.45, thief 0.69, laugh 0.82.
+- **Voices.** F0 is 115 Hz for men, 210 for women, 125 for elder men, 190 for elder women and 270
+  for kids (Titze 1994); the vocal tract is scaled ×1.15 for women and ×1.3 for kids (Peterson and
+  Barney 1952). Each person's `voice` (from their id) moves the pitch ±10 %, the tract ±4 % and the
+  rate ±5 %, from separate hashes, so one person keeps one voice and pitch and timbre vary apart.
+  Elders are breathier, with 1.5 % jitter, 6 % shimmer and 2.5 % flutter against 0.5, 3 and 1 %
+  (Klatt and Klatt 1990; Xue and Deliyski 2001). The tunes: `say` falls from a peak on the stress,
+  `ask` rises at the end, `exclaim` is high and wide, `call` holds its last vowel, `laugh` is
+  breathy calls falling in pitch. A yell lifts F0 ×1.6 and F1 ×1.1, holds its vowels ×1.25 and
+  tenses and brightens the source (Schulman 1989).
+- **The synth** (`render.ts`) is a Klatt 1980 cascade/parallel formant synthesiser: a KLGLOTT88
+  glottal pulse with jitter, shimmer and flutter, tilted by effort, with aspiration on its open
+  phase, through a nasal pole and zero and five formant resonators updated every 5 ms; frication
+  and release bursts go through a parallel band-pass tuned to their own band, retuned within the
+  sample the band changes; a trill dips the amplitude 25 times a second. The vowel formants are Ferrero 1972's male
+  means as commonly quoted (an estimate: the original table was not checked), the consonants'
+  transitions follow Delattre, Liberman and Cooper 1955, the bursts Stevens and Blumstein 1978, the
+  fricatives Jongman, Wayland and Wong 2000, the nasals Fujimura 1962. A line peaks at 0.5, starts
+  silent and rings out into its trailing pad with no click (the largest step where the speech ends
+  is under 0.05 on the 0.5 peak).
+- **Measured** (a man's voice at 48 kHz): against a stressed /a/, /s/ sits 12 dB under (centroid
+  6.1 kHz), /ʃ/ 14 dB (3.75 kHz), /f/ 19 dB and a nasal murmur 4 dB; a /t/ burst's centroid is about
+  5.2 kHz. His `ask` rises 116 → 138 Hz and his `say` falls 121 → 97 Hz; yelled, his vowels'
+  centroid goes from 730 to 991 Hz.
+- **Cost.** `speechShot` renders at the context's rate up to 48 kHz, once per speech object (an echo
+  replays it), on the main thread: in Node a chat line takes 5.7–6.0 ms (2.9 ms per second of
+  speech) and a shock yell 2.4 ms. Not lower than 48 kHz: at 24 kHz a line renders in half the time,
+  but the formants near Nyquist brighten the 2.8–5.6 kHz octave by 2–3 dB.
+
+### Conversations and cries
+
+The director decides who says what, and when: `director/talk.ts` voices conversations,
+`director/people.ts` cries and calls, `director/animals.ts` the animals.
+
+- **Conversations.** Two pedestrians in mood `chat`, each facing a point within 1.5 m of the other,
+  talk: a greeting each, then turns of chat (60 %), a reply (25 %) or a laugh (15 %), a question
+  always answered with a reply (TUNED). A turn starts `lineSeconds` after the last one and a pause
+  of 0.2–0.9 s (TUNED: real turn-taking is 0–0.3 s, Stivers et al. 2009, but gibberish never
+  overlaps). A chat that ends with both walking on ends with a goodbye each; one broken off by
+  something else has none. People out together (a couple, a parent and child: each the other's
+  `with`) talk as they walk, in bursts of 1–4 lines 6–20 s apart (TUNED). Only the 3 nearest
+  conversations talking or due to talk are voiced (`VOICED`); the rest keep their turns silently,
+  and a couple in a lull holds no voice. No conversation starts or moves on before the sound starts
+  (`Frame.live`), so a chat under way behind the title card opens with both greetings.
+- **Cries.** Every person's `Cry` is voiced in their own voice: a fright is a scream from every
+  child and from 35 % of grown-ups (by id, `SCREAMERS`, TUNED), a yelled fright line from the rest;
+  shock, anger and surprise yell a line for the feeling. Shock at a killed animal is `pity`, so
+  nobody calls an ambulance for a cat; shock by one of their own is `grieve`. The dead cry no more,
+  and one person cues at most once every 4 s (`CUE_GAP`).
+- **By a victim.** A gatherer speaks about once every 7 s (`HELP_RATE`, TUNED), yelled when the
+  line is a call or an exclamation: a stranger asks after a man, a woman or a child as they are; one
+  of their own grieves; a child calls "Mamma!" or "Papà!", or "Nonna!" or "Nonno!" by a
+  grandparent, by the victim's age and sex (the sim sends no child to a stranger). The victim is
+  the body lying nearest the gatherer's point, within 4 m (`BODY_NEAR`), and their own are the
+  people they were last heard walking with. By no body (the victim got up and left), or by an
+  animal's, they say nothing.
+- **A robbed driver.** A pedestrian first heard already running away within 15 m of the listener
+  (`THIEF_NEAR`) yells after the thief.
+- **A frame's budget.** Lines render on the main thread, so at most 3 start in a frame
+  (`LINES_PER_FRAME`, TUNED), the nearest first; one waiting over 0.5 s, or whose speaker is dead or
+  gone, is dropped. A death draws a cry from every witness in one step: of 12 shocked witnesses the
+  3 nearest are heard in the first frame and the other 9 within 3 frames, and the worst frame, 3
+  yells, takes about 7 ms on a desktop (15 at once took 51 ms). Conversations' lines are not
+  counted in it.
+- **Hits.** A person or an animal hit thuds; a person who lives groans 0.25 s later.
+- **Animals.** Cows moo on their own about every 40 s, pigs grunt every 6 s and cats meow every
+  60 s (TUNED), none while it runs; dogs call only when they cry out (and the farm dogs of the world
+  part bark on their own). An animal's `Cry` is its species' voice: a dog barks in anger and yelps
+  in fright, a cat hisses or meows (half each) in fright, a pig squeals in fright and grunts
+  otherwise, a cow moos. Struck and alive, it cries in pain: a yelp, a cat's yowl, a squeal, a moo;
+  killed, it is silent. An animal calls at most once every 1.5 s (`CALL_GAP`), and at most 2 calls
+  start in a frame (`CALLS_PER_FRAME`), the nearest first, one waiting over 0.5 s dropped: 8 moos
+  rendered at once take about 49 ms.
+
+### Animal calls
+
+`synth/animals.ts` renders each call in pure TypeScript at its first play, like the crash, and
+keeps it per params object, so an echo replays it. Each voiced call is a source-filter voice: a
+Rosenberg glottal pulse train on an F0 contour, with jitter, shimmer, period doubling and breath
+noise, through four cascaded formant resonators (Klatt 1980) gliding between targets, and a
+closed-mouth murmur low-passed at 450 Hz. A species' tract is a uniform tube closed at the larynx
+(its formants at (2n − 1)·c / 4L), and the animal's `size` lowers F0 and the formants together.
+
+| Call | What it is | F0 | Tract |
+|---|---|---|---|
+| `moo` | 1–2 s, a hum through the nose opening into an "ooo" and back | 125–150 Hz (cattle calls are mostly 80–200 Hz, Padilla de la Torre et al. 2015) | 0.42 m (estimate, a 600 kg cow) |
+| `grunt` | 1–3 low, rough, nasal grunts of 0.15–0.3 s | 75–110 Hz | 0.25 m (estimate) |
+| `squeal` | 1–1.5 s, harsh (period doubling, jitter, noise), the mouth open | 850–1100 Hz | |
+| `yelp` | 2–4 cries of 0.12–0.22 s, each lower than the last | 900–1100 Hz | 0.15 m (dogs' are 10–24 cm, Riede and Fitch 1999) |
+| `meow` | 0.5–1 s, "mi-a-ou" | 500–560 Hz, rising × 1.45 and falling back (meows are mostly 500–800 Hz, Schötz 2013) | half a man's: formants twice his vowels' |
+| `meow`, `yowl` | 1.2–2 s, long, wavering and rough | 380–460 Hz, rising × 1.7 | half a man's |
+| `hiss` | 0.5–1 s of breath noise at 2.8–7.5 kHz, spat out at its start | | |
+
+Every call peaks at 0.5, a plain meow 12 dB under its yowl (`MEOW_QUIET`, which `animalQuiet`
+tells the masking). In Node at 48 kHz a moo renders in 3.9 ms, a squeal 4.1, a hiss 2.7, a meow
+1.9, a yelp 1.5 and a grunt 1.4.
+
 ## Calibration and mix
 
 `src/audio/director/levels.ts` is the mix's one calibration table:
@@ -646,15 +824,18 @@ rings an 800 Hz prime; taller towers ring lower, down to 400 Hz at 30 m.
   Every synth peaks near 0.5 (−6 dBFS) at the loudest params it is meant for and scales itself
   with its physical params: an engine idles 17–26 dB (RMS) under full load at the redline, tyres
   follow the rolling law, a crash its speed. The level in the table is the one at that peak.
+  `talk` and `yell` are a man's: `speechLevel` puts a woman's or a child's 3 dB under talking and
+  7 dB under yelling (`SOFTER`; Pearsons, Bennett and Fidell 1977 measured women and children at
+  55 and 82 dB(A) against men's 58 and 89).
 - `BEDS`: the wind and cricket beds at the ears at full strength and density. `windDb` (here),
   `cricketsQuiet` (`synth/nature.ts`), `WALK_DB` (`synth/steps.ts`), `engineQuiet`
   (`synth/engine.ts`, the engine's gain law: 11 dB under at idle, none at the redline under full
-  load), `clunkQuiet` (`synth/impacts.ts`) and `crashQuiet` (`synth/crash/index.ts`, the crash's
+  load), `clunkQuiet` (`synth/impacts.ts`), `crashQuiet` (`synth/crash/index.ts`, the crash's
   level law: 18 dB under at a 2 m/s bump, none at the 15 m/s reference, 6 dB over from about
-  30 m/s, 2 dB more for a ringing guard rail or sheet wall): how far the wind, crickets,
-  walking-step, engine, clunk and crash synths play under (or over) that, so masking counts the
-  sound actually played. All but `windDb` live beside the synths they describe, derived from the
-  same numbers.
+  30 m/s, 2 dB more for a ringing guard rail or sheet wall) and `animalQuiet` (`synth/animals.ts`:
+  a plain meow 12 dB under a yowl): how far the wind, crickets, walking-step, engine, clunk, crash
+  and meow synths play under (or over) that, so masking counts the sound actually played. All but
+  `windDb` live beside the synths they describe, derived from the same numbers.
 
 **Engine trims.** Each model's `TRIM` (`synth/engine.ts`) is 1 / its own peak at the redline under
 full load, measured on the audition page: "Render all" plays every model at {rpm: redline, load: 1}
@@ -664,7 +845,8 @@ derived timbres and the old hand-set trims (0.538, 0.336, 0.435, 0.48) the redli
 trims are 0.488 (Panda), 0.316 (Ape), 0.371 (truck) and 0.469 (Giulia), which peak at 0.499–0.501.
 Idle plays under the redline by (RMS) 20.4 dB on the Panda, 25.8 on the Ape (its 250 Hz highpass
 and its lowpass closing to 2.5 kHz), 17.0 on the truck (its clatter) and 22.1 on the Giulia.
-- `HEIGHT`, `WATER_R_MIN`: source heights and the water's 1 m clamp.
+- `HEIGHT`, `MOUTH`, `WATER_R_MIN`: source heights (each species' mouth) and the water's 1 m
+  clamp.
 - `CAPS`, `KEEP_DB`, `TOWERS`: the voice caps and their hysteresis.
 - `DELAY_FROM` (40 m), `REVERB`, `ECHO_MIN_DB` and `echoes(sound)`: delay, the reverb send and
   echoes.
@@ -768,12 +950,15 @@ own emitter and mixer:
   control for every param (sliders, menus, checkboxes): the engine's `rpm` (0–7000), `load` and
   `variant`, the tyres' `speed`, `skid` and `slip`. The crash's are flat: speed and mass (0.1–30 t)
   sliders, the `model` and `zone` of the body that hits, `against` (a material for a wall or the
-  ground, or a model for a car, struck on its `struck` zone) and the `surface`. Each
+  ground, or a model for a car, struck on its `struck` zone) and the `surface`. Speech's are flat
+  too: a `situation` and the speaker's `voice`, `age` and sex, each Play drawing a fresh line; an
+  animal call's are its `size` (0.85–1.15) and a meow's `yowl`. Each
   panel shows how its sound is heard at that spot: the level at 1 m (at the ears for the beds) and
-  at the listener (an engine `engineQuiet`, a clunk `clunkQuiet`, a crash `crashQuiet` under it),
+  at the listener (an engine `engineQuiet`, a clunk `clunkQuiet`, a crash `crashQuiet`, a meow
+  `animalQuiet` under it; a woman's or a child's speech at its `speechLevel`),
   the gain, pan, lowpass, reverb send and delay. The first press starts the audio.
 - **Render all** (also `window.lab.renderAll()`, which returns the rows) renders every voice and
-  shot offline at 48 kHz at a few representative params (88 renders, about 3 s) and tabulates peak,
+  shot offline at 48 kHz at a few representative params (102 renders, about 4 s) and tabulates peak,
   RMS (dBFS), spectral centroid (`measure.ts`), NaNs and length. It flags silence (peak under
   1e-4), clipping (over 0.95), an engine at the redline under full load peaking outside 0.42–0.6
   ("off nominal": its trim needs measuring again), NaNs, and any sound left after a voice's stop
@@ -786,12 +971,17 @@ own emitter and mixer:
   wrecked at 40, the laden truck into a house at 2 and 12 and a Panda landing hard on the road and
   rolling onto it at 8, each drawn anew on every run (a fresh params object, so the crash's
   per-object memo never replays an earlier run); the scrape plays along every material at 12 m/s,
-  along masonry at 4 and along the guard rail at 2.5, where it squeals. An engine with `inside`
-  ticked plays through no cabin, as the game plays the listener's own (the synth makes its cabin).
-  Adding a kind fails to compile until the page has a panel and render rows for it. Two low peaks
-  are by design: the wind swells with gusts over seconds, so at strength 1 a 2 s render peaks near
-  0.2–0.3 while its 64 s gust loop reaches 0.45–0.65; and the blackbird's thin "seee" (30 % of its
-  calls) peaks at 0.25 yet is 6 dB louder over 125 ms than its "chink" series at 0.5.
+  along masonry at 4 and along the guard rail at 2.5, where it squeals. Speech is said by a man
+  chatting, a woman replying, an elder greeting and a girl laughing, and yelled in fright, anger,
+  shock and surprise by a man, a woman, an elder woman and a boy, a fresh line each run; the
+  animals give a moo at 0.85 and at 1.15 of a cow's size, a grunt, a squeal, a yelp, a meow and a
+  yowl, and a hiss. An engine with `inside` ticked plays through no cabin, as the game plays the
+  listener's own (the synth makes its cabin).
+  Adding a kind fails to compile until the page has a panel and render rows for it. Three low
+  peaks are by design: the wind swells with gusts over seconds, so at strength 1 a 2 s render peaks
+  near 0.2–0.3 while its 64 s gust loop reaches 0.45–0.65; the blackbird's thin "seee" (30 % of its
+  calls) peaks at 0.25 yet is 6 dB louder over 125 ms than its "chink" series at 0.5; and a plain
+  meow peaks at 0.126, `MEOW_QUIET` (12 dB) under its yowl.
 
 The page places every sound with the director's own facts: the levels from `levels.ts` through
 `hear` in `hearing.ts`, the source at ear height over open, flat ground with nothing in the way, no
@@ -807,14 +997,17 @@ functions (`synth/world.test.ts` imports them to check).
 
 | File | Checks |
 |---|---|
-| `src/sim/index.test.ts`, `src/sim/walls.test.ts` | the events: a car driven into a building is a `wall` Impact as fast as the car was, where its nose meets the wall; rolled into it 45° and 60° off square, on the wall itself (within 5 cm) at its front end; a car rolling into a parked one a `car` Impact at the closing speed, the reduced mass and where the bumpers meet; a knockdown one `person` Impact faster than `KNOCK_SPEED`; a car pinning the player a `person` Impact as fast as the car was; a car blocked by a parked one honks once per stuck episode, `HONK_STEPS` before each time it backs up |
-| `src/audio/index.test.ts` | `Hear`: the listener on foot and at the wheel with the horn held, AI traffic running while standing, an untouched car heard only while it moves, rolls, pitches or bounces, impacts (with the struck vehicle's model and zone, the mass in tonnes as the sim gave it; none for a vehicle gone since) then honks each heard once, a ground hit's zone from its face, the revs and load `engineRevs` gives for the vehicle's chassis, speed and pedal, each vehicle's skids since the last frame (the most past grip, the fastest, the surface of the wheel furthest past), wheels down on the springs and not in the air, on a side or on the roof, the body down on the ground sliding on its roof or side and not on its wheels or in the air, an Ape rolling into a parked Panda front on rear, an Ape T-boning a parked Panda's front door on its side, a Panda rolling 50° off square into a house wall on its front |
+| `src/sim/index.test.ts`, `src/sim/walls.test.ts`, `src/sim/people.test.ts`, `src/sim/reactions.test.ts`, `src/sim/animals.test.ts` | the events: a car driven into a building is a `wall` Impact as fast as the car was, where its nose meets the wall; rolled into it 45° and 60° off square, on the wall itself (within 5 cm) at its front end; a car rolling into a parked one a `car` Impact at the closing speed, the reduced mass and where the bumpers meet; a knockdown or a killing one `person` Impact faster than `KNOCK_SPEED`, `fatal` when it killed; a car pinning the player a `person` Impact as fast as the car was; a car blocked by a parked one honks once per stuck episode, `HONK_STEPS` before each time it backs up; the cries: a car speeding past walkers draws angry ones from about half of them, a car aimed fast at a walker a fright, a death 12–25 m away a shock from each witness, a quiet Gragnola under 1 fright and 2 anger a minute; a free dog barks at the player at most every few seconds, and a cat by a dog a car strikes is scared in that step |
+| `src/audio/index.test.ts` | `Hear`: the listener on foot and at the wheel with the horn held, AI traffic running while standing, an untouched car heard only while it moves, rolls, pitches or bounces, impacts (with the struck vehicle's model and zone, the mass in tonnes as the sim gave it; none for a vehicle gone since) then honks each heard once, who each person is and what they do (age, sex, mood and its point, down, dead), who walks with whom (`with` both ways for a mother and child, not the dog on a lead), the animals, and the cries since the last frame, each heard once, a ground hit's zone from its face, the revs and load `engineRevs` gives for the vehicle's chassis, speed and pedal, each vehicle's skids since the last frame (the most past grip, the fastest, the surface of the wheel furthest past), wheels down on the springs and not in the air, on a side or on the roof, the body down on the ground sliding on its roof or side and not on its wheels or in the air, an Ape rolling into a parked Panda front on rear, an Ape T-boning a parked Panda's front door on its side, a Panda rolling 50° off square into a house wall on its front |
 | `src/render/index.test.ts` | every system of the render and audio schedules declares no writes |
 | `src/audio/acoustics.test.ts` | the laws: the line source against the exact table, the air cutoffs, Doppler, the pan, diffraction, ground, foliage, masking, the mix calibration |
 | `src/audio/occlusion.test.ts` | path differences on real map spots: a flat meadow, Monzone Alto's 30 m tower, a bell over its own walls, Monte San Giorgio between its flanks |
 | `src/sim/map/surface.test.ts` | the surfaces the tyres and the sounds share: carriageways by their OSM surface, the forest floor, a meadow; by level, the hillside over a tunnel and the deck only on the deck |
 | `src/audio/places.test.ts`, `src/audio/places/water.test.ts` | wall materials (a trunk, buildings by kind and style, the guard rail, the stone wall, a cliff, bare ground, a quarry's bank; the nearer of a trunk and a house wall 1.2–2.5 m apart wins; a bank with trees 1.5–3 m off it is earth), ambience shares, streets, echoes off the rock at Equi Terme, none on an open meadow nor at any Monzone street with no slope as steep as bare rock (50°) in sight, bells, dogs and birds, the Torrente Lucido from Monzone station, the Fontana di Aiola |
-| `src/audio/director/index.test.ts` | the director on a recording speaker at real map spots: proximity (in the open and behind a ridge), a building's muffling, Doppler, step cadence, travel delay, crash merging and scrapes, a house wall's material and cobbles in the crash and scrape params, a car crash's bodies the same from either car, a zone's wear carried to the next crash, a wall crash's debris surface read under the car, a scrape's material held through a brief other contact, a wall crash on foot muffled by the house in the way, a bump culled nearer than a crash, the engine's revs, load and variant passed on, engines ranked by their load, the tyres on the sim's skids (a standing burnout, the skid held over a frame with no step, silent in the air), a vehicle heard where its body is, a hard landing against the ground's material and not the nearest wall's and a body down on it grinding it (no hit needed), under a bridge the tyres and a landing on the riverbed's own surface and not the deck's, the own siren as loud in the air as on the ground (the ears ride in the car), cresting a hump as one clunk and a hard landing as a crash, echoes off a rock face and hidden in a street, the reverb dry in the open and wet in a walled street, nothing before the context, the cabin (the own crash open and at its cap, its tail and echoes through it), getting in and out, horn and siren, the bells, water and its masking, the valley's never-silent bed and the river 15 m away against behind the houses, voice caps and their hysteresis, flee cues |
+| `src/audio/director/index.test.ts` | the director on a recording speaker at real map spots: proximity (in the open and behind a ridge), a building's muffling, Doppler, step cadence, travel delay, crash merging and scrapes, a house wall's material and cobbles in the crash and scrape params, a car crash's bodies the same from either car, a zone's wear carried to the next crash, a wall crash's debris surface read under the car, a scrape's material held through a brief other contact, a wall crash on foot muffled by the house in the way, a bump culled nearer than a crash, the engine's revs, load and variant passed on, engines ranked by their load, the tyres on the sim's skids (a standing burnout, the skid held over a frame with no step, silent in the air), a vehicle heard where its body is, a hard landing against the ground's material and not the nearest wall's and a body down on it grinding it (no hit needed), under a bridge the tyres and a landing on the riverbed's own surface and not the deck's, the own siren as loud in the air as on the ground (the ears ride in the car), cresting a hump as one clunk and a hard landing as a crash, echoes off a rock face and hidden in a street, the reverb dry in the open and wet in a walled street, nothing before the context, the cabin (the own crash open and at its cap, its tail and echoes through it), getting in and out, horn and siren, the bells, water and its masking, the valley's never-silent bed and the river 15 m away against behind the houses, voice caps and their hysteresis |
+| `src/audio/director/voices.test.ts` (on the shared rig of `director/testing.ts`) | conversations: a greeting each, alternating lines 0.2–0.9 s apart and a goodbye each as the pair walks on; a chat under way before the sound starts opening with both greetings once it does; none when something breaks it off; couples in a lull taking no voice from a chat nearby, and talking now and then as they walk; cries: a child screams in fright, a grown-up screams or yells, in their own voice, one cue every few seconds; shock, anger and surprise yell a line, the dead are silent; the thief line within 15 m, not at 40; gatherers' lines, fitting a man, a woman or a child, and grief, "Mamma!" or "Nonna!" by one of their own, nothing by an empty spot; pity, not an ambulance, for an animal; a crowd's cries a few a frame, the nearest first, every one said; a fatal hit with no groan; animals calling on their own (none while fleeing), each species' cry, at most two calls a frame, a struck animal's pain and a killed one's silence |
+| `src/audio/synth/animals.test.ts` | every call at its nominal 0.5 (a plain meow `MEOW_QUIET` under its yowl), finite, starting and ending silent; a moo 1–2 s at 100–160 Hz and lower for a bigger cow; a meow at 500–800 Hz, a grunt low and short, a squeal high and long; a hiss between 2 and 8 kHz, a dog's two to four high yelps; each call the same per seed, and an echo replaying its render |
+| `src/audio/speech/*.test.ts` | the lexicon spelt in known phonemes; every situation's lines valid and the same per seed; the cries real Italian in their tune; help fitting the victim, grief the bereaved, no ambulance for an animal; chat 1–3 s with ≈ 15 % fillers, replies shorter; gibberish following the phonotactics, spelt the Italian way, and never a profanity or a slur in 200,000 words; a laugh's 3–6 calls; the plan contiguous, padded with silence and as long as `lineSeconds`; geminates, stress and phrase-final lengthening; chat near 7 syllables a second; children, elders and yells slower; each tune's melody and each speaker's pitch; every line rendered at a 0.5 peak, finite, silent at both ends and ringing out with no step where the speech ends; the same seed the same samples; men lower than women, women lower than children; a question ending higher and a statement lower; a yell higher and brighter; /s/ brighter than /a/ and under it, /ʃ/ darker than /s/; a release burst in its own band |
 | `src/audio/director/hearing.test.ts`, `occluder.test.ts` | the reverb send: none in the open, in a street by distance (capped), gaps and the cabin, even for a sound of the own car that skips it; the obstacle cache's refresh and forgetting |
 | `src/audio/speaker.test.ts`, `mixer.test.ts`, `buffers.test.ts`, `measure.test.ts` | the one-shot cap, the speaker inert until a trusted gesture, the level meter, seamless noise loops, the gust signal against its closed-form sine sum, the render measurements |
 | `src/audio/synth/*.test.ts` | each engine's timbre from how it is built (pulses from cylinders and cycle, formants falling with displacement and the sub rising with each cylinder's size, a two-stroke brighter and rattling, a diesel's clatter, a turbo's whine only with a turbo, the Giulia's exhaust voiced darker than its size), the engine law (idle 11 dB under the redline, the cabin tone, every model at its trimmed peak, a variant's pitch and formants); the tyre law (a standing burnout and a locked wheel squeal, a creep barely past grip does not, the full slide at the Giulia's top speed); the scrape's surface loops (seamless, at their RMS, a stone every 0.3 m and a rail post every 2 m) and its speed law; step and cricket rates; bubbles at their Minnaert frequency; synth params clamped, NaN to silence |
@@ -839,7 +1032,8 @@ throttle for 4 s a median of −13.4 to −13.7 and peaks −10.2 to −10.6 ove
 at the launch to 5419–5498, load 1 between shifts, to 13.6–14.6 m/s); in a parked Panda idling
 −30.5 (800 rpm), the same pull-away −14.4 and peaks −13.2 (1800 to 5714 rpm, to 13.8 m/s), a
 handbrake turn onto grass −9.9 (its tyres played at skid 1, sliding 27.9 m/s). On the
-audition page "Render all" gives 87 rows, none flagged.
+audition page "Render all" gives 102 rows in 3.9 s, none flagged (the speech rows peak at 0.5, a
+plain meow at 0.126).
 Crashes (a Panda driven by CDP keys into a house, a stone wall, a tree and a bank at 5–15 m/s and
 into parked cars at 9–15 m/s, `gta.audio.level()` and each channel's sample peak every 20 ms): the
 played speed is the car's at contact (wall hits within 0.3 m/s of it, an oblique tree hit 0.5 under;
@@ -921,24 +1115,37 @@ task, no console error, no non-finite placement.
   bar and the Panda's hubcap are not remembered at all.
 - **A scrape's level follows speed only.** The sim reports no contact force, so a car pressed hard
   along a wall grinds as loud as one brushing it.
+- **Speech and the animal calls are tuned by numbers, not by ear.** Their formant targets,
+  durations and levels come from the literature and the tests' measurements; the vowel formants
+  are Ferrero 1972's as commonly quoted, not checked against the original table. A voiced
+  fricative's noise does not pulse with the glottis, and a line's loudness does not fall along it.
+- **Some animal levels are estimates:** no measurement at 1 m was found for a moo, a yelp, a yowl,
+  a meow or a hiss.
+- **An animal's thud plays at a person's height** (1 m), whatever its size.
+- **Speech and calls render on the main thread** at their first play: a chat line about 6 ms, a
+  yell 2.4 ms, a call 1.4–4.1 ms in Node, several times that on a phone. At most 3 lines and 2 calls
+  start in a frame, but a conversation's lines are not counted in that budget.
 
 Where to tune:
 
 | Where | What |
 |---|---|
-| `src/audio/director/levels.ts` | every source level and size, heights, caps and hysteresis, the crash's gain cap, the bell towers, delay, the reverb send and the echo floor |
+| `src/audio/director/levels.ts` | every source level and size, heights and the animals' `MOUTH`, how much softer a woman's or a child's speech is (`SOFTER`), caps and hysteresis, the crash's gain cap, the bell towers, delay, the reverb send, the echo floor and which one-shots echo |
 | `src/audio/acoustics.ts` | `AMBIENT_DB`, `CABIN`, the mix rule (`L_REF`, `K`, `FULL_SCALE`), the air and diffraction tables |
 | `src/audio/index.ts` | when a still vehicle is heard (`STILL`), when its wheels are off the ground (`AIRBORNE`), the zone of each face that strikes the ground |
 | `src/audio/director/vehicles.ts` | when tyres roll and how long a skid holds, the beeper sounds, a hit crashes, clunks or scrapes, hits merge; the ground's materials; the groan and door timings; how much of the cabin the own horn and siren pass |
-| `src/audio/director/people.ts` | jumps, running, the shout radius and the cue gap |
-| `src/audio/director/world.ts` | the wind law and its floor (`STILL`), the beds and water compressed at their level, birds, dogs, the bell strokes, how often water and dogs are looked up |
+| `src/audio/director/people.ts` | jumps, running, the robbed driver's radius (`THIEF_NEAR`), the cue gap (`CUE_GAP`), who screams (`SCREAMERS`), how often gatherers speak (`HELP_RATE`), how near a victim lies (`BODY_NEAR`), the lines a frame (`LINES_PER_FRAME`, `STALE`) |
+| `src/audio/director/talk.ts` | when two chat (`PAIRED`), the pause between turns (`GAP`), the turns' shares (`TURNS`), the conversations voiced (`VOICED`), a party's bursts and lulls (`BURST`, `LULL`) |
+| `src/audio/director/animals.ts` | how often each species calls on its own, what each cries, the gap between calls (`CALL_GAP`), the calls a frame (`CALLS_PER_FRAME`, `STALE`), a big dog's size (`BIG_DOG`) |
+| `src/audio/director/world.ts` | the wind law and its floor (`STILL`), the beds and water compressed at their level, birds, farm dogs, the bell strokes, how often water and farm dogs are looked up |
 | `src/audio/director/occluder.ts` | the obstacle refresh rate, per-frame budget and forgetting |
 | `src/sim/map/surface.ts` | surfaces: the road surface names, the cover each surface is, the verge (shared with the tyres' grip) |
 | `src/audio/places.ts`, `src/audio/places/water.ts` | wall materials and their reach, ambience, street probes, the echo search and the rock's reflection loss, bells, dogs, bird trees; water power, fountains and the Cascata |
 | `src/audio/synth/engine.ts` | how an engine's build sets its sound (`CYCLES`, the formant's size law, `timbreOf`), each model's measured `TRIM` and `EXHAUST` voicing, the variants' spread, the engine law |
 | `src/audio/synth/crash/` | the crash: its level law, the mass's 1/√ and timing (`hit.ts`), the crunch, partials, contact and the shells' clank (`render.ts`, with `SCALE`, the reference crash's output scale, and `SHELL`), each model (`bodies.ts`), each material and the road (`targets.ts`, with `ROAD`), what breaks and falls (`parts.ts`), grit, trains and landings by surface (`textures.ts`) |
 | `src/audio/mixer.ts`, `src/audio/speaker.ts` | master gain, limiter, the street reverb and its return; the one-shot cap |
-| `src/audio/synth/*.ts` | each synth's own table: horns, tyre grounds and the skid's fade-in, the clunk (`BOTTOMED`), the scrape's materials, treads, voices, calls, bubbles |
+| `src/audio/synth/*.ts` | each synth's own table: horns, tyre grounds and the skid's fade-in, the clunk (`BOTTOMED`), the scrape's materials, treads, the scream and groan, calls, bubbles; the animal calls' contours, tracts and `MEOW_QUIET` (`synth/animals.ts`) |
+| `src/audio/speech/` | the lexicon, fillers, gibberish weights and `PROFANE` (`lines.ts`); timing, tempo, F0, tract and voice quality, the yell (`plan.ts`); the synth's bandwidths, glides and noise levels (`render.ts`) |
 
 Sources for the numbers: ISO 9613-1 (air absorption) and ISO 9613-2 (ground effect, foliage),
 Maekawa's barrier chart (diffraction), Thomas et al. 2013 (reverb in streets and in the open),
@@ -951,4 +1158,14 @@ durations (Locey et al. 2012, NHTSA fleet data), restitution (Cipriani 2002), cr
 (Houle and Sethna 1996), modal synthesis and contact spectra (van den Doel and Pai; Chadwick, Zheng
 and James 2012), PhISEM grain streams (Cook, STK), tempered glass (UN R43 Annex 5; Nielsen et al.
 2009), the W-beam's bands (a highway guard rail's contact-mic recording) and 16 crash recordings
-measured for the critique (Freesound CC0/CC BY, BBC Sound Effects for analysis only).
+measured for the critique (Freesound CC0/CC BY, BBC Sound Effects for analysis only). For speech:
+Pearsons, Bennett and Fidell 1977 (speech levels), Klatt 1980 and Klatt and Klatt 1990 (the
+synthesiser and voice quality), Ferrero 1972 (Italian vowels), Delattre, Liberman and Cooper 1955
+(consonant transitions), Stevens and Blumstein 1978 (bursts), Jongman, Wayland and Wong 2000
+(fricatives), Fujimura 1962 (nasals), Ladefoged and Maddieson 1996 (the trill), Esposito and Di
+Benedetto 1999, Bertinetto 1981 and D'Imperio and Rosenthall 1999 (Italian durations), Krämer 2009
+(Italian phonotactics), Pellegrino, Coupé and Marsico 2011 (speech rate), Titze 1994 (F0), Xue
+and Deliyski 2001 (elders' voices), Schulman 1989 (shouting), Bachorowski, Smoski and Owren 2001
+(laughter) and Stivers et al. 2009 (turn-taking). For animals: Padilla de la Torre et al. 2015
+(cattle calls), Riede and Fitch 1999 (dogs' vocal tracts), Schötz 2013 (meows), Engenharia
+Agrícola 2018 (piglets' squeals) and Rosenberg's glottal pulse.

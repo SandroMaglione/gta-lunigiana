@@ -1,30 +1,53 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Group, Vector3 } from "three"
+import { Group, Mesh, Vector3, type Object3D } from "three"
 
 import { tiltOf, turn } from "../sim/chassis.ts"
 import { lintTarget, STEP } from "../sim/index.ts"
+import { LOOK } from "../sim/testing.ts"
 import { VEHICLE_MODELS, VEHICLES } from "../sim/vehicles.ts"
-import { PersonNode, vehicleNode, wheelLayout } from "./actors.ts"
+import { vehicleNode, wheelLayout } from "./actors.ts"
+import { AnimalNode } from "./animals.ts"
 import { solidMaterial } from "./geometry.ts"
 import { yOf } from "./ground.ts"
 import { makeRegistries, placeVehicle } from "./index.ts"
+import { PersonNode } from "./people.ts"
+
+/** The x-ray proxy an actor shows now, if any: its one visible child drawn after the world (`renderOrder` 1). */
+const shownProxy = (node: Object3D): Mesh | undefined =>
+  node.children.find((c): c is Mesh => c instanceof Mesh && c.visible && c.renderOrder === 1)
 
 // Regression: detached vehicle nodes kept their x-ray geometry, so despawned traffic leaked GPU buffers.
-test("registries: a detached node frees its own geometry, not its vehicle's shared body", () => {
-  const { people, vehicles } = makeRegistries(new Group())
+test("registries: a detached node frees its own geometry (frames, pool, proxy), not its vehicle's shared body", () => {
+  const { people, animals, vehicles } = makeRegistries(new Group())
   const car = vehicles.ensure(1, () => vehicleNode("panda", 0xb8312b, solidMaterial))
-  const person = people.ensure(2, () => new PersonNode({ skin: 0xe7b896, hair: 0x2b1d14, shirt: 0xf0c93c, pants: 0x1d2b4f }, solidMaterial))
+  const person = people.ensure(2, () => new PersonNode(LOOK, solidMaterial, 2))
+  const cat = animals.ensure(3, () => new AnimalNode({ species: "cat", coat: 0x8a857c, patch: 0x4e4a45, size: 1 }, solidMaterial, 3))
   const freed = new Set<string>()
   const watch = (name: string, geometry: { addEventListener: (type: "dispose", listener: () => void) => void }) =>
     geometry.addEventListener("dispose", () => freed.add(name))
-  watch("car x-ray", car.xray.geometry)
+  car.showXray(true)
+  watch("car x-ray", shownProxy(car)!.geometry)
   watch("car body", car.body.geometry)
-  watch("person x-ray", person.xray.geometry)
-  person.frames.forEach((frame, i) => watch(`frame ${i}`, frame))
-  assert.ok(vehicles.remove(1) && people.remove(2))
-  assert.deepEqual([...freed].sort(), ["car x-ray", "frame 0", "frame 1", "frame 2", "person x-ray"])
+  // The person shows its walking, running and lying proxies in turn.
+  person.showXray(true)
+  for (const [gait, speed, down] of [["walk", 1.4, false], ["run", 4, false], ["lying", 0, true]] as const) {
+    person.speed = speed
+    person.lie(down, false)
+    person.pose()
+    watch(`person ${gait} x-ray`, shownProxy(person)!.geometry)
+  }
+  for (const [who, node] of [["person", person], ["cat", cat]] as const) {
+    watch(`${who} pool`, node.pool.geometry)
+    for (const [name, frame] of Object.entries(node.frames)) watch(`${who} ${name}`, frame)
+  }
+  assert.ok(vehicles.remove(1) && people.remove(2) && animals.remove(3))
+  assert.deepEqual([...freed].sort(), [
+    "car x-ray", "cat pool", "cat stand", "cat step1", "cat step2",
+    "person lying x-ray", "person pool", "person run x-ray", "person run1", "person run2", "person shock", "person stand", "person talk",
+    "person walk x-ray", "person walk1", "person walk2"
+  ])
   assert.equal(car.parent, null)
 })
 
@@ -37,8 +60,8 @@ test("the host schedules (render, audio) read the world and never write it", asy
     const steps = described.schedules.find((s) => s.name === name)?.steps ?? []
     const names = steps.flatMap((step) => (step.kind === "system" ? [step.system] : []))
     const systems = described.systems.filter((s) => names.includes(s.name))
-    // Sync and place people and vehicles, mark the driven car, draw the tyre marks and smoke.
-    if (name === "render") assert.equal(systems.length, 6)
+    // Sync and place people, animals and vehicles, mark the driven car, spread the blood pools, draw the tyre marks and smoke.
+    if (name === "render") assert.equal(systems.length, 9)
     assert.ok(systems.length > 0, `${name} has systems`)
     for (const s of systems) {
       const writes = [...s.queries.flatMap((q) => q.writes), ...s.resources.writes, ...s.events.writes, ...Object.values(s.commands).flat()]
@@ -63,7 +86,8 @@ test("a vehicle's node sits at its centre of mass between the last two steps, an
   placeVehicle(node, prev, pose, chassis, 1)
   near(node.position.y, yOf(300), "height at the current step")
   near(node.body.position.y, -cg, "the body hangs its ground line cg under the node")
-  near(node.xray.position.y, -cg, "and so does its x-ray proxy")
+  node.showXray(true)
+  near(shownProxy(node)!.position.y, -cg, "and so does its x-ray proxy")
   node.updateMatrixWorld(true)
   const tilt = tiltOf(chassis.pitch, chassis.roll), c = Math.cos(pose.angle), s = Math.sin(pose.angle)
   for (const w of wheels) {

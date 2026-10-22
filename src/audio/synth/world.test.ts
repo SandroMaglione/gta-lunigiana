@@ -9,7 +9,9 @@ import { WORLD_SHOTS, WORLD_VOICES } from "./world.ts"
 
 test("the world synths load in Node: no Web Audio at module top level", () => {
   assert.deepEqual(Object.keys(WORLD_VOICES).sort(), ["crickets", "water", "wind"])
-  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), ["bark", "bell", "bird", "groan", "scream", "shout", "step"])
+  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), [
+    "bark", "bell", "bird", "groan", "grunt", "hiss", "meow", "moo", "scream", "squeal", "step", "talk", "yell", "yelp"
+  ])
 })
 
 test("footsteps fall twice a second at a walk and three times at a sprint", () => {

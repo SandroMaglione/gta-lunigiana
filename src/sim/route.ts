@@ -8,9 +8,13 @@
 import { Ops, type Random } from "@typeonce/ritmo-math"
 
 import { carCircles, carRadius, clearOf } from "./body.ts"
-import { segmentDistance, staticGrid } from "./collide.ts"
+import { edgeIndex } from "./edges.ts"
 import { graph, MAP, roadClassOf, type Road, type Segment, wallsNear } from "./map/index.ts"
+import { residentsAlong } from "./population/density.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
+
+// The edge lookups live in ./edges.ts (density reads them without a cycle); route stays their public home.
+export { distanceToEdge, edgeIndex } from "./edges.ts"
 
 /** An edge as travelled: start point, unit direction, length, and the right-hand normal. */
 export interface Lane {
@@ -273,62 +277,47 @@ export const nextTrafficEdge = (node: number, arrived: number, model: VehicleMod
   return random.pick(pool) ?? leaving(node, arrived)
 }
 
-/** The walk edge to take after arriving at `node` along `arrived`: random, turning back only at dead ends. */
-export const nextWalkEdge = (node: number, arrived: number, random: Random.Random): Step => {
-  const options = graph.adjacency[node]!.filter((e) => e !== arrived && walkSet.has(e))
-  return leaving(node, random.pick(options) ?? arrived)
-}
-
-/** Every graph edge as a segment a -> b, indexed like `graph.edges`. */
-const chords: ReadonlyArray<Segment> = graph.edges.map((e) => {
-  const a = graph.nodes[e.a]!, b = graph.nodes[e.b]!
-  return { ax: a.x, ay: a.y, bx: b.x, by: b.y }
-})
-
-/** Distance from (x, y) to the centreline of `edge`. */
-export const distanceToEdge = (edge: number, x: number, y: number): number => segmentDistance(chords[edge]!, x, y)
-
-/** Midpoint of every graph edge, indexed like `graph.edges`. */
-const midpoints: ReadonlyArray<{ readonly x: number; readonly y: number }> = chords.map((c) => ({ x: (c.ax + c.bx) / 2, y: (c.ay + c.by) / 2 }))
-
-/** Grid cell of `edgeIndex`, m (edges are at most ~25 m). */
-const EDGE_CELL = 32
-
 /**
- * Lookups over a fixed set of graph edges through a grid of their chords, so that no query scans
- * the whole map. `nearest`: the edge whose centreline is nearest (x, y), the first of `edges` on a
- * tie. `around`: the edges whose midpoint is `min` to `max` m from (x, y), in a fixed order, in an
- * array reused by the next call.
+ * How far down each way a walker at a junction looks, m (TUNED: about a village block). Residents are counted within
+ * `EDGE_REACH` (60 m) of each walk edge, so the edges meeting at a junction all count about the same houses: a way is weighed
+ * by where it leads instead, so that a lane out of the village counts the fields it runs into, not the houses at its corner.
  */
-export const edgeIndex = (edges: ReadonlyArray<number>) => {
-  const grid = staticGrid(edges.length, (k) => {
-    const c = chords[edges[k]!]!
-    return [Math.min(c.ax, c.bx), Math.min(c.ay, c.by), Math.max(c.ax, c.bx), Math.max(c.ay, c.by)]
-  }, EDGE_CELL)
-  const found: Array<number> = []
-  return {
-    nearest: (x: number, y: number): number => {
-      let best = 0, distance = Number.MAX_VALUE
-      const visit = (k: number) => {
-        const d = distanceToEdge(edges[k]!, x, y)
-        if (d < distance || (d === distance && k < best)) [best, distance] = [k, d]
-      }
-      // An edge outside the box is farther than r: once one inside is within r, it is the nearest.
-      for (let r = EDGE_CELL; r < 1e6; r *= 2) {
-        grid(x - r, y - r, x + r, y + r, visit)
-        if (distance <= r) break
-      }
-      return edges[best]!
-    },
-    around: (x: number, y: number, [min, max]: readonly [number, number]): ReadonlyArray<number> => {
-      found.length = 0
-      grid(x - max, y - max, x + max, y + max, (k) => {
-        const m = midpoints[edges[k]!]!, d2 = (m.x - x) ** 2 + (m.y - y) ** 2
-        if (d2 >= min * min && d2 <= max * max) found.push(edges[k]!)
-      })
-      return found
+const WALK_AHEAD = 120
+/** `wayAhead` of every step (by `key`), filled in on first use: -1 until then. */
+const ahead = new Float32Array(graph.edges.length * 2).fill(-1)
+/**
+ * The residents along the most lived-in walk edge `WALK_AHEAD` m down `step` (or at a dead end before that): where the way
+ * leads. A breadth-first search over the walk edges, each edge visited once.
+ */
+const wayAhead = (step: Step): number => {
+  const k = key(step)
+  if (ahead[k]! >= 0) return ahead[k]!
+  let most = 0
+  const seen = new Set([step.edge])
+  const queue: Array<{ readonly step: Step; readonly gone: number }> = [{ step, gone: graph.edges[step.edge]!.length }]
+  for (let i = 0; i < queue.length; i++) {
+    const { step: s, gone } = queue[i]!
+    const node = endNode(s.edge, s.forward)
+    const on = gone < WALK_AHEAD ? graph.adjacency[node]!.filter((e) => walkSet.has(e) && !seen.has(e)) : []
+    if (on.length === 0) most = Math.max(most, residentsAlong(s.edge))
+    for (const e of on) {
+      seen.add(e)
+      queue.push({ step: leaving(node, e), gone: gone + graph.edges[e]!.length })
     }
   }
+  return (ahead[k] = most)
+}
+/**
+ * Every way out of a junction is taken with this weight on top of its `wayAhead` residents, TUNED: walkers keep to the streets
+ * people live on, and a lane out into the fields (no residents ahead) still draws about one walker in 35 where a typical village
+ * street (17 residents, the median of the peopled walk edges) is the other way.
+ */
+const WALK_FLOOR = 0.5
+
+/** The walk edge to take after arriving at `node` along `arrived`: weighted by the residents the way leads to, turning back only at dead ends. */
+export const nextWalkEdge = (node: number, arrived: number, random: Random.Random): Step => {
+  const options = graph.adjacency[node]!.filter((e) => e !== arrived && walkSet.has(e)).map((e) => leaving(node, e))
+  return random.weighted(options, (step) => wayAhead(step) + WALK_FLOOR) ?? leaving(node, arrived)
 }
 
 /** Lookups on the whole traffic and walk networks. */

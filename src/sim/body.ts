@@ -119,9 +119,9 @@ export const carClear = (model: VehicleModel, pose: PoseValue, slack = 0): boole
 
 const CENTRE: ReadonlyArray<Vec2.Vec2> = [Vec2.zero]
 
-/** Moves a person's circle from `at` by `delta`, sliding along walk walls and never through them. */
-export const walkBy = (at: Vec2.Vec2, delta: Vec2.Vec2) =>
-  moveCircles(at, CENTRE, delta, PERSON_RADIUS, wallsAlong("walk", at.x, at.y, delta.x, delta.y, PERSON_RADIUS + 0.5))
+/** Moves a body's circle of radius `r` (a person's by default) from `at` by `delta`, sliding along walk walls and never through them. */
+export const walkBy = (at: Vec2.Vec2, delta: Vec2.Vec2, r = PERSON_RADIUS) =>
+  moveCircles(at, CENTRE, delta, r, wallsAlong("walk", at.x, at.y, delta.x, delta.y, r + 0.5))
 
 /** Speed along the heading `angle` (negative when reversing). */
 export const forwardSpeed = (motion: { readonly vx: number; readonly vy: number }, angle: number): number =>

@@ -77,7 +77,7 @@ const onSegment = (s: RoadSegment, x: number, y: number): number | undefined => 
 }
 
 /** A bridge deck or tunnel within this height (m) of where an actor was is the one it is on. */
-const ON_DECK = 0.5
+export const ON_DECK = 0.5
 
 /**
  * Where an actor at (x, y) stands, m a.s.l. At-grade roads are part of the ground: where several

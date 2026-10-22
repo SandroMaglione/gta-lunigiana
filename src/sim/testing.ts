@@ -18,15 +18,20 @@ import type { Ground, StepResult } from "./dynamics.ts"
 import type { HandlingValue } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
 import {
-  Autopilot, bindings, CarInput, Chassis, type ChassisValue, Down, Game, Handling, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
-  type PoseValue, PrevPose, Route, Score, setup, Stolen, Traffic, update, Vehicle
+  Animal, Autopilot, bindings, CarInput, Chassis, type ChassisValue, Cry, Dead, Down, Follows, Game, Handling, Honk, Impact, KeyboardInput, type Look, makeRuntime, Motion, Pedestrian,
+  Person, Player, PlayerView, Pose, type PoseValue, PrevPose, Roam, Route, Score, setup, Stolen, Traffic, update, Vehicle, Witness
 } from "./index.ts"
 import { graph } from "./map/index.ts"
 import { edgeIndex, endNode, facesForward, laneOf, lanePoint, laneSide, nextTrafficEdge, roadOf, type Step } from "./route.ts"
-import { type parkedCar, type pedestrian, rollingChassis, trafficCar } from "./spawning.ts"
+import { type animal, type parkedCar, type pedestrian, rollingChassis, trafficCar } from "./spawning.ts"
 import { advance } from "./systems/physics.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
+
+/** A grown man's look, for the people tests stage: what he looks like does not matter to them. */
+export const LOOK: Look = {
+  skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f, age: "adult", female: false, outfit: "trousers", hairdo: "short", height: 1.75
+}
 
 /** Scripted keys, frame by frame. */
 export type Timeline = Keyboard.Timeline<typeof bindings>
@@ -47,7 +52,18 @@ export const World = Game.Inspector("Test/World", {
         pilot: Game.Query.optional(Autopilot)
       }
     }),
-    peds: Game.Query({ selection: { pose: Game.Query.read(Pose), ped: Game.Query.read(Pedestrian), down: Game.Query.optional(Down) } })
+    peds: Game.Query({
+      selection: {
+        pose: Game.Query.read(Pose), motion: Game.Query.read(Motion), ped: Game.Query.read(Pedestrian), look: Game.Query.read(Person), route: Game.Query.read(Route),
+        follows: Game.Query.optional(Follows), down: Game.Query.optional(Down), dead: Game.Query.optional(Dead), witness: Game.Query.optional(Witness)
+      }
+    }),
+    animals: Game.Query({
+      selection: {
+        pose: Game.Query.read(Pose), motion: Game.Query.read(Motion), animal: Game.Query.read(Animal), roam: Game.Query.read(Roam),
+        follows: Game.Query.optional(Follows), down: Game.Query.optional(Down), dead: Game.Query.optional(Dead)
+      }
+    })
   },
   resources: { score: Game.System.readResource(Score), handling: Game.System.readResource(Handling) }
 }, ({ queries, resources }) => ({
@@ -55,7 +71,18 @@ export const World = Game.Inspector("Test/World", {
     id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.vehicle.get(), input: data.input.get(), chassis: data.chassis.get(), traffic: data.traffic.present,
     stolen: data.stolen.present, route: data.route.value(), pilot: data.pilot.value()
   })),
-  peds: queries.peds.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), ...data.ped.get(), down: data.down.present })),
+  peds: queries.peds.each().map(({ entity, data }) => {
+    const follows = data.follows.value()
+    return {
+      id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.ped.get(), look: data.look.get(), route: data.route.get(),
+      leader: follows === undefined ? undefined : Game.Entity.id(follows.leader), down: data.down.present, dead: data.dead.value()?.since,
+      witness: data.witness.present
+    }
+  }),
+  animals: queries.animals.each().map(({ entity, data }) => ({
+    id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.animal.get(), ...data.roam.get(),
+    leader: data.follows.value() === undefined ? undefined : Game.Entity.id(data.follows.value()!.leader), down: data.down.present, dead: data.dead.value()?.since
+  })),
   score: resources.score.get(),
   handling: resources.handling.get()
 }))
@@ -65,6 +92,17 @@ interface Cast {
   readonly cars?: ReadonlyArray<ReturnType<typeof parkedCar>>
   readonly traffic?: ReadonlyArray<ReturnType<typeof trafficCar>>
   readonly peds?: ReadonlyArray<ReturnType<typeof pedestrian>>
+  readonly animals?: ReadonlyArray<ReturnType<typeof animal>>
+  /** People and animals lying dead since the first step. */
+  readonly bodies?: ReadonlyArray<ReturnType<typeof pedestrian>>
+  readonly carcasses?: ReadonlyArray<ReturnType<typeof animal>>
+  /** A leader (lying dead, when `dead`) and who walks with it, people and animals (a dog on a lead), each at its place (see `Follows`). */
+  readonly parties?: ReadonlyArray<{
+    readonly leader: ReturnType<typeof pedestrian>
+    readonly dead?: boolean
+    readonly people?: ReadonlyArray<{ readonly draft: ReturnType<typeof pedestrian>; readonly side: number; readonly back: number }>
+    readonly animals?: ReadonlyArray<{ readonly draft: ReturnType<typeof animal>; readonly side: number; readonly back: number }>
+  }>
 }
 
 /** Moves the player (on foot) to `at`. */
@@ -84,45 +122,78 @@ export const stage = (at: PoseValue, cast: Cast = {}) =>
     Game.System("Test/Clear", {
       queries: {
         vehicles: Game.Query({ selection: { vehicle: Game.Query.read(Vehicle) } }),
-        peds: Game.Query({ selection: { ped: Game.Query.read(Pedestrian) } })
+        peds: Game.Query({ selection: { ped: Game.Query.read(Pedestrian) } }),
+        animals: Game.Query({ selection: { animal: Game.Query.read(Animal) } })
       },
-      commands: Game.System.commands(Game.System.despawns(Vehicle, Pedestrian))
+      commands: Game.System.commands(Game.System.despawns(Vehicle, Pedestrian, Animal))
     }, ({ queries, commands }) => {
       for (const { entity } of queries.vehicles.each()) commands.despawn(entity)
       for (const { entity } of queries.peds.each()) commands.despawn(entity)
+      for (const { entity } of queries.animals.each()) commands.despawn(entity)
     }),
     teleport(at),
     Game.Schedule.applyDeferred(),
     Game.System("Test/Spawn", {
-      commands: Game.System.commands(Game.System.spawns(Vehicle, Pose, PrevPose, Motion, CarInput, Traffic, Route, Autopilot, Pedestrian, Person))
+      commands: Game.System.commands(Game.System.spawns(Vehicle, Pose, PrevPose, Motion, CarInput, Traffic, Route, Autopilot, Pedestrian, Person, Animal, Roam, Follows, Dead))
     }, ({ commands }) => {
       for (const car of cast.cars ?? []) commands.spawn(car)
       for (const car of cast.traffic ?? []) commands.spawn(car)
       for (const ped of cast.peds ?? []) commands.spawn(ped)
+      for (const beast of cast.animals ?? []) commands.spawn(beast)
+      for (const body of cast.bodies ?? []) commands.spawn(Game.Command.extend(body, [Dead, { since: 0 }]))
+      for (const body of cast.carcasses ?? []) commands.spawn(Game.Command.extend(body, [Dead, { since: 0 }]))
+      for (const party of cast.parties ?? []) {
+        const leader = Game.Entity.handle(commands.spawn(party.dead === true ? Game.Command.extend(party.leader, [Dead, { since: 0 }]) : party.leader), Pedestrian)
+        for (const { draft, side, back } of party.people ?? []) commands.spawn(Game.Command.extend(draft, [Follows, { leader, side, back }]))
+        for (const { draft, side, back } of party.animals ?? []) commands.spawn(Game.Command.extend(draft, [Follows, { leader, side, back }]))
+      }
+    }),
+    Game.Schedule.applyDeferred()
+  )
+
+/** Despawns every vehicle, pedestrian and animal not in `keep`: what Populate brings in, the step it comes. */
+const keepOnly = (keep: ReadonlySet<number>) =>
+  Game.Schedule(
+    Game.System("Test/Alone", {
+      queries: {
+        vehicles: Game.Query({ selection: { vehicle: Game.Query.read(Vehicle) } }),
+        peds: Game.Query({ selection: { ped: Game.Query.read(Pedestrian) } }),
+        animals: Game.Query({ selection: { animal: Game.Query.read(Animal) } })
+      },
+      commands: Game.System.commands(Game.System.despawns(Vehicle, Pedestrian, Animal))
+    }, ({ queries, commands }) => {
+      for (const { entity } of [...queries.vehicles.each(), ...queries.peds.each(), ...queries.animals.each()]) if (!keep.has(entity.id)) commands.despawn(entity)
     }),
     Game.Schedule.applyDeferred()
   )
 
 /**
  * A runtime after setup (and `staging`, if given) driven by `timeline`: run frames, inspect the world and the player's view,
- * and read every event emitted so far (`heard`, in emission order).
+ * and read every event emitted so far (`heard`, in emission order). `alone`: no one else ever comes (what Populate spawns goes
+ * at once), so a staged scene plays out undisturbed by traffic and passers-by.
  */
-export const start = (timeline: Timeline = [], staging?: readonly [PoseValue, Cast?]) => {
+export const start = (timeline: Timeline = [], staging?: readonly [PoseValue, Cast?], options: { readonly alone?: boolean } = {}) => {
   const made = makeRuntime({ seed: 1, services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.scripted(bindings, timeline))) })
   assert.ok(made.ok)
   const runtime = made.value
   assert.ok(runtime.tick(setup).ok)
   if (staging !== undefined) assert.ok(runtime.tick(stage(...staging)).ok)
-  const heard = { impacts: new Array<Descriptor.Descriptor.Value<typeof Impact>>(), honks: new Array<Descriptor.Descriptor.Value<typeof Honk>>() }
+  const heard = {
+    impacts: new Array<Descriptor.Descriptor.Value<typeof Impact>>(), honks: new Array<Descriptor.Descriptor.Value<typeof Honk>>(),
+    cries: new Array<Descriptor.Descriptor.Value<typeof Cry>>()
+  }
   const listen = Game.Schedule(Game.System("Test/Listen", {
-    events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk) }
+    events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), cries: Game.System.readEvent(Cry) }
   }, ({ events }) => {
     heard.impacts.push(...events.impacts.all())
     heard.honks.push(...events.honks.all())
+    heard.cries.push(...events.cries.all())
   }))
+  const cast = runtime.inspect(World)
+  const alone = keepOnly(new Set<number>([...cast.vehicles, ...cast.peds, ...cast.animals].map((body) => body.id)))
   const run = (frames: number, each: (frame: number) => void = () => {}) => {
     for (let i = 0; i < frames; i++) {
-      const ran = runtime.tick(update, listen)
+      const ran = options.alone === true ? runtime.tick(update, alone, listen) : runtime.tick(update, listen)
       assert.ok(ran.ok, JSON.stringify(ran))
       each(i)
     }

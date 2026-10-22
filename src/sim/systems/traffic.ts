@@ -2,6 +2,7 @@ import { Clock } from "@typeonce/ritmo"
 import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, wrapAngle } from "../body.ts"
+import { FAUNA } from "../fauna.ts"
 import { GRAVITY, rigFor, RIGS } from "../chassis.ts"
 import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { graph } from "../map/index.ts"
@@ -10,7 +11,7 @@ import {
   nextTrafficEdge, roadOf, walkSide
 } from "../route.ts"
 import {
-  Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
+  Animal, Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
 } from "../schema.ts"
 import { PERSON_RADIUS } from "../tuning.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
@@ -101,10 +102,11 @@ const arrived = (lane: Lane, along: number, at: { readonly x: number; readonly y
 /**
  * AI drivers on graph.trafficEdges: keep right (Route.side), steer at a point
  * ahead along this edge and the next, pick the next edge at random at each
- * node, slow for sharp turns and for anything in a cone ahead, and back up
- * along the lane after standing still for 3 s (sometimes turning round, and
- * always from its second time on, dead end or not); waiting for a person
- * ahead on the carriageway counts four times slower. Half-way to backing up
+ * node, slow for sharp turns and for anything in a cone ahead (people and
+ * animals, living or dead, included), and back up along the lane after
+ * standing still for 3 s (sometimes turning round, and always from its second
+ * time on, dead end or not); waiting for a person or an animal ahead on the
+ * carriageway counts four times slower. Half-way to backing up
  * it honks, once (a Honk event).
  */
 export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
@@ -122,7 +124,8 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       with: [Traffic]
     }),
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose), vehicle: Game.Query.read(Vehicle) } }),
-    people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving] })
+    people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving] }),
+    animals: Game.Query({ selection: { pose: Game.Query.read(Pose), animal: Game.Query.read(Animal) } })
   },
   resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
   events: { honk: Game.System.writeEvent(Honk) }
@@ -130,8 +133,13 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
   const { step } = resources.time.get(), handling = resources.handling.get()
   const random = Random.draw(resources.rng)
   const obstacles = [
-    ...queries.vehicles.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: VEHICLES[data.vehicle.get().model].length / 2, person: false })),
-    ...queries.people.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: PERSON_RADIUS, person: true }))
+    ...queries.vehicles.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: VEHICLES[data.vehicle.get().model].length / 2, movesOn: false })),
+    ...queries.people.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: PERSON_RADIUS, movesOn: true })),
+    // An animal, standing or lying in the road, is waited for as a person is: it usually moves on, or someone clears it.
+    ...queries.animals.each().map(({ entity, data }) => {
+      const { species, size } = data.animal.get()
+      return { id: entity.id, ...data.pose.get(), half: FAUNA[species].radius * size, movesOn: true }
+    })
   ]
   for (const { entity, data } of queries.cars.each()) {
     const pose = data.pose.get()
@@ -186,7 +194,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     const inWay = (edge: number, p: { readonly x: number; readonly y: number }) =>
       distanceToEdge(edge, p.x, p.y) < Math.max(roadOf(edge).w / 2, walkSide(roadOf(edge))) + PERSON_RADIUS
     const onRoad = (p: { readonly x: number; readonly y: number }) => inWay(route.edge, p) || inWay(pilot.next, p)
-    // Whether the nearest thing held back for is a person in the way (ahead of the bumper, on the carriageway or its verge), who moves on.
+    // Whether the nearest thing held back for is a person or an animal in the way (ahead of the bumper, on the carriageway or its verge), which moves on.
     let forPerson = false
     for (const other of obstacles) {
       if (other.id === entity.id) continue
@@ -194,7 +202,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       const front = rx * fx + ry * fy
       if (front <= 0 || front > range + other.half || Math.abs(ry * fx - rx * fy) >= CONE_HALF_WIDTH) continue
       const limit = Math.max(0, (front - spec.length / 2 - other.half - GAP) * 0.8)
-      if (limit < want) [want, forPerson] = [limit, other.person && front > spec.length / 2 && onRoad(other)]
+      if (limit < want) [want, forPerson] = [limit, other.movesOn && front > spec.length / 2 && onRoad(other)]
     }
 
     const holding = want < 0.5 && Math.abs(speed) < 0.5, slow = Math.abs(speed) < 0.5
@@ -202,7 +210,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       ? { throttle: slow ? 0 : throttleFor(0, speed), steer: slow ? 0 : steer, handbrake: slow }
       : holding ? { throttle: 0, steer, handbrake: true } : { throttle: throttleFor(want, speed), steer, handbrake: false })
 
-    // Stopped (or grinding along a wall) counts up, waiting for a person in the way only every PERSON_PATIENCE steps; only real progress resets it.
+    // Stopped (or grinding along a wall) counts up, waiting for a person or an animal in the way only every PERSON_PATIENCE steps; only real progress resets it.
     const counts = !forPerson || step % PERSON_PATIENCE === 0
     const stuck = Math.abs(speed) < STUCK_SPEED ? pilot.stuck + (counts ? 1 : 0) : Math.abs(speed) > MOVING_SPEED ? 0 : pilot.stuck
     if (stuck >= HONK_STEPS && pilot.stuck < HONK_STEPS) events.honk.emit({ car: entity.id, model, x: pose.x, y: pose.y })

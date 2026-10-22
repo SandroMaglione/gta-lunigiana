@@ -13,7 +13,11 @@ export const PALETTE = {
   grassDry: 0xb4b06a, grass: 0x7d9447, forestLight: 0x62783f, forest: 0x47592f,
   forestDark: 0x2c3d22, conifer: 0x1b2c24, dirtTrack: 0x8f7a58, waterShallow: 0x8db4b0,
   waterDeep: 0x3f6d63, asphalt: 0x4b4d50, asphaltWorn: 0x74746f, carabinieriBlue: 0x1d2b4f,
-  signalRed: 0xb8312b, signYellow: 0xf0c93c
+  signalRed: 0xb8312b, signYellow: 0xf0c93c,
+  // Not from the village photos: what the people and animals wear and bleed. A flat cap's tweed in two muted weaves, worn
+  // dark leather shoes, the pink of a snout or an udder, a dark nose, a cow's pale horn, and a pool of blood, dark red as it
+  // soaks into stone and asphalt.
+  tweedBrown: 0x6e624d, tweedGrey: 0x5c5d55, shoe: 0x2e2621, snoutPink: 0xe2a29a, nose: 0x1c1a19, horn: 0xd8cdb4, blood: 0x6b0d10
 } as const satisfies Record<string, number>
 
 /** `#rrggbb` CSS string of a palette (or any sRGB hex) colour. */

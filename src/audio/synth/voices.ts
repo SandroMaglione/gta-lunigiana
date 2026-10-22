@@ -1,5 +1,6 @@
 /**
- * Human cues by formant synthesis, kept short and tasteful: a sawtooth glottis following an F0
+ * Non-verbal human cues by formant synthesis, kept short and tasteful (words are speech's, in
+ * `src/audio/speech`): a sawtooth glottis following an F0
  * contour, plus breath noise, through three vowel formants, roughened by fast amplitude
  * modulation (30–150 Hz is what makes a scream a scream; speech moves at 4–5 Hz, Arnal et al.
  * 2015). Live graphs, since every person keeps their own pitch. Dogs bark through the same tract.
@@ -14,8 +15,6 @@ type Formants = readonly [number, number, number]
 /** Vowel formants F1–F3, Hz (Peterson & Barney 1952 averages). */
 const VOWELS = {
   aMale: [730, 1090, 2440], aFemale: [850, 1220, 2810],
-  eMale: [530, 1840, 2480], eFemale: [610, 2330, 2990],
-  iMale: [270, 2290, 3010], iFemale: [310, 2790, 3310],
   oMale: [570, 840, 2410], oFemale: [590, 920, 2710]
 } as const satisfies Record<string, Formants>
 
@@ -28,8 +27,6 @@ export interface Vocal {
   /** F0 contour, Hz: at the start, at 30 % of the way, at the end. */
   readonly f0: readonly [number, number, number]
   readonly vowel: Formants
-  /** Formants the vowel glides to over its second half ("Ehi!": /ɛ/ to /i/). */
-  readonly glide?: Formants
   readonly seconds: number
   /** Roughness 0…1: depth of the amplitude modulation at `roughHz`. */
   readonly rough: number
@@ -54,12 +51,7 @@ export const vocalise = (io: ShotIo, vocal: Vocal, t: number): number => {
   const rasp = new GainNode(ctx, { gain: 1 - rough / 2 }), wobble = new OscillatorNode(ctx, { frequency: vocal.roughHz })
   wobble.connect(new GainNode(ctx, { gain: rough / 2 })).connect(rasp.gain)
   vocal.vowel.forEach((hz, i) => {
-    const formant = new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: hz / BANDWIDTHS[i]! })
-    if (vocal.glide !== undefined) {
-      formant.frequency.setValueAtTime(hz, t + seconds * 0.5)
-      formant.frequency.linearRampToValueAtTime(vocal.glide[i]!, end)
-    }
-    source.connect(formant).connect(new GainNode(ctx, { gain: LEVELS[i] })).connect(rasp)
+    source.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: hz / BANDWIDTHS[i]! })).connect(new GainNode(ctx, { gain: LEVELS[i] })).connect(rasp)
   })
   const envelope = new GainNode(ctx, { gain: 0 }), attack = Math.min(0.04, seconds * 0.25), release = Math.min(0.12, seconds * 0.4)
   rasp.connect(envelope).connect(io.out)
@@ -77,18 +69,14 @@ export const vocalise = (io: ShotIo, vocal: Vocal, t: number): number => {
   return end + 0.02
 }
 
-type Cue = "scream" | "shout" | "groan"
+type Cue = "scream" | "groan"
 type Sex = "male" | "female"
 
-/** Each cue per sex (synthesis.md §8; male screams, female shouts and groans TUNED from the others; `peak` TUNED by rendering). */
+/** Each cue per sex (synthesis.md §8; male screams and female groans TUNED from the others; `peak` TUNED by rendering). */
 const CUES = {
   scream: {
     male: { f0: [420, 560, 360], vowel: VOWELS.aMale, seconds: 0.8, rough: 0.7, roughHz: 70, breath: 1.2, peak: 1.5 },
     female: { f0: [700, 950, 600], vowel: VOWELS.aFemale, seconds: 0.9, rough: 0.7, roughHz: 80, breath: 1.2, peak: 0.8 }
-  },
-  shout: {
-    male: { f0: [200, 280, 170], vowel: VOWELS.eMale, glide: VOWELS.iMale, seconds: 0.35, rough: 0.2, roughHz: 60, breath: 1, peak: 1.25 },
-    female: { f0: [320, 440, 280], vowel: VOWELS.eFemale, glide: VOWELS.iFemale, seconds: 0.35, rough: 0.2, roughHz: 60, breath: 1, peak: 2 }
   },
   groan: {
     male: { f0: [130, 110, 85], vowel: VOWELS.oMale, seconds: 0.8, rough: 0.35, roughHz: 40, breath: 1.4, peak: 1.2 },
@@ -111,15 +99,12 @@ const utter = (cue: Cue): Shot<Extract<OneShot, { readonly kind: Cue }>> => ({
       ...base,
       f0: [base.f0[0] * f0, base.f0[1] * f0, base.f0[2] * f0],
       vowel: scale(base.vowel),
-      glide: base.glide === undefined ? undefined : scale(base.glide),
       seconds: base.seconds * jitter(0.1)
     }, when)
   }
 })
 
-/** A terrified scream (a pedestrian fleeing or knocked down). */
+/** A terrified scream (a pedestrian in danger). */
 export const scream = utter("scream")
-/** "Ehi!": someone shouting at a driver. */
-export const shout = utter("shout")
 /** A pained groan from someone on the ground. */
 export const groan = utter("groan")

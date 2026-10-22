@@ -2,8 +2,9 @@
  * The director: the brain of proximity and physical behaviour between the `Heard` frames of the
  * audio schedule and a `Speaker`. Each frame it finds the listener's ears (and the cabin around
  * them), the masking floor, how enclosed the street is and the rock faces that echo, lets its
- * vehicle, people and world parts place every sound through the acoustic chain (hearing.ts), keeps
- * the loudest voices of each kind up to their caps, and flushes the speaker. Pure TypeScript: Node
+ * parts place every sound through the acoustic chain (hearing.ts), keeps
+ * the loudest voices of each kind up to their caps, and flushes the speaker. Its parts: vehicles,
+ * people (steps and cries), talk (conversations), animals and the world around. Pure TypeScript: Node
  * tests drive it with a recording speaker, a seeded random source and a fake wall clock.
  *
  * Time is the speaker's: before its context exists (and while it is suspended) no time passes;
@@ -17,8 +18,10 @@ import { EAR_HEIGHT } from "../acoustics.ts"
 import { echoesAt, type Echo } from "../places.ts"
 import type { Heard, Speaker } from "../types.ts"
 import { commit, groundAt, makeFrame, type Offer } from "./frame.ts"
+import { makeAnimals } from "./animals.ts"
 import { makeOccluder } from "./occluder.ts"
 import { makePeople } from "./people.ts"
+import { makeTalk } from "./talk.ts"
 import { makeVehicles } from "./vehicles.ts"
 import { makeWorld, type WallClock } from "./world.ts"
 
@@ -35,13 +38,14 @@ const localTime = (): WallClock => {
   return { hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() }
 }
 
-/** The director playing through `speaker`; `random` drives birds and dogs, `clock` the bells (local time by default). */
+/** The director playing through `speaker`; `random` drives birds, dogs, animal calls and what people say, `clock` the bells (local time by default). */
 export const makeDirector = (
   speaker: Speaker,
   options: { readonly random?: () => number; readonly clock?: () => WallClock } = {}
 ): { readonly hear: (heard: Heard) => void } => {
   const random = options.random ?? Math.random
-  const occluder = makeOccluder(), vehicles = makeVehicles(), people = makePeople(), world = makeWorld(options.clock ?? localTime)
+  const occluder = makeOccluder(), vehicles = makeVehicles(), people = makePeople(), talk = makeTalk(), animals = makeAnimals()
+  const world = makeWorld(options.clock ?? localTime)
   let last: number | undefined, ground: number | undefined
   let held: ReadonlySet<string> = new Set()
   let faces: { readonly x: number; readonly y: number; readonly at: number; readonly echoes: ReadonlyArray<Echo> } | undefined
@@ -68,6 +72,8 @@ export const makeDirector = (
       })
       vehicles.hear(frame)
       people.hear(frame)
+      talk.hear(frame)
+      animals.hear(frame)
       world.hear(frame)
       if (live) occluder.refresh(now)
       held = commit(offers, speaker, held)

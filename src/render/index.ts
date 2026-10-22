@@ -1,10 +1,11 @@
 /**
- * The render schedule: mirrors people and vehicles into three nodes with RenderSync, places them
- * between fixed steps (PrevPose → Pose at the loop's alpha), people on the ground or road under
- * them and vehicles at their centre of mass from their Chassis, marks the player's car for the
- * x-ray silhouette, and lays tyre marks and smoke from the Skid events. Read-only towards the
- * world (index.test.ts checks every system's declared access); the host ticks it once per
- * animation frame after writing `RenderClock.alpha`.
+ * The render schedule: mirrors people, animals and vehicles into three nodes with RenderSync,
+ * places them between fixed steps (PrevPose → Pose at the loop's alpha), people and animals on the
+ * ground or road under them in the frame for what they do, and vehicles at their centre of mass
+ * from their Chassis, spreads the blood pools under the dead, marks the player's car for the x-ray
+ * silhouette, and lays tyre marks and smoke from the Skid events. Read-only towards the world
+ * (index.test.ts checks every system's declared access); the host ticks it once per animation
+ * frame after writing `RenderClock.alpha`.
  *
  * @module render
  */
@@ -14,22 +15,27 @@ import type { Object3D } from "three"
 
 import { wrapAngle } from "../sim/body.ts"
 import {
-  Chassis, type ChassisValue, Down, Driving, Game, Person, Player, Pose, type PoseValue, PrevPose, Skid, STEP, Time, Vehicle
+  Animal, Chassis, type ChassisValue, Dead, Down, Driving, Game, Motion, Pedestrian, Person, Player, Pose, type PoseValue, PrevPose, Skid, STEP,
+  Time, Vehicle
 } from "../sim/index.ts"
-import { type ActorNode, PersonNode, type VehicleNode, vehicleNode } from "./actors.ts"
+import { type ActorNode, type VehicleNode, vehicleNode } from "./actors.ts"
+import { AnimalNode } from "./animals.ts"
 import { solidMaterial } from "./geometry.ts"
-import { groundY, yOf } from "./ground.ts"
+import { yOf } from "./ground.ts"
 import { Marks, TREAD } from "./marks.ts"
+import { PersonNode } from "./people.ts"
 import { Smoke } from "./smoke.ts"
 
 /** Person nodes, one per entity with a Person. */
 export const People = Descriptor.Service<NodeRegistry.NodeRegistry<PersonNode>>()("Lunigiana/PeopleNodes")
+/** Animal nodes, one per entity with an Animal. */
+export const Animals = Descriptor.Service<NodeRegistry.NodeRegistry<AnimalNode>>()("Lunigiana/AnimalNodes")
 /** Vehicle nodes, one per entity with a Vehicle. */
 export const Vehicles = Descriptor.Service<NodeRegistry.NodeRegistry<VehicleNode>>()("Lunigiana/VehicleNodes")
 /** Mutable host object: the loop writes `alpha` (fraction of a step since the last one) before ticking `render`. */
 export const RenderClock = Descriptor.Service<{ readonly alpha: number }>()("Lunigiana/RenderClock")
 
-/** The two registries, attaching nodes under `parent` and freeing them on detach. */
+/** The three registries, attaching nodes under `parent` and freeing them on detach. */
 export const makeRegistries = (parent: Object3D) => {
   const options = {
     attach: (node: ActorNode) => parent.add(node),
@@ -38,7 +44,7 @@ export const makeRegistries = (parent: Object3D) => {
       node.dispose()
     }
   }
-  return { people: NodeRegistry.make<PersonNode>(options), vehicles: NodeRegistry.make<VehicleNode>(options) }
+  return { people: NodeRegistry.make<PersonNode>(options), animals: NodeRegistry.make<AnimalNode>(options), vehicles: NodeRegistry.make<VehicleNode>(options) }
 }
 
 /** The map's tyre marks and smoke, under `parent` for the page's life. */
@@ -54,14 +60,36 @@ const SyncPeople = RenderSync.system(Game, {
   name: "Lunigiana/SyncPeople",
   renderable: Person,
   registry: People,
-  select: { driving: Game.Query.optional(Driving), down: Game.Query.optional(Down), player: Game.Query.optional(Player) },
-  // PrevPose is written every step, so apply also sees Driving and Down going away.
-  redrawOn: [Driving, Down, PrevPose],
-  create: ({ renderable }) => new PersonNode(renderable, solidMaterial),
-  apply: (node, { data }) => {
+  select: {
+    driving: Game.Query.optional(Driving), down: Game.Query.optional(Down), dead: Game.Query.optional(Dead), player: Game.Query.optional(Player),
+    pedestrian: Game.Query.optional(Pedestrian), motion: Game.Query.read(Motion)
+  },
+  resources: { time: Time },
+  // PrevPose is written every step, so apply also sees Driving and Down going away, and keeps the speed and clock current.
+  redrawOn: [Driving, Down, Dead, Pedestrian, PrevPose],
+  create: ({ renderable, entity }) => new PersonNode(renderable, solidMaterial, entity),
+  apply: (node, { data, resources }) => {
     node.visible = !data.driving.present
-    node.rotation.z = data.down.present ? -Math.PI / 2 : 0
-    node.xray.visible = data.player.present
+    node.lie(data.down.present, data.dead.present)
+    node.mood = data.pedestrian.value()?.mood ?? "walk"
+    const { vx, vy } = data.motion.get()
+    node.speed = Math.hypot(vx, vy)
+    node.clock = resources.time.get().step * STEP.dt
+    node.showXray(data.player.present)
+  }
+})
+
+const SyncAnimals = RenderSync.system(Game, {
+  name: "Lunigiana/SyncAnimals",
+  renderable: Animal,
+  registry: Animals,
+  select: { down: Game.Query.optional(Down), dead: Game.Query.optional(Dead), motion: Game.Query.read(Motion) },
+  redrawOn: [Down, Dead, PrevPose],
+  create: ({ renderable, entity }) => new AnimalNode(renderable, solidMaterial, entity),
+  apply: (node, { data }) => {
+    node.lie(data.down.present, data.dead.present)
+    const { vx, vy } = data.motion.get()
+    node.speed = Math.hypot(vx, vy)
   }
 })
 
@@ -85,7 +113,7 @@ const MarkDriven = Game.System("Lunigiana/MarkDriven", {
   const driving = found.ok ? found.value?.data.driving.value() : undefined
   const car = driving === undefined ? undefined : queries.vehicles.getHandle(driving.vehicle)
   const driven: number | undefined = car?.ok === true ? car.value.entity.id : undefined
-  for (const [entity, node] of services.nodes.entries()) node.xray.visible = entity === driven
+  for (const [entity, node] of services.nodes.entries()) node.showXray(entity === driven)
 })
 
 /** `from` → `to` at `alpha`, turning the short way round. */
@@ -95,7 +123,6 @@ export const blend = (from: PoseValue, to: PoseValue, alpha: number): PoseValue 
   angle: from.angle + wrapAngle(to.angle - from.angle) * alpha
 })
 
-const STRIDE = 0.45 // metres per walk frame
 const PlacePeople = RenderSync.interpolate(Game, {
   name: "Lunigiana/PlacePeople",
   registry: People,
@@ -104,14 +131,21 @@ const PlacePeople = RenderSync.interpolate(Game, {
   clock: RenderClock,
   blend,
   place: (node, { x, y, angle }) => {
-    const h = groundY(x, y, node.elevation)
-    node.elevation = h
-    node.position.set(x, h + (node.rotation.z === 0 ? 0 : 0.2), -y)
-    node.rotation.y = angle
-    const moved = node.last === undefined ? 0 : Math.hypot(x - node.last.x, y - node.last.y)
-    node.last = { x, y }
-    node.walked += moved
-    node.body.geometry = moved < 1e-3 || node.rotation.z !== 0 ? node.frames[0] : node.frames[Math.floor(node.walked / STRIDE) % 2 === 0 ? 1 : 2]
+    node.place(x, y, angle)
+    node.pose()
+  }
+})
+
+const PlaceAnimals = RenderSync.interpolate(Game, {
+  name: "Lunigiana/PlaceAnimals",
+  registry: Animals,
+  previous: PrevPose,
+  current: Pose,
+  clock: RenderClock,
+  blend,
+  place: (node, { x, y, angle }) => {
+    node.place(x, y, angle)
+    node.pose()
   }
 })
 
@@ -144,6 +178,19 @@ const PlaceVehicles = Game.System("Lunigiana/PlaceVehicles", {
   }
 })
 
+/** Spreads each dead body's blood pool to its size at the drawn moment's sim time, under the node as placed this frame. */
+const SpreadPools = Game.System("Lunigiana/SpreadPools", {
+  queries: { dead: Game.Query({ selection: { dead: Game.Query.read(Dead) } }) },
+  resources: { time: Game.System.readResource(Time) },
+  services: { people: Game.System.service(People), animals: Game.System.service(Animals), clock: Game.System.service(RenderClock) }
+}, ({ queries, resources, services }) => {
+  const now = resources.time.get().step + services.clock.alpha
+  for (const { entity, data } of queries.dead.each()) {
+    const node = services.people.get(entity.id) ?? services.animals.get(entity.id)
+    node?.bleed((now - data.dead.get().since) * STEP.dt)
+  }
+})
+
 /** Lays the steps' Skid events as tyre marks and smoke, then moves both to the drawn moment's sim time. */
 const DrawEffects = Game.System("Lunigiana/DrawEffects", {
   resources: { time: Game.System.readResource(Time) },
@@ -164,4 +211,6 @@ const DrawEffects = Game.System("Lunigiana/DrawEffects", {
 })
 
 /** The render schedule, ticked once per animation frame after the fixed updates. */
-export const render = Game.Schedule(SyncPeople, SyncVehicles, MarkDriven, PlacePeople, PlaceVehicles, DrawEffects)
+export const render = Game.Schedule(
+  SyncPeople, SyncAnimals, SyncVehicles, MarkDriven, PlacePeople, PlaceAnimals, PlaceVehicles, SpreadPools, DrawEffects
+)

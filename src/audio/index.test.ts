@@ -8,10 +8,11 @@ import { engineRevs } from "../sim/drivetrain.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { laneOf, lanePoint, laneSide, roadOf, walkSide } from "../sim/route.ts"
 import {
-  bindings, CarInput, Chassis, type ChassisValue, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, Skid, update, Vehicle
+  bindings, CarInput, Chassis, type ChassisValue, Cry, Follows, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Pose, type PoseValue,
+  PrevPose, Route, setup, Skid, update, Vehicle
 } from "../sim/index.ts"
-import { parkedCar, pedestrian, rollingChassis } from "../sim/spawning.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, type Timeline } from "../sim/testing.ts"
+import { animal, parkedCar, pedestrian, rollingChassis } from "../sim/spawning.ts"
+import { BATTISTI, battistiTraffic, door, LOOK, ON_BATTISTI, press, rolling, stage, type Timeline } from "../sim/testing.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { Audio, audio } from "./index.ts"
 import type { Heard } from "./types.ts"
@@ -53,7 +54,7 @@ test("hear: the player on foot, then at the wheel of a running car with the horn
   const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
   const side = walkSide(roadOf(BATTISTI.edge))
   const verge = { ...lanePoint(lane, 8, side), angle: 0 }
-  const walker = pedestrian({ skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }, verge, { ...BATTISTI, side }, { mood: "walk", until: 0 })
+  const walker = pedestrian(LOOK, verge, { ...BATTISTI, side }, { mood: "walk", until: 0, fx: 0, fy: 0 })
   const { run, frames } = listen([...press(1, "action"), { frame: 3, press: ["horn"] }], door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)], peds: [walker] })
   run(4)
   assert.equal(frames.length, 4, "one Heard per tick")
@@ -66,8 +67,34 @@ test("hear: the player on foot, then at the wheel of a running car with the horn
   assert.equal(mine.length, 1)
   assert.deepEqual([mine[0]!.id, mine[0]!.model, mine[0]!.running], [seated!.listener.car, "panda", true])
   assert.ok(!seated!.people.some((p) => p.player), "the driver is no person on foot")
-  assert.ok(seated!.people.some((p) => !p.player && !p.fleeing && !p.down && Vec2.distance(p, verge) < 2), "the pedestrian on the verge")
+  assert.ok(seated!.people.some((p) => !p.player && p.mood === "walk" && !p.down && !p.dead && Vec2.distance(p, verge) < 2), "the pedestrian on the verge")
   assert.deepEqual([onFoot!.horn, seated!.horn, horn!.horn], [false, false, true])
+})
+
+test("hear: who each person is and what they do, who walks with whom, the animals, and the cries since the last frame", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const side = walkSide(roadOf(BATTISTI.edge)), route = { ...BATTISTI, side }
+  const at = (along: number, offset = 0) => ({ ...lanePoint(lane, along, side + offset), angle: 0 })
+  const mother = { ...LOOK, female: true, outfit: "dress", hairdo: "long", height: 1.62 } as const, kid = { ...LOOK, age: "kid", height: 1.2 } as const
+  const chatter = pedestrian(LOOK, at(14), route, { mood: "chat", until: 1e6, fx: 1, fy: 2 })
+  const cat = animal({ species: "cat", coat: 0x222222, patch: 0xffffff, size: 1.1 }, at(18))
+  const { runtime, hear, frames } = listen([], door(ON_BATTISTI), { peds: [chatter], animals: [cat] })
+  // A mother and the child following her, as Populate spawns a party.
+  const party = Game.Schedule(Game.System("Test/Party", { commands: Game.System.commands(Game.System.spawns(Pedestrian, Person, Pose, PrevPose, Motion, Route, Follows)) }, ({ commands }) => {
+    const leader = Game.Entity.handle(commands.spawn(pedestrian(mother, at(8), route, { mood: "walk", until: 0, fx: 0, fy: 0 })), Pedestrian)
+    commands.spawn(Game.Command.extend(pedestrian(kid, at(8.4, 0.5), route, { mood: "walk", until: 0, fx: 0, fy: 0 }), [Follows, { leader, side: 0.5, back: 0.4 }]))
+  }), Game.Schedule.applyDeferred())
+  assert.ok(runtime.tick(party).ok)
+  hear()
+  const people = frames[0]!.people.filter((p) => !p.player), near = (along: number) => people.find((p) => Vec2.distance(p, at(along)) < 0.6)!
+  assert.deepEqual([near(14).mood, near(14).fx, near(14).fy, near(14).age, near(14).female, near(14).with], ["chat", 1, 2, "adult", false, undefined])
+  const [mum, child] = [near(8), people.find((p) => p.age === "kid")!]
+  assert.deepEqual([mum.female, mum.with, child.with, child.dead], [true, child.id, mum.id, false])
+  assert.deepEqual(frames[0]!.animals.map((a) => [a.species, a.size, a.mood, a.down, a.dead]), [["cat", 1.1, "idle", false, false]])
+  runtime.send(Cry, { who: child.id, x: child.x, y: child.y, feeling: "fright" })
+  hear()
+  hear()
+  assert.deepEqual(frames.slice(1).map((f) => f.happenings), [[{ kind: "cry", who: child.id, x: child.x, y: child.y, feeling: "fright" }], []])
 })
 
 test("hear: the listener carries the view's quarter turns, which the stereo image turns with", () => {

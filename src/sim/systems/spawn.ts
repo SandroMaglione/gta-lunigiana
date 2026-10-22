@@ -44,7 +44,7 @@ export const SpawnWorld = Game.System("Lunigiana/SpawnWorld", {
     [Pose, start],
     [PrevPose, start],
     [Motion, { vx: 0, vy: 0, spin: 0 }],
-    [Person, { skin: 0xe7b896, hair: 0x2b1d14, shirt: 0xf0c93c, pants: 0x1d2b4f }]
+    [Person, { skin: 0xe7b896, hair: 0x2b1d14, shirt: 0xf0c93c, pants: 0x1d2b4f, age: "adult", female: false, outfit: "trousers", hairdo: "short", height: 1.78 }]
   ))
   for (const spot of byPolice) commands.spawn(parkedCar("carabinieri", CARABINIERI_BLUE, spot))
   let trucks = 0

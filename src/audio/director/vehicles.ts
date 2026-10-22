@@ -2,7 +2,8 @@
  * Every vehicle sound: engines (the listener's own from the driver's seat) at the sim's revs and load,
  * tyres rolling and skidding, horns and the Carabinieri siren, the truck's reversing beeper, crashes
  * into walls, vehicles and the ground, the suspension bottoming out, scrapes along walls and the
- * ground, people hit, AI honks, and the doors and starter of the listener getting in and out. A crash
+ * ground, people and animals hit (a person who lives groans), AI honks, and the doors and starter of
+ * the listener getting in and out. A crash
  * knows both bodies and how worn each is where it was hit, the wall's or the ground's material and the
  * ground under the car; a scrape, the material. Sounds of the listener's own car are heard from inside
  * it: its crash, clunk, scrape and doors through no cabin, its horn and siren (out by the grille, up on
@@ -24,6 +25,7 @@ import type { Body, Happening, HeardVehicle, Material, OneShot, Skidding, Surfac
 import { type Frame, groundAt } from "./frame.ts"
 import type { Hearing, Source } from "./hearing.ts"
 import { ENGINE, HEIGHT, LEVELS, OWN_ENGINE_DB } from "./levels.ts"
+import { cueVoice } from "./people.ts"
 
 /** Tyres roll audibly above this speed, m/s; the beeper sounds below this forward speed. */
 const ROLLING = 1, REVERSING = -0.3
@@ -40,7 +42,7 @@ const MERGE = 0.1, HARDER = 1.5
 const SWITCH = 0.25
 /** How many vehicles' wear is remembered, the most recently crashed. */
 const WORN = 256
-/** A person hit groans this long after the thud, s; a door closes this long after it opened, s. */
+/** A person hit (and alive) groans this long after the thud, s; a door closes this long after it opened, s. */
 const GROAN_AFTER = 0.25, DOOR_CLOSES = 0.7
 
 /** The own engine, from the driver's seat: centred, open, no Doppler; the voice makes the cabin tone. */
@@ -128,7 +130,7 @@ export const makeVehicles = () => {
       for (const [id, { until }] of scrapes) if (until <= now) scrapes.delete(id)
       for (const [id, last] of crashes) if (now - last.at >= MERGE) crashes.delete(id)
       // The hardest hits first, so the softer tail of the same hit merges into them.
-      const hits = heard.happenings.flatMap((h) => (h.kind === "impact" && h.hit !== "person" ? [h] : [])).sort((a, b) => b.speed - a.speed)
+      const hits = heard.happenings.flatMap((h) => (h.kind === "impact" && h.hit !== "person" && h.hit !== "animal" ? [h] : [])).sort((a, b) => b.speed - a.speed)
       for (const hit of hits) {
         const v = byId.get(hit.car), level = levelOf(v), bottomed = hit.hit === "ground" && hit.face === "under"
         if (hit.speed < CRASH_FROM) {
@@ -162,10 +164,12 @@ export const makeVehicles = () => {
       for (const h of heard.happenings) {
         if (h.kind === "honk") {
           frame.play({ kind: "honk", model: h.model }, frame.path(`car:${h.car}`, { x: h.x, y: h.y, z: groundAt(h.x, h.y, levelOf(byId.get(h.car))) + HEIGHT.vehicle }, LEVELS.honk))
-        } else if (h.hit === "person") {
-          const who = h.other ?? h.car, key = `person:${who}`, at = { x: h.x, y: h.y, z: groundAt(h.x, h.y) + HEIGHT.person }
+        } else if (h.kind === "impact" && (h.hit === "person" || h.hit === "animal")) {
+          // The body hit: a thud from the car, and a person who lives groans (an animal's pain is its own cry, in animals.ts).
+          const who = h.other ?? h.car, key = `${h.hit}:${who}`, at = { x: h.x, y: h.y, z: groundAt(h.x, h.y) + HEIGHT.person }
           frame.play({ kind: "thud", speed: h.speed }, frame.path(key, at, LEVELS.thud, { cabin: h.car !== mine }))
-          frame.play({ kind: "groan", voice: hash01(who) }, frame.path(key, at, LEVELS.groan), GROAN_AFTER)
+          const person = h.hit === "person" && h.fatal !== true ? heard.people.find((p) => p.id === who) : undefined
+          if (person !== undefined) frame.play({ kind: "groan", voice: cueVoice(person) }, frame.path(key, at, LEVELS.groan), GROAN_AFTER)
         }
       }
 

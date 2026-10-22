@@ -111,7 +111,7 @@ export const EnterExit = Game.System("Lunigiana/EnterExit", {
       randomLook(random),
       { x: door.x, y: door.y, angle: Ops.atan2(door.y - pose.y, door.x - pose.x) },
       { edge, forward, side: (right ? 1 : -1) * walkSide(roadOf(edge)) },
-      { mood: "flee", until: resources.time.get().step + Clock.steps(FLEE_TIME) }
+      { mood: "flee", until: resources.time.get().step + Clock.steps(FLEE_TIME), fx: pose.x, fy: pose.y }
     ))
   }
 })

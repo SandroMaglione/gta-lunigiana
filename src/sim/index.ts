@@ -8,11 +8,14 @@ import { clampKnob, DEFAULT_HANDLING } from "./handling.ts"
 import { bindings, Game, Handling, Input, KeyboardInput, Pose, PrevPose, Root, SetHandling, STEP, Time, View } from "./schema.ts"
 import { Contacts, Recover } from "./systems/contacts.ts"
 import { PlayerDrive, RideAlong } from "./systems/drive.ts"
+import { Animals, Startle } from "./systems/animals.ts"
 import { EnterExit } from "./systems/enter-exit.ts"
 import { PlayerFoot } from "./systems/foot.ts"
 import { Pedestrians } from "./systems/pedestrians.ts"
+import { Perceive } from "./systems/perceive.ts"
 import { VehiclePhysics } from "./systems/physics.ts"
-import { Populate } from "./systems/populate.ts"
+import { FillPeople, Populate } from "./systems/populate.ts"
+import { FillAnimals, PopulateAnimals } from "./systems/populate-animals.ts"
 import { SpawnWorld } from "./systems/spawn.ts"
 import { TrafficAI } from "./systems/traffic.ts"
 
@@ -51,9 +54,10 @@ const ApplyHandling = Game.System("Lunigiana/ApplyHandling", {
 
 /**
  * Ticked once after the runtime is made. ApplyHandling runs here too so it is listening before the host can send: a request sent
- * before the first update would otherwise be dropped by whichever schedule ticks first.
+ * before the first update would otherwise be dropped by whichever schedule ticks first. The first fill of people and animals
+ * runs once the player stands at the start, so the world is peopled from the first frame.
  */
-export const setup = Game.Schedule(SpawnWorld, ApplyHandling, Game.Schedule.applyDeferred())
+export const setup = Game.Schedule(SpawnWorld, ApplyHandling, Game.Schedule.applyDeferred(), FillPeople, FillAnimals, Game.Schedule.applyDeferred())
 /** One fixed step of the game. */
 export const update = Game.Schedule(
   AdvanceTime,
@@ -67,11 +71,16 @@ export const update = Game.Schedule(
   PlayerDrive,
   TrafficAI,
   Pedestrians,
+  Animals,
   VehiclePhysics,
   Contacts,
   RideAlong,
   Recover,
+  // After the contacts: this step's hits and crashes are events, which a save drops, so they are taken in the step they happen.
+  Perceive,
+  Startle,
   Populate,
+  PopulateAnimals,
   Game.Schedule.applyDeferred()
 )
 

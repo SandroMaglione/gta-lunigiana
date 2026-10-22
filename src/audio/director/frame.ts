@@ -26,6 +26,8 @@ export interface Frame {
   /** Speaker time, s, and the time since the last frame (0 while the audio is off or paused). */
   readonly now: number
   readonly dt: number
+  /** The audio context exists: before it (behind the title card) every path is silent. */
+  readonly live: boolean
   readonly ears: Ears
   /** The model of the vehicle the listener sits in. */
   readonly inside: VehicleModel | undefined
@@ -102,6 +104,7 @@ export const makeFrame = (setup: Setup): Frame => {
     heard: setup.heard,
     now,
     dt: setup.dt,
+    live: setup.live,
     ears,
     inside,
     ambient,

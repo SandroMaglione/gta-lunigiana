@@ -5,7 +5,7 @@
 
 ![Title card](docs/screenshots/title.png)
 
-Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and knock pedestrians over, on a map built from survey data of the real places. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look.
+Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and run people down, on a map built from survey data of the real places. As many people are out as live nearby, so the village centres are busy and the country roads empty: villagers of every age walk alone, in couples, with their kids or a dog, stop to chat, glare at a speeding car, jump out of its way and are shocked by a death, while cats and dogs roam the villages and cows and pigs the farms. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look.
 
 The game will cover all of Lunigiana, from the beaches at the mouth of the Magra to the Apennine ridge. Today the playable map is one valley of it, the [Valle del Lucido](#the-playable-map-today-the-valle-del-lucido).
 
@@ -146,7 +146,7 @@ The settings have no touch control yet: Esc on a keyboard opens them.
 
 ## How the game sounds
 
-The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, crickets, birds, farm dogs, the village church bells striking the hours, and the Lucido and its streams.
+The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, people chatting in Italian-sounding gibberish with a real word now and then (the way The Sims talk) and crying out in real Italian, cows, pigs, cats and dogs, wind, crickets, birds, the village church bells striking the hours, and the Lucido and its streams.
 
 Each sound reaches you through outdoor acoustics. It fades with distance and under the background noise, so you hear only what’s near. Houses and hills muffle it, the air dulls it, its pitch shifts as it passes, far crashes arrive late, and loud ones echo off the slopes.
 
@@ -175,11 +175,13 @@ The simulation, the browser hosts and the map tools live in separate folders:
 
 | Path | Contents |
 |---|---|
-| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, tuning. Headless and deterministic |
-| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, populate) |
+| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, the animal species, tuning. Headless and deterministic |
+| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, perception and reactions, animals, physics, contacts, populate, populate animals) |
+| `src/sim/population/` | who lives where and who goes out: residents from the buildings, people's looks, parties, farms |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
-| `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule |
-| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director, the speaker and mixer, the synths, the audition page |
+| `src/render/` | Three.js host code: pixel pipeline, static world meshes, people, animal and vehicle models, blood pools, tyre marks and smoke, the render schedule |
+| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director (vehicles, people, conversations, animals, the valley), the speaker and mixer, the synths, the audition page |
+| `src/audio/speech/` | the Italian-sounding speech: what people say, and a formant synthesiser that voices it |
 | `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the vehicle handling, both setting it through one store |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
@@ -227,6 +229,6 @@ The `docs/` folder explains how the game works:
 - [docs/architecture.md](docs/architecture.md): simulation and host, schedules, state, input, rendering, audio, HUD and checks
 - [docs/audio.md](docs/audio.md): how the game sounds and why: data flow, the acoustics, every sound, the calibration, the audition page and tests
 - [docs/map.md](docs/map.md): the map pipeline, the file format and the data’s limits
-- [docs/gameplay.md](docs/gameplay.md): on foot, vehicles, traffic, pedestrians, score and tuning
+- [docs/gameplay.md](docs/gameplay.md): on foot, vehicles, traffic, people and their reactions, deaths and score, population, animals and tuning
 
 [AGENTS.md](AGENTS.md) routes coding agents to [CODING_STANDARDS.md](CODING_STANDARDS.md), the workflow every change follows, and to the checks for each part of the game in [docs/standards/](docs/standards/).

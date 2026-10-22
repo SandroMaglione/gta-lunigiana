@@ -10,7 +10,9 @@
  *
  * @module audio/director/levels
  */
+import type { Species } from "../../sim/schema.ts"
 import type { VehicleModel } from "../../sim/vehicles.ts"
+import type { Speaker } from "../speech/types.ts"
 import type { Continuous, OneShot } from "../types.ts"
 
 /** A source's calibration: dB(A) at 1 m at the synth's nominal peak, and its size, m. */
@@ -46,11 +48,26 @@ export const LEVELS = {
   ignition: { db: 85, rMin: 1 },
   honk: { db: 116, rMin: 2 },
   step: { db: 62, rMin: 0.5 },
+  // A man's speech at 1 m (Pearsons, Bennett and Fidell 1977, EPA-600/1-77-025, anechoic): normal effort 58 dB(A), shouted 89.
+  talk: { db: 58, rMin: 1 },
+  yell: { db: 89, rMin: 1 },
   scream: { db: 100, rMin: 1 },
-  shout: { db: 88, rMin: 1 },
   groan: { db: 72, rMin: 1 },
   bird: { db: 85, rMin: 1 },
   bark: { db: 96, rMin: 1 },
+  // Estimate: no level at 1 m found. A loud call, between a man's shout (89) and a farm dog's bark (96); Korean native cows' calls
+  // averaged 71 dB at the recorder, distance unstated (cited in Frontiers in Veterinary Science 2025, doi 10.3389/fvets.2025.1549100).
+  moo: { db: 92, rMin: 1 },
+  // Pigs' grunts run 60–90 dB at 1 m, a contact grunt in the middle (estimate); squeals: piglets under a needle peaked at 101.9 dB
+  // (Engenharia Agrícola 2018), a grown pig's squeal is commonly put at 110–115: a scared pig between.
+  grunt: { db: 70, rMin: 1 },
+  squeal: { db: 105, rMin: 1 },
+  // Estimate: a dog's yelp is shorter and thinner than its bark (96).
+  yelp: { db: 90, rMin: 1 },
+  // Estimate: a cat's yowl of pain; a plain meow plays `MEOW_QUIET` under it (attention meows reach about 80 dB close up, an
+  // ordinary one 45–65). A hiss is a short breathy burst.
+  meow: { db: 75, rMin: 0.5 },
+  hiss: { db: 65, rMin: 0.5 },
   bell: { db: 118, rMin: 5 }
 } as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">, Level>
 
@@ -73,6 +90,19 @@ export const windDb = (strength: number): number => BEDS.wind + 40 * Math.log10(
 
 /** Source heights above their ground, m: a vehicle's body, a person (feet to mouth), and water lifted out of its carved bed. */
 export const HEIGHT = { vehicle: 0.8, person: 1, water: 2 } as const
+
+/** Each species' mouth above the ground, m (standing). */
+export const MOUTH = { dog: 0.5, cat: 0.25, cow: 1.3, pig: 0.5 } as const satisfies Record<Species, number>
+
+/**
+ * How many dB a woman's or a child's voice is under a man's (`talk` and `yell` are a man's): Pearsons et al. 1977 measured women
+ * and children 3 dB under men at normal effort (55 against 58 dB(A) at 1 m) and 7 dB under them shouting (82 against 89).
+ */
+export const SOFTER = { talk: 3, yell: 7 } as const
+
+/** The level of a line said (`talk`) or yelled (`yell`) by `speaker`. */
+export const speechLevel = (kind: "talk" | "yell", speaker: Speaker): Level =>
+  speaker.female || speaker.age === "kid" ? { ...LEVELS[kind], db: LEVELS[kind].db - SOFTER[kind] } : LEVELS[kind]
 
 /** At most this many voices of each kind play; the loudest at the listener win. */
 export const CAPS = {
@@ -101,6 +131,8 @@ export const REVERB = { db: 8, ref: 10, near: 2.5, far: 40, cabin: 0.25 } as con
 /** An echo plays at least this many dB under the direct sound: a rock face's own reflection loss (places.ts). */
 export const ECHO_MIN_DB = 10
 
-/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices and bells (physics.md §7). */
-export const echoes = (sound: OneShot): boolean =>
-  sound.kind === "crash" ? sound.speed >= 6 : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell"
+/** One-shots loud and sharp enough to answer off rock faces (physics.md §7): a crash from 6 m/s, honks, bells, yells, screams and the loud animal calls. */
+const ECHOING = new Set<OneShot["kind"]>(["honk", "bell", "yell", "scream", "bark", "moo", "squeal"])
+
+/** Whether `sound` answers off rock faces. */
+export const echoes = (sound: OneShot): boolean => (sound.kind === "crash" ? sound.speed >= 6 : ECHOING.has(sound.kind))

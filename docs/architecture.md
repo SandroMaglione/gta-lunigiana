@@ -34,6 +34,16 @@ keys).
    re-sending the player's stored handling at load) would otherwise be dropped by whichever
    schedule ticked first.
 3. `applyDeferred`
+4. `FillPeople` (`systems/populate.ts`): the first fill, as many people out around the player's
+   start as `Populate` keeps, from 4 m to 120 m ([gameplay.md](gameplay.md#the-first-fill)).
+5. `FillAnimals` (`systems/populate-animals.ts`): the animals `PopulateAnimals` keeps there. It
+   asks for the farms first, so the farm list is built here, behind the title card, not in a step
+   of play.
+6. `applyDeferred`
+
+In Node, setup takes about 14 ms once the land cover is built, as `main.ts` builds it first (the
+farm list 8–10 ms of it); a test that has not built the cover pays for it here too, about 112 ms.
+Setup draws from the world's `Rng`, so the fill replays with the seed.
 
 `update` is one fixed step (`STEP = Clock.hz(60)`):
 
@@ -48,17 +58,24 @@ keys).
 | 7 | `applyDeferred` | | applies the enter/exit commands before anything moves |
 | 8 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
 | 9 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
-| 10 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
-| 11 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
-| 12 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
-| 13 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
-| 14 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
-| 15 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
-| 16 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians |
-| 17 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
+| 10 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`, braking for vehicles, people and animals; a driver held up honks (`Honk`) |
+| 11 | `Pedestrians` | `systems/pedestrians.ts` | people move as their mood says: walk their routes, keep by their leader, stop, gather, run; the down and the dead slide |
+| 12 | `Animals` | `systems/animals.ts` | animals rest, wander, keep by their walker and run from what scares them; free dogs bark; the down and the dead slide; cries are `Cry` events |
+| 13 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
+| 14 | `Contacts` | `systems/contacts.ts` | car–car, car–person, car–animal, person and animal contacts, knockdowns and deaths (`Down`, `Dead`); car–car hits, knockdowns and kills are `Impact` events |
+| 15 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
+| 16 | `Recover` | `systems/contacts.ts` | knocked-down people and animals get up; pedestrians then flee, animals bolt |
+| 17 | `Perceive` | `systems/perceive.ts` | pedestrians take in this step's hits, crashes and horns, and the vehicles, bodies and people around them, and set their moods; cries are `Cry` events; marks `Witness`es, lets go of a leader gone or dead |
+| 18 | `Startle` | `systems/animals.ts` | cats and pigs run from this step's crashes and struck bodies (`Cry`) |
+| 19 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and parties of people |
+| 20 | `PopulateAnimals` | `systems/populate-animals.ts` | every 0.5 s spawns and despawns the free animals |
+| 21 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
 
 Controls and the handling are read before movement, all movement happens before contacts, and
-contacts happen before the player's pose follows the car. Gameplay is in [gameplay.md](gameplay.md).
+contacts happen before the player's pose follows the car. `Perceive` and `Startle` run after the
+contacts and `Recover` because they read this step's `Impact` and `Honk` events, which a save does
+not keep: read a step later, a restored game would miss them. The moods they set move people and
+animals from the next step. Gameplay is in [gameplay.md](gameplay.md).
 
 ### Where state lives
 
@@ -69,34 +86,46 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Pose`, `PrevPose` | every body | x, y (m, east/north from the map origin), angle (rad CCW from east) |
 | `Motion` | every body | velocity vx, vy (m/s) and spin (rad/s) |
 | `Player` | the player | tag |
-| `Person` | player, pedestrians | look: skin, hair, shirt, trousers colours (immutable) |
-| `Pedestrian` | pedestrians | mood (`walk` or `flee`), flee end step, steps blocked |
-| `Down` | knocked-down people | step at which they get up |
+| `Person` | player, pedestrians | look and build (immutable): skin, hair, shirt and `pants` colours, age group (`kid`, `adult`, `elder`), sex, outfit (`trousers`, `shorts`, `skirt`, `dress`), hairdo (`short`, `long`, `bun`, `bald`, `cap`), height (m) |
+| `Pedestrian` | pedestrians | mood (`walk`, `chat`, `look`, `shock`, `gather`, `flee`), the step it ends (for a walk, the end of its cooldown), the point (fx, fy) it is about, steps blocked |
+| `Follows` | a party's kids, partner, dog on a lead | handle of the leader (a pedestrian), and the place beside it: `side` m to its right, `back` m behind |
+| `Witness` | pedestrians | tag: saw a person killed or came on a body; its shock ends in the choice to gather or run |
+| `Down` | knocked-down people and animals | step at which they get up |
+| `Dead` | killed pedestrians and animals, never the player | step they died; never together with `Down` |
+| `Animal` | animals | species (`dog`, `cat`, `cow`, `pig`), coat and patch colours, size × the species' usual (immutable) |
+| `Roam` | animals | mood (`idle`, `walk`, `flee`), the step it ends, home (hx, hy), and the point (tx, ty) it walks to or runs from |
 | `Vehicle` | vehicles | model and paint colour (immutable) |
 | `CarInput` | vehicles | throttle, steer, handbrake for this step |
 | `Chassis` | vehicles | centre-of-mass elevation and vertical speed, pitch and roll with their rates, road-wheel steering angle, gear, step the current shift ends |
 | `Traffic` | AI vehicles | tag |
-| `Route` | traffic, pedestrians | current graph edge, direction, lateral offset |
+| `Route` | traffic, pedestrians | current graph edge, direction, lateral offset (a follower's is its leader's) |
 | `Autopilot` | traffic | next edge, stuck counter, reverse end step, unstick tries |
 | `Stolen` | vehicles | tag: already entered once by the player |
 | `Driving` | the player | handle of the vehicle being driven |
 
 `Schema.requires` enforces the bundles: a `Player` has a pose, previous pose, motion and look; a
-`Vehicle` has a pose, previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs
-`Route` and `Autopilot`. Spawns put a vehicle on its springs at rest on the ground (`settle` in
-`src/sim/chassis.ts`), in the gear for its speed. No save is ever persisted, so the new
-`Chassis` and `Handling` need no snapshot migration.
+`Pedestrian` the same and a `Route`; an `Animal` a pose, previous pose, motion and `Roam`; a
+follower a pose, previous pose and motion; a `Witness` is a `Pedestrian`; a `Vehicle` has a pose,
+previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs `Route` and `Autopilot`.
+Spawns put a vehicle on its springs at rest on the ground (`settle` in `src/sim/chassis.ts`), in
+the gear for its speed. No save is ever persisted, so a component that changes shape (`Chassis`,
+`Handling`, the wider `Person` and `Pedestrian`) needs no snapshot migration.
 
-Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`), `View` (`turns`, the net quarter turns
-of the camera) and `Handling` (the 15 handling knobs, [gameplay.md](gameplay.md#handling)) are
-saved. `Input` is transient: it is rebuilt every step and never saved.
+Resources: `Time`, `Rng`, `Score` (`stolen`, and `knocked`: people the player's car knocked down or
+killed), `View` (`turns`, the net quarter turns of the camera) and `Handling` (the 15 handling
+knobs, [gameplay.md](gameplay.md#handling)) are saved. `Input` is transient: it is rebuilt every
+step and never saved.
 
-Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person or the ground:
-where, which is the contact point for a wall, a vehicle or the ground, how hard, with how much mass
-in tonnes, and for the ground which face of the body struck), `Skid` (a tyre slid this step: where,
-how fast, how far past its grip, on what surface) and `Honk` (an AI driver held up sounds the horn)
-carry moments that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI`
-emit them; the audio schedule reads all three ([audio.md](audio.md#data-flow)) and the render
+Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person, an animal or
+the ground: where, which is the contact point for a wall, a vehicle or the ground, how hard, with
+how much mass in tonnes, for the ground which face of the body struck, and for a person or an
+animal whether it killed them, `fatal`), `Skid` (a tyre slid this step: where, how fast, how far
+past its grip, on what surface), `Honk` (an AI driver held up sounds the horn) and `Cry` (a person
+or an animal cried out: who, where, and in `fright`, `shock`, `anger` or `surprise`) carry moments
+that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI` emit the first
+three; `Perceive` reads this step's `Impact` and `Honk` events, `Startle` this step's `Impact`
+events and `Animals` the `Honk` events since its last run; `Perceive`, `Animals` and `Startle`
+emit `Cry`. The audio schedule reads all four ([audio.md](audio.md#data-flow)) and the render
 schedule reads `Skid` (tyre marks and smoke). `SetHandling` (set one handling knob to a value) is
 a host intent: no system emits it, the host's handling store (`src/hud/handling.ts`) sends it
 with `runtime.send` for the settings and the dev debug menu, and `ApplyHandling` reads it.
@@ -121,9 +150,10 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   copy the coordinates to keep them.
 - `buildingsIn` (over `buildingBoxes`, 64 m cells) and `treesIn` (the trees as points) in
   `src/sim/map/index.ts` are broad phases that call back with candidate indices; callers run the
-  exact test. The sim (`Populate`'s pedestrian spawns) and the audio host (occlusion, streets,
-  birds) share them.
-- `edgeIndex`, `trafficIndex` and `walkIndex` (`src/sim/route.ts`) answer nearest-edge and
+  exact test. The sim (the residents, the farms, the spawns' indoor checks) and the audio host
+  (occlusion, streets, birds) share them.
+- `edgeIndex` (`src/sim/edges.ts`, re-exported by `src/sim/route.ts`), with its instances
+  `trafficIndex` and `walkIndex` (`src/sim/route.ts`) and `peopledIndex`, answers nearest-edge and
   spawn-band lookups without scanning the whole graph.
 - `groundZ` (`src/sim/map/ground.ts`) is where every wheel, foot, sound source and drawn actor
   stands, in m a.s.l.: the terrain as its mesh is drawn (each 4 m cell split along its SW–NE
@@ -131,6 +161,14 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   junction's ground stays continuous where their profiles disagree), and bridge decks and tunnels
   kept to the level nearest the caller's previous height. Road segments are bucketed in 16 m
   cells at load. The renderer converts it to render y (`src/render/ground.ts`).
+
+The population's tables are static data too, pure functions of `MAP` shared by every runtime: the
+residents of each home and within 60 m of each walk edge, and the walk edges people live along
+(`residentsNear`, `residentsAlong`, `peopledIndex` in `src/sim/population/density.ts`), built at
+load; the 2,405 farms in a 64 m grid (`farmsNear` and the ground checks in
+`src/sim/population/farms.ts`), built on first use, which `setup` makes (8–10 ms in Node with the
+land cover built); and the residents ahead of each way out of a junction (`nextWalkEdge` in
+`src/sim/route.ts`), cached as walkers first reach it.
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
 streamed world's chunks, the tyre marks and smoke, the HUD's DOM, the player's handling (a
@@ -172,8 +210,9 @@ the map, builds in named steps, and asks for a key only once the first frame is 
    only the modules the earlier ones left: `src/sim/map/index.ts` (decoding, collision grids),
    `src/sim/route.ts` (each vehicle model's lanes), then `main.ts`.
 4. `main.ts` builds the rest in steps with top-level `await`, each named on the card: the land
-   cover (`mapCover`), the world (`new World`), then the HUD, the runtime, `setup` and the first
-   audio tick, then every chunk of the first view.
+   cover (`mapCover`), the world (`new World`), then the HUD, the runtime, `setup` (about 14 ms in
+   Node: the farm list and the first fill) and the first audio tick, then every chunk of the first
+   view.
 5. `main.ts` draws the first frame itself, shader compiles included: a throw there reaches the
    card, where inside the loop's animation frame it would stop the loop behind "Press any key".
    It then drops the presses of keys hit while loading (held keys stay held, as `pausable` does),
@@ -204,7 +243,7 @@ Measured with the production build in headless Chrome on an M4 Pro, 1280×720:
 frames clamped to 0.25 s. Before the loop starts it ticks `setup`, then the `audio` schedule once,
 and draws the first frame (the `render` schedule's first run): a system reads the events published
 since its own last run, so a reader that has never run would miss the first steps' `Impact`,
-`Honk` and `Skid` events. Each animation frame it:
+`Honk`, `Cry` and `Skid` events. Each animation frame it:
 
 1. writes the loop's `alpha` (fraction of a step since the last one) into `RenderClock`;
 2. ticks the `render` and `audio` schedules (`runtime.tick(render, audio)`);
@@ -216,16 +255,25 @@ The seed comes from `?seed=N`, or a random 32-bit number.
 
 ## Rendering
 
-The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
+The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`. Its nine systems run
+in this order: `SyncPeople`, `SyncAnimals`, `SyncVehicles`, `MarkDriven`, `PlacePeople`,
+`PlaceAnimals`, `PlaceVehicles`, `SpreadPools`, `DrawEffects`.
 
-- `SyncPeople` and `SyncVehicles` (`RenderSync.system`) keep one three.js node per entity with a
-  `Person` or a `Vehicle`, in the `People` and `Vehicles` node registries. A person in a car is
-  hidden; a knocked-down person lies flat.
+- `SyncPeople`, `SyncAnimals` and `SyncVehicles` (`RenderSync.system`) keep one three.js node per
+  entity with a `Person`, an `Animal` or a `Vehicle`, in the `People`, `Animals` and `Vehicles`
+  node registries (the services `Lunigiana/PeopleNodes`, `Lunigiana/AnimalNodes` and
+  `Lunigiana/VehicleNodes`, which `makeRegistries` makes in `main.ts`). A detached node frees what
+  it owns: its frames, its blood pool and its x-ray proxies; a vehicle node frees only its proxy,
+  since its body is shared per model and paint. A person in a car is hidden. `SyncPeople` hands
+  each node the person's mood, speed (from `Motion`, so a follower catching up is drawn running)
+  and the sim time, and lays it down while `Down` or `Dead`; `SyncAnimals` hands on the speed and
+  lays the animal down.
 - `MarkDriven` shows the x-ray silhouette (drawn only where the world hides the actor) on the
   player's car and no other vehicle. `SyncPeople` shows it on the player's figure.
-- `PlacePeople` (`RenderSync.interpolate`) blends `PrevPose` → `Pose` at the render alpha and
-  stands each person on the ground or road under them (`groundY` in `src/render/ground.ts`, kept
-  to the level they were on); people swap between three walk frames.
+- `PlacePeople` and `PlaceAnimals` (`RenderSync.interpolate`) blend `PrevPose` → `Pose` at the
+  render alpha, stand each figure on the ground or road under it (`groundY` in
+  `src/render/ground.ts`, kept to the level it was on), add the metres it covered, and show the
+  frame for what it does (below).
 - `PlaceVehicles` puts each vehicle's node at its centre of mass from the sim, with no ground
   lookup of its own: x and y blended `PrevPose` → `Pose`, and the `Chassis` height, pitch and
   roll stepped back from the current step along their rates (`vz`, `pitchRate`, `rollRate`) by
@@ -238,6 +286,7 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
   stands on y = 0 at rest, centred on the centre of mass, with its wheels where `VEHICLES` puts
   them (the truck's one sim rear axle drawn as a tandem 1.3 m apart); body and x-ray proxy hang
   `cg` below the node (`VehicleNode` in `src/render/actors.ts`).
+- `SpreadPools` spreads each dead body's blood pool under its node as placed this frame (below).
 - `DrawEffects` reads the `Skid` events since the last frame and feeds the effects host
   (`makeEffects` in `src/render/index.ts`, made in `main.ts` beside the registries, passed as the
   `Effects` service, and `gta.effects` in dev builds). The marks and the smoke age by sim time
@@ -265,6 +314,69 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
     (96.0 MB before), 97.2 MB with a full ring of marks and the smoke at its cap; 60 fps and no
     frame over 16.8 ms through handbrake slides on asphalt and a dirt track, and with 4,095 marks
     and up to 256 puffs in view.
+
+People and animals (`src/render/people.ts`, `src/render/animals.ts`, sharing `figure.ts` and
+`pool.ts`) are low-poly box figures built from their look, one geometry per frame:
+
+- **People** have seven frames: `stand`, `walk1`, `walk2`, `run1`, `run2`, `shock` (hands to the
+  head) and `talk` (a forearm raised). The proportions are stylised, since a big head reads at the
+  game's pixel size: an adult's head is 0.19 of its height and its legs 0.47; a kid's head is
+  0.3·√(h / 1.2) m and its legs 0.42 of its height (the artists' canon: a 6-year-old is about six
+  heads tall, an adult seven and a half). Widths go as √(h / 1.75 m) (a kid's as 1.1 × h / 1.75 m,
+  a little stockier); the shoulders are 0.49 m across a man and 0.42 m across a woman at 1.75 m;
+  elders stoop 0.17 rad (TUNED). The arm's segments follow Drillis & Contini 1966 (upper arm 0.186
+  and forearm 0.146 of the height; the hand drawn at 0.09, shorter than their 0.108). Trousers
+  cover the leg, shorts leave the shins bare, a skirt flares from the waist to the knee, and a
+  dress is the skirt in the shirt's colour; shoes are dark. Every elder and about a third of the
+  rest wear long sleeves (0.28–0.33 measured, in a dress or not), picked from the look's colours.
+  Hair is short, long (to the shoulders), a bun, bald (a horseshoe fringe round a bare crown) or
+  under a flat cap in one of two tweeds with a 7 cm brim. Each frame is lowered until its lowest
+  foot touches the ground, and the standing frame is the look's height within 8 cm.
+- **A person's frame** (`framePerson`): lying (down or dead), the standing frame laid flat; in
+  shock, hands to the head; under 0.2 m/s, standing, and a chatting person turns to the talking
+  frame every other 1.1 s (TUNED) at a phase of its own, so two talkers do not gesture in step;
+  fleeing, or faster than 2.42 m/s, the run frames, a frame per 0.8 × its height covered (2.42 is
+  the 2.06 m/s walk-to-run transition of Hreljac 1993, raised to 1.1 × the player's 2.2 m/s walk so
+  that still looks like walking); otherwise the walk cycle `walk1`, `stand`, `walk2`, `stand`, a
+  frame per half step of 0.41 × its height (an estimate, as is the run's).
+- **Animals** have one box model per species at size 1: a dog 0.8 m long and 0.55 m at the back, a
+  cat 0.45 m long and 0.25 m tall, a cow 2.3 m long and 1.4 m at the withers with horns and an
+  udder, a pig 1.2 m long and 0.7 m tall with a snout and ears; each scaled by the animal's size.
+  The patch colour marks the coat: not at all on a plain coat; as a belt round a pig's shoulders
+  and forelegs (the Cinta Senese); paler, on the belly, chest, socks and face; darker, as a cat's
+  tabby stripes; otherwise as patches placed by a seed from the entity (a Frisona's, a calico's).
+  Its frames, `stand`, `step1` and `step2`, swing the legs ±0.3 rad in diagonal pairs, a frame per
+  half step of 0.8 × the leg's height (an estimate); under 0.1 m/s it stands.
+- **Lying**: the node stays upright and its body turns, so the pool under it lies flat: a person
+  tips forward onto its face along its heading, its feet where it stood; an animal rolls onto its
+  right side.
+- **Blood pools** (`src/render/pool.ts`): a dead body's pool is a flat, dark red
+  (`PALETTE.blood`) fan of 9 ragged corners, its outline seeded by the entity, under a person's
+  chest and head or an animal's trunk. Its radius grows as √(t / 6 s) (`SPREAD`, TUNED: a steady
+  flow of a fixed thickness covers an area in proportion to the volume shed) to 0.8 m for a person,
+  1.1 m for a cow, 0.6 m for a pig, 0.45 m for a dog and 0.25 m for a cat (animals × their size;
+  TUNED); t comes from `Dead.since` and the sim time (`Time.step` plus the render alpha), so it
+  stands still while the game is paused. Each corner lies 5 cm over the ground or road ribbon
+  under it (`drawnY`; over the centre dash's 2 cm and the tyre marks' 4 cm), in the decal material
+  pulled toward the camera. On a bridge deck or in a tunnel (the body more than `ON_DECK`, 0.5 m,
+  off the ground at grade) it lies flat: its corners past a deck's edge dropped metres to the
+  ground below on 32 of 47 bridges. It is redrawn only when its radius or its node moves.
+- **X-ray proxies**: a node builds a proxy the first time it shows one, and only the player and
+  the car they drive ever do, so no other person, animal or car builds one. The player's proxy
+  fits the gait shown, so the silhouette does not jump every half step and the body's own limbs
+  never poke out in front of it (they would show yellow): walking it encloses the standing and
+  walk frames (x −0.44 to 0.48 m, z ±0.41 m for the player's look), running the run frames (x
+  −0.63 to 0.71 m, z ±0.41 m), lying the body as it lies (y 0.15 to 0.40 m). The shock and talk
+  frames, which the player never shows, are left out: one box round all seven frames reached
+  0.31 m into a wall the 0.35 m body touches, where the walking box reaches 0.06 m. Every proxy
+  keeps its bottom 0.15 m over the ground (`XRAY_FLOOR`).
+- **Measured**: in Node, a person (a skirt, long hair) builds in 0.92 ms with 192 triangles a
+  frame, a patched cow in 0.62 ms with 348. In headless Chrome (M4 Pro, 1280×720, dev server, seed
+  7, at the player's start) the JS heap after GC is 101.1–101.5 MB (98.9–99.1 MB with the earlier
+  box figures and pedestrians), and the game holds 60 fps with no frame over 16.8 ms for 20 s at
+  the start and for 30 s in Gragnola's centre (19 people, 5 animals).
+- **Limit**: in the dense centres (Gragnola, Vinca) the camera sees mostly roofs, so people in the
+  alleys are hidden; only the player has an x-ray silhouette.
 
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
@@ -337,9 +449,9 @@ The pixel pipeline (`src/render/pipeline.ts`):
 The audio schedule (`src/audio/index.ts`) is host code beside render. Its one system,
 `Lunigiana/Hear`, reads the player, the vehicles that run or move (with the revs and load the sim's
 drivetrain gives for their `Chassis`, speed and pedal at the `Time` step, and whether their wheels
-are down), the people on foot, the `Impact`, `Skid` and `Honk` events, the horn key and the view's
-turns (the stereo image turns with the screen), and hands them as plain `Heard` data to the
-`Audio` service.
+are down), the people on foot (who they are, their mood and who they walk with), the animals, the
+`Impact`, `Skid`, `Honk` and `Cry` events, the horn key and the view's turns (the stereo image
+turns with the screen), and hands them as plain `Heard` data to the `Audio` service.
 `main.ts` provides the director (`src/audio/director`, plain TypeScript), which runs the outdoor
 acoustics and drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths
 (`src/audio/synth`). The speaker starts its AudioContext on the first key, click or tap once it
@@ -450,16 +562,21 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
     reverse).
 - `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
   (described, not run) `render` and `audio` schedules. Any warning fails: without the audio
-  schedule described, `Impact` and `Honk` would be `event-never-read`. `lintTarget` declares
-  `SetHandling` a host event (`hostEvents`), since only the host sends it; undeclared it would be
-  `event-never-written`. It also fails if a module the sim loads is not covered by the oxlint
-  simulation override.
+  schedule described, `Cry`, which no sim system reads, would be `event-never-read`. `lintTarget`
+  declares `SetHandling` a host event (`hostEvents`), since only the host sends it; undeclared it
+  would be `event-never-written`. It also fails if a module the sim loads is not covered by the
+  oxlint simulation override.
 - `node --test`. Beside the unit tests, these guard the architecture:
   - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
     twice, with the handling off its real values (`SetHandling`), and requires identical state,
-    transient components included.
+    transient components included. Its cast reaches the population's state: a mother, her son and
+    their dog on a lead come on a man lying dead (shocked, they run), and a cat sits across the
+    street.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
-    into a fresh runtime, and plays on identically.
+    into a fresh runtime, and plays on identically; so does one taken while a walker stands shocked
+    by a body (a `Witness`), whose choice to gather or run comes out alike. `src/sim/animals.test.ts`
+    replays a walk about a farm with its animals, and restores animals mid-roam and a save taken in
+    the step a car strikes a dog, the cat by it scared in that step (`Startle`).
   - `src/sim/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
     `SetHandling` kept in range and through a save.
   - `src/hud/handling.test.ts`: the handling store (what it stores, restores and sends);
@@ -467,12 +584,18 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
     from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
     the Esc and M routing (`overlayKey`) and the pause.
   - `src/render/index.test.ts`: every system of every described schedule (`render` and `audio`)
-    declares no writes.
+    declares no writes, and a detached node frees its frames, pool and proxies, not a vehicle's
+    shared body.
   - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 
-`src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with
-scripted keys and collects every `Impact` and `Honk` emitted (`heard`), `stage` clears the map and
-places exactly the cars and pedestrians a test needs, `World` inspects everything as plain data,
-the handling included, and `drive` steps one vehicle with `advance` alone (test ground, no walls)
-under a given handling.
+`src/sim/testing.ts` is the headless test kit: `start(timeline, staging, { alone })` makes a
+runtime with scripted keys and collects every `Impact`, `Honk` and `Cry` emitted (`heard`); with
+`alone`, whatever `Populate` brings is despawned the step it comes, so a staged scene plays out
+undisturbed. `stage` clears the map (vehicles, people and animals) and places exactly the cars,
+pedestrians, animals, bodies lying dead and parties with their followers a test needs; `World`
+inspects everything as plain data (each person's look, mood, route, leader, `Down`, `Dead` and
+`Witness`, each animal, the handling); `LOOK` is a test person; and `drive` steps one vehicle with
+`advance` alone (test ground, no walls) under a given handling. `src/sim/scene.ts` holds the
+reaction tests' scenes on Via Cesare Battisti and a `start` on a seed of the test's choosing, so a
+rule that rolls dice is checked over several rolls.

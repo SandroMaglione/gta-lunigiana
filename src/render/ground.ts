@@ -5,7 +5,7 @@
  *
  * @module render/ground
  */
-import { groundZ, roadZ, terrainNodeZ, terrainZ } from "../sim/map/ground.ts"
+import { atGrade, drawnZ, groundZ, roadZ, terrainNodeZ, terrainZ } from "../sim/map/ground.ts"
 
 /** Metres a.s.l. subtracted from every elevation before it reaches the GPU (the map spans ≈150–1800 m). */
 const ELEVATION_BASE = 200
@@ -24,3 +24,12 @@ export const surfaceY = (z: number, x: number, y: number, lift: number, lifted: 
 
 /** Where an actor at (x, y) stands in render y, keeping to the level nearest `near` (its previous render height); see `groundZ`. */
 export const groundY = (x: number, y: number, near?: number): number => yOf(groundZ(x, y, near === undefined ? undefined : near + ELEVATION_BASE))
+
+/** The ground at (x, y) on the terrain's level, in render y: a road at grade, never a deck above or a tunnel below (`atGrade`). */
+export const atGradeY = (x: number, y: number): number => yOf(atGrade(x, y))
+
+/**
+ * What shows on top at (x, y) on the level nearest `near` (render y), in render y: the ground there, or the higher road ribbon
+ * drawn over it at a junction or a hairpin (`drawnZ`). Flat things laid on the ground (a blood pool) lie on it.
+ */
+export const drawnY = (x: number, y: number, near: number): number => yOf(drawnZ(x, y, groundZ(x, y, near + ELEVATION_BASE)))

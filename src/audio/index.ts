@@ -1,8 +1,9 @@
 /**
  * The audio schedule: once per animation frame it projects what can be heard into plain `Heard`
  * data (the player's ears; vehicles someone drives or that move, with the drivetrain's revs and load,
- * whether their wheels or their body are down and how their tyres skid; people on foot; the Impact and Honk events
- * since the last frame, each impact with the bodies it struck; the horn key) and hands it to the
+ * whether their wheels or their body are down and how their tyres skid; people on foot, with who they
+ * are, what they are doing and who they walk with; the animals; the Impact, Honk and Cry events since
+ * the last frame, each impact with the bodies it struck; the horn key) and hands it to the
  * `Audio` service. No acoustics here: the director behind the service decides what is loud enough
  * and where it sits.
  * Read-only towards the world, like render (render/index.test.ts checks every described schedule).
@@ -15,11 +16,12 @@ import { forwardSpeed } from "../sim/body.ts"
 import { hullDown, overturned } from "../sim/chassis.ts"
 import { engineRevs } from "../sim/drivetrain.ts"
 import {
-  CarInput, Chassis, Down, Driving, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle, View
+  Animal, CarInput, Chassis, Cry, Dead, Down, Driving, Follows, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Roam, Skid, Time, Traffic,
+  Vehicle, View
 } from "../sim/index.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
-import type { Body, Happening, Heard, HeardPerson, HeardVehicle, Skidding, Zone } from "./types.ts"
+import type { Body, Happening, Heard, HeardAnimal, HeardPerson, HeardVehicle, Skidding, Zone } from "./types.ts"
 
 /** The host's ears: gets one `Heard` per frame while there is a player. */
 export const Audio = Descriptor.Service<{ readonly hear: (heard: Heard) => void }>()("Lunigiana/Audio")
@@ -58,16 +60,28 @@ const Hear = Game.System("Lunigiana/Hear", {
       selection: {
         pose: Game.Query.read(Pose),
         motion: Game.Query.read(Motion),
+        person: Game.Query.read(Person),
         pedestrian: Game.Query.optional(Pedestrian),
+        follows: Game.Query.optional(Follows),
         down: Game.Query.optional(Down),
+        dead: Game.Query.optional(Dead),
         player: Game.Query.optional(Player)
       },
-      with: [Person],
       without: [Driving]
+    }),
+    animals: Game.Query({
+      selection: {
+        pose: Game.Query.read(Pose),
+        motion: Game.Query.read(Motion),
+        animal: Game.Query.read(Animal),
+        roam: Game.Query.read(Roam),
+        down: Game.Query.optional(Down),
+        dead: Game.Query.optional(Dead)
+      }
     })
   },
   resources: { input: Game.System.readResource(Input), view: Game.System.readResource(View), time: Game.System.readResource(Time) },
-  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid) },
+  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid), cries: Game.System.readEvent(Cry) },
   services: { audio: Game.System.service(Audio) }
 }, ({ queries, resources, events, services }) => {
   const found = queries.player.singleOptional()
@@ -108,11 +122,27 @@ const Hear = Game.System("Lunigiana/Hear", {
     const found = bodies.get(id)
     return found === undefined ? undefined : { model: found.model, zone: face === undefined ? zoneOf(found.model, found, x, y) : FACE_ZONE[face] }
   }
+  // Who walks with whom: each follower with its leader, and a leader with the first person following it (a dog on a lead is no partner).
+  const partners = new Map<number, number>()
+  for (const { entity, data } of queries.people.each()) {
+    const follows = data.follows.value()
+    if (follows === undefined) continue
+    const leader = Game.Entity.id(follows.leader)
+    partners.set(entity.id, leader)
+    if (!partners.has(leader)) partners.set(leader, entity.id)
+  }
   const people = queries.people.each().map(({ entity, data }): HeardPerson => {
-    const at = data.pose.get(), v = data.motion.get()
+    const at = data.pose.get(), v = data.motion.get(), { age, female } = data.person.get(), ped = data.pedestrian.value(), partner = partners.get(entity.id)
     return {
-      id: entity.id, x: at.x, y: at.y, vx: v.vx, vy: v.vy,
-      player: data.player.present, fleeing: data.pedestrian.value()?.mood === "flee", down: data.down.present
+      id: entity.id, x: at.x, y: at.y, vx: v.vx, vy: v.vy, player: data.player.present, age, female,
+      mood: ped?.mood ?? "walk", fx: ped?.fx ?? at.x, fy: ped?.fy ?? at.y, down: data.down.present, dead: data.dead.present,
+      ...(partner === undefined ? {} : { with: partner })
+    }
+  })
+  const animals = queries.animals.each().map(({ entity, data }): HeardAnimal => {
+    const at = data.pose.get(), v = data.motion.get(), { species, size } = data.animal.get()
+    return {
+      id: entity.id, species, x: at.x, y: at.y, vx: v.vx, vy: v.vy, size, mood: data.roam.get().mood, down: data.down.present, dead: data.dead.present
     }
   })
   const happenings: Array<Happening> = [
@@ -122,12 +152,14 @@ const Hear = Game.System("Lunigiana/Hear", {
       if (body === undefined || (hit.hit === "car" && otherBody === undefined)) return []
       return [{ kind: "impact", ...hit, body, ...(otherBody === undefined ? {} : { otherBody }) }]
     }),
-    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk }))
+    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk })),
+    ...events.cries.all().map((cry) => ({ kind: "cry" as const, ...cry }))
   ]
   services.audio.hear({
     listener: { x: pose.x, y: pose.y, vx: motion.vx, vy: motion.vy, car, turns: resources.view.get().turns },
     vehicles,
     people,
+    animals,
     happenings,
     horn: resources.input.get().horn.held
   })
