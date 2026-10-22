@@ -41,10 +41,13 @@ export interface DebugMenuHost {
 }
 
 // The Debug button sits right of the monitor's (`.btm-toggle`, bottom left), anchored to it; until
-// the monitor is on the page, or where anchor positioning is missing, it takes the fallbacks.
+// the monitor is on the page, or where anchor positioning is missing, it takes the fallbacks. In
+// mobile mode both go to the top centre, off the touch controls (◀ ▶ and the stick are bottom left).
 const STYLE = `
 .btm-toggle { anchor-name: --ritmo-monitor; }
 .debug-toggle { position: fixed; z-index: 2147483000; left: 200px; left: calc(anchor(--ritmo-monitor right, 4px) + 8px); bottom: 12px; bottom: anchor(--ritmo-monitor bottom, 12px); padding: 2px 8px; font: inherit; font-size: 11px; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); cursor: pointer; }
+html.touch .btm-toggle { top: 12px; bottom: auto; left: 50%; }
+html.touch .debug-toggle { top: 12px; top: anchor(--ritmo-monitor top, 12px); bottom: auto; }
 .debug { position: fixed; z-index: 2147483000; top: 16px; right: 16px; bottom: 120px; box-sizing: border-box; width: min(360px, calc(100vw - 32px)); overflow-y: auto; padding: 12px 16px; color: var(--ink); background: rgb(23 22 26 / 0.9); border: 2px solid var(--accent); text-shadow: 2px 2px 0 var(--shadow); }
 .debug[hidden] { display: none; }
 .debug h2, .debug h3 { margin: 0; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }

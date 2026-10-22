@@ -731,14 +731,15 @@ before the pan, and a panned one lower):
 | H | at the wheel | sounds the horn while held |
 | H | at the wheel of the Carabinieri Giulia | each press turns the two-tone siren on or off |
 
-On foot H does nothing. The title card lists it.
+On foot H does nothing. The keyboard's title card lists it; in mobile mode the Horn button shows while
+driving.
 
 ## Start, pause and hidden tabs
 
 - **Autoplay.** Browsers allow audio only after a user gesture, so the AudioContext is made on the
   first trusted `keydown`, `pointerdown` or `touchend` with user activation once the speaker exists
-  (made during the last loading steps): normally the key that dismisses the title card (Esc does
-  not count). Until then nothing plays and no sound time passes. The gesture's own task builds
+  (made during the last loading steps): normally the key or tap that dismisses the title card (Esc
+  does not count). Until then nothing plays and no sound time passes. The gesture's own task builds
   only the context, the noise kit and the mixer. The kit's samples take ≈ 17 ms in Node; ≈ 7 of
   them are the gust signal, which turns each sine by a rotation per sample instead of calling
   `Math.sin` (three times slower). Each one-shot then pre-renders its buffers in tasks of its own:

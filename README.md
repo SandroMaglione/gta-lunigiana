@@ -142,6 +142,8 @@ Where a touch screen is the main pointer, the game runs in mobile mode: the cont
 | Horn | | horn while held; in the Carabinieri car, siren on or off |
 | A tap on the minimap | full map (pauses the game); a tap closes it | same |
 
+The settings have no touch control yet: Esc on a keyboard opens them.
+
 ## How the game sounds
 
 The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, crickets, birds, farm dogs, the village church bells striking the hours, and the Lucido and its streams.

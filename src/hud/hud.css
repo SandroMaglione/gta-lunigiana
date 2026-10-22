@@ -97,6 +97,8 @@ html.touch body { touch-action: none; -webkit-user-select: none; user-select: no
    landscape, then turns (dvh: the height Safari's toolbars leave). Touches are turned back in touch.ts. */
 @media (orientation: portrait) {
   html.touch body { position: fixed; top: 0; left: 0; width: 100vh; width: 100dvh; height: 100vw; transform-origin: 0 0; transform: translateX(100vw) rotate(90deg); }
+  /* The settings open in the top layer, which the page's turn does not reach: they turn on their own. */
+  html.touch #settings { inset: 50% auto auto 50%; margin: 0; translate: -50% -50%; rotate: 90deg; width: min(560px, calc(100dvh - 32px)); max-width: none; max-height: calc(100vw - 32px); }
 }
 
 html.touch #hud-minimap { top: 12px; bottom: auto; left: 12px; }
@@ -109,8 +111,9 @@ html.touch .score div { gap: 8px; }
 html.touch .score dt { font-size: 10px; }
 html.touch .score dt small { font-size: 8px; }
 html.touch .score dd { font-size: 17px; }
-/* Between the left controls and the right ones. */
-html.touch #hud-speedo { right: auto; left: 50%; bottom: 48px; transform: translateX(-50%); text-align: center; }
+/* Between the left controls and the right ones (◀ ▶ reach 192 px in, Brake 172 px), a long vehicle name cut short. */
+html.touch #hud-speedo { right: auto; left: 50%; bottom: 48px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 400px); text-align: center; }
+html.touch #hud-vehicle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html.touch #hud-speed { font-size: 26px; }
 html.touch .credits { right: auto; left: 50%; bottom: 4px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 400px); font-size: 8px; text-align: center; }
 html.touch .map-head { top: 10px; left: 16px; right: 16px; font-size: 12px; }

@@ -382,7 +382,8 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   repainted on open, on resize, and when the pixel ratio changes. The dialog takes focus when it
   opens, so screen readers announce its title and the district.
 - The settings (`src/hud/settings.ts`), in every build: Esc opens and closes them, except that
-  Esc closes the full map first while it is open, and does nothing on the title card. They pause
+  Esc closes the full map first while it is open, and does nothing on the title card; mobile mode
+  has no touch control for them yet. They pause
   the game as the map does, the last frame drawn dimmed behind them (drawn again when the window
   is resized). Their Gameplay section holds "Vehicle physics": a radio button for each preset
   (`HANDLING_PRESETS`, with its description), the current one checked, and none with a Custom note
@@ -400,8 +401,8 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   held through the pause is still held.
 - The debug menu (`src/hud/debug.ts`) sets the handling ([gameplay.md](gameplay.md#handling)) in
   dev builds only: `main.ts` loads it inside its `import.meta.env.DEV` block, beside the Ritmo
-  monitor, so production builds leave it out. P or the Debug button beside the Ritmo monitor
-  opens and closes it. It has a button for each preset, Custom shown when the knobs match none,
+  monitor, so production builds leave it out. P or the Debug button beside the Ritmo monitor's
+  (bottom left; top centre in mobile mode, off the touch controls) opens and closes it. It has a button for each preset, Custom shown when the knobs match none,
   and a control for every knob. It reads the handling from the store, not from the game: the game
   applies a `SetHandling` event only on its next step, and not while the full map or the settings
   pause it, so reading the game could show and store a stale value. Keys pressed inside it do not
@@ -410,10 +411,10 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
 - Mobile mode: an inline script in `index.html`'s head marks the page `touch` when a touch screen
   is the main pointer (`(pointer: coarse)`), before the first paint, so the title card shows right.
   hud.css then shows the touch controls and a smaller HUD (the minimap top left, the speedometer
-  and credits between the left controls and the right ones) and hides the key prompt: the action button shows
-  its verb, without the vehicle. The card trades its key list for two touch hints and "Tap to
-  play", and hides on the tap's click, not its press, so the click cannot land on the minimap under
-  it. The keyboard keeps working. In headless Chrome emulating an 844 × 390 phone at 3× on an M4
+  and credits between the left controls and the right ones) and hides the key prompt: the action
+  button shows its verb, without the vehicle. The card trades its key list for two touch hints and
+  "Tap to play", and hides on the tap's click, not its press, so the click cannot land on the
+  minimap under it. The keyboard keeps working. In headless Chrome emulating an 844 × 390 phone at 3× on an M4
   Pro, the view is 633 × 293 texels and runs at 60 fps with no frame over 30 ms while the stick is
   held; no real phone has been measured.
 - Touch controls (`src/hud/touch.ts`, `#hud-touch`): Ritmo's `Touch` tracks the fingers on the
@@ -428,6 +429,8 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   Safari's toolbars leave) and turns it a quarter clockwise, to be held sideways (hud.css). The
   renderer and the full map size to the page's box, not the window, and each touch is turned back
   through the inverse of the page's transform about its origin (`unturn`) before `Touch` reads it.
+  The settings dialog opens in the top layer, which the page's turn does not reach, so it turns
+  on its own.
   On the first tap's click, `holdLandscape` asks for the full screen and then locks the screen to
   landscape, which Android grants; iPhones grant neither to a page, so the page turns itself there.
   It waits for the click because the full screen uses up the tap's user activation, which the
