@@ -19,7 +19,7 @@
  */
 import { bufferOf, loop, noiseSamples, smoothstep } from "../buffers.ts"
 import type { Continuous, Material, VoiceFactory } from "../types.ts"
-import { fadeOut, glide } from "./graph.ts"
+import { draw, drawLog, fadeOut, glide } from "./graph.ts"
 
 type ScrapeSound = Extract<Continuous, { readonly kind: "scrape" }>
 
@@ -220,11 +220,6 @@ const surfaceOf = (ctx: BaseAudioContext, material: Material): AudioBuffer => {
   }
   return buffer
 }
-
-/** A value drawn over `range`. */
-const draw = ([lo, hi]: readonly [number, number]): number => lo + (hi - lo) * Math.random()
-/** A value drawn over `range` evenly per octave. */
-const drawLog = ([lo, hi]: readonly [number, number]): number => lo * (hi / lo) ** Math.random()
 
 /** Grinding along a wall at `speed` m/s, on `material`; a new material fades its layer in over the old one. */
 export const scrape: VoiceFactory<ScrapeSound> = ({ ctx, out, cents, kit }) => {

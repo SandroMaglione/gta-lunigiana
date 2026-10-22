@@ -7,6 +7,8 @@ import { InputAxis, Random } from "@typeonce/ritmo-math"
 import { clampKnob, DEFAULT_HANDLING } from "./handling.ts"
 import { bindings, Game, Handling, Input, KeyboardInput, Pose, PrevPose, Root, SetHandling, STEP, Time, View } from "./schema.ts"
 import { Contacts, Recover } from "./systems/contacts.ts"
+import { CrashDamage } from "./systems/damage.ts"
+import { Explode, Respawn } from "./systems/explosions.ts"
 import { PlayerDrive, RideAlong } from "./systems/drive.ts"
 import { EnterExit } from "./systems/enter-exit.ts"
 import { PlayerFoot } from "./systems/foot.ts"
@@ -63,14 +65,18 @@ export const update = Game.Schedule(
   ApplyHandling,
   EnterExit,
   Game.Schedule.applyDeferred(),
+  Explode,
+  Game.Schedule.applyDeferred(),
   PlayerFoot,
   PlayerDrive,
   TrafficAI,
   Pedestrians,
   VehiclePhysics,
   Contacts,
+  CrashDamage,
   RideAlong,
   Recover,
+  Respawn,
   Populate,
   Game.Schedule.applyDeferred()
 )
@@ -97,7 +103,7 @@ export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, type
   // Loaded here, not at the top: the render and audio schedules are host code, outside the simulation.
   // oxlint-disable-next-line no-restricted-imports -- the lint target describes the render schedule
   const { render } = await import("../render/index.ts")
-  // oxlint-disable-next-line no-restricted-imports -- and the audio schedule, the reader of the sim's events
+  // oxlint-disable-next-line no-restricted-imports -- and the audio schedule, the only reader of Honk
   const { audio } = await import("../audio/index.ts")
   // The host's handling store (src/hud/handling.ts, behind the settings and the dev debug menu) sends SetHandling with runtime.send.
   return { runtime: made.value, schedules: { setup, update }, describe: { render, audio }, hostEvents: [SetHandling] }

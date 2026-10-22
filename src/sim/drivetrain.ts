@@ -1,11 +1,13 @@
 /**
  * Engine and gearbox: the full-load torque curve of each engine, the automatic gearbox that picks
- * a gear from road speed and pedal, the clutch that slips at a launch, and the revs and load that
- * result. The physics turns them into drive force at the wheels; the audio host plays the same revs
- * and load (`engineRevs`), so what is heard is what pushes the car.
+ * a gear from road speed and pedal, the clutch that slips at a launch, and the revs, load and
+ * misfires that result, worn by crash damage. The physics turns them into drive force at the
+ * wheels; the audio host plays the same revs, load and misfires (`engineRevs`), so what is heard
+ * is what pushes the car.
  *
  * @module drivetrain
  */
+import { destroyed, misfires, type Wear, wornTorque } from "./damage.ts"
 import { type ChassisValue, STEP } from "./schema.ts"
 import type { EngineSpec, VehicleSpec } from "./vehicles.ts"
 
@@ -87,34 +89,43 @@ export const shiftGear = (spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" 
   return { gear, shiftUntil: changed ? step + Math.max(1, Math.round(spec.gearbox.shift / STEP.dt)) : chassis.shiftUntil }
 }
 
-/** What the engine does: rpm, load 0…1 (the pedal's share of full torque; 0 while shifting, braking or on the limiter). */
+/** What the engine does: rpm, load 0…1 (the pedal's share of full torque; 0 while shifting, braking or on the limiter), and whether it misfires (no drive). */
 interface Revs {
   readonly rpm: number
   readonly load: number
+  readonly misfire: boolean
 }
 
 /**
- * The engine's revs and load at road `speed` and `throttle` in the chassis's gear: the wheels set
- * the revs, except in first gear and reverse where the clutch slips up to idle plus the pedal's
- * share of the launch revs; never under idle or over the redline.
+ * The engine's revs and load at road `speed` and `throttle` in the chassis's gear, and whether
+ * its `wear` makes it misfire: the wheels set the revs, except in first gear and reverse where the
+ * clutch slips up to idle plus the pedal's share of the launch revs; never under idle or over the
+ * redline. A destroyed engine is dead: no revs, no load.
  */
-export const engineRevs = (spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number): Revs => {
+export const engineRevs = (
+  spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number, wear: Wear
+): Revs => {
+  if (destroyed(wear.damage)) return { rpm: 0, load: 0, misfire: false }
   const pedal = pedalOf(chassis.gear, throttle), { idle, redline } = spec.engine
   const clutch = chassis.gear <= 0 ? idle + pedal * (spec.gearbox.launch - idle) : idle
   const rpm = Math.min(redline, Math.max(wheelRpm(spec, chassis.gear, speed), clutch))
   const limited = spec.limiter !== undefined && Math.abs(speed) >= spec.limiter
-  return { rpm, load: step < chassis.shiftUntil || limited ? 0 : pedal }
+  return { rpm, load: step < chassis.shiftUntil || limited ? 0 : pedal, misfire: misfires(wear, step) }
 }
 
 /**
- * Drive force at the road from the engine (N, + forward): full-load torque × pedal through the
- * gears the way the gear drives, or engine braking against the motion with the pedal up (none with
- * the clutch open, standing or crawling in first).
+ * Drive force at the road from the engine (N, + forward): full-load torque × load, less what
+ * `wear` takes, through the gears the way the gear drives (none while it misfires), or engine
+ * braking against the motion with the pedal up (none with the clutch open, standing or crawling in
+ * first, or from a dead engine).
  */
-export const driveForce = (spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number): number => {
-  const { rpm, load } = engineRevs(spec, chassis, speed, throttle, step)
+export const driveForce = (
+  spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number, wear: Wear
+): number => {
+  if (destroyed(wear.damage)) return 0
+  const { rpm, load, misfire } = engineRevs(spec, chassis, speed, throttle, step, wear)
   const ratio = (overall(spec, chassis.gear) * EFFICIENCY) / spec.wheelRadius
-  if (load > 0) return (chassis.gear < 0 ? -1 : 1) * load * fullTorque(spec.engine, rpm) * ratio
+  if (load > 0) return misfire ? 0 : (chassis.gear < 0 ? -1 : 1) * load * wornTorque(wear.damage) * fullTorque(spec.engine, rpm) * ratio
   if (pedalOf(chassis.gear, throttle) > 0 || step < chassis.shiftUntil || wheelRpm(spec, chassis.gear, speed) < spec.engine.idle) return 0
   return Math.sign(speed) * dragTorque(spec.engine, rpm) * ratio
 }

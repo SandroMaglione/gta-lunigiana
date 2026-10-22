@@ -45,6 +45,8 @@ export const Pedestrian = Descriptor.ConstructedComponent(
 )("Lunigiana/Pedestrian")
 /** Knocked to the ground until step `until` (player or pedestrian). */
 export const Down = Descriptor.ConstructedComponent(Decode.struct({ until: Decode.integer }))("Lunigiana/Down")
+/** Killed at step `at` (by an explosion): lies where it fell and never gets up; the player is brought back to the start (`Respawn`). */
+export const Dead = Descriptor.ConstructedComponent(Decode.struct({ at: Decode.integer }))("Lunigiana/Dead")
 
 /** A car, van or truck of one model and paint colour. */
 export const Vehicle = Descriptor.ConstructedComponent(
@@ -68,6 +70,20 @@ export const Chassis = Descriptor.ConstructedComponent(
 )("Lunigiana/Chassis")
 /** A Chassis value. */
 export type ChassisValue = Descriptor.Descriptor.Value<typeof Chassis>
+/**
+ * How wrecked a vehicle is: the share of its durability its crashes have used up (`amount`, from 0 as new to 1 destroyed: the
+ * engine is dead and it burns); its latest crash: the barrier-equivalent speed of its hardest hit (m/s; 0 before any), the step of
+ * its first and what it struck (another vehicle's entity id, −1 a wall or the ground), so the further contacts of one crash cost
+ * only what a harder hit adds; and its fire: the step it blows up (`fuse`, 0 until it burns) and whether it has (`exploded`: a
+ * charred shell). Stages, durability and what damage costs the engine are in damage.ts.
+ */
+export const Damage = Descriptor.ConstructedComponent(
+  Decode.struct({
+    amount: Decode.number, crash: Decode.number, since: Decode.integer, struck: Decode.integer, fuse: Decode.integer, exploded: Decode.boolean
+  })
+)("Lunigiana/Damage")
+/** A Damage value. */
+export type DamageValue = Descriptor.Descriptor.Value<typeof Damage>
 /** An AI-driven vehicle (it follows its Route). */
 export const Traffic = Descriptor.Tag("Lunigiana/Traffic")
 /**
@@ -159,6 +175,17 @@ export const Skid = Descriptor.Event<{
 }>()("Lunigiana/Skid")
 /** An AI driver held up for a while sounds the horn, once per stuck episode. Not saved; the audio schedule plays it. */
 export const Honk = Descriptor.Event<{ readonly car: number; readonly model: VehicleModel; readonly x: number; readonly y: number }>()("Lunigiana/Honk")
+/**
+ * A burning wreck (`car`, of `model`) blew up this step at its centre of mass (x, y, and z m a.s.l.). Not saved; the render draws the
+ * fireball and the debris, the audio plays the blast.
+ */
+export const Explosion = Descriptor.Event<{
+  readonly car: number
+  readonly model: VehicleModel
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}>()("Lunigiana/Explosion")
 
 /** Player controls. Keys are host detail, but they live here so `Controls` has one home. */
 export const bindings = {
@@ -183,14 +210,15 @@ export const KeyboardInput = Descriptor.Service<InputCapture.Source<Controls>>()
 
 export const Game = Schema.bind(
   Schema.fragment({
-    components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Chassis, Traffic, Route, Driving, Autopilot, Stolen },
+    components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Dead, Vehicle, CarInput, Chassis, Damage, Traffic, Route, Driving, Autopilot, Stolen },
     resources: { Time, Rng, Score, View, Handling, Input },
-    events: { Impact, Honk, Skid, SetHandling },
+    events: { Impact, Honk, Skid, Explosion, SetHandling },
     requires: [
       Schema.requires(Player, Pose, PrevPose, Motion, Person),
       Schema.requires(Pedestrian, Pose, PrevPose, Motion, Person, Route),
-      Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput, Chassis),
-      Schema.requires(Traffic, Vehicle, Route, Autopilot)
+      Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput, Chassis, Damage),
+      Schema.requires(Traffic, Vehicle, Route, Autopilot),
+      Schema.requires(Dead, Down)
     ]
   }),
   Root

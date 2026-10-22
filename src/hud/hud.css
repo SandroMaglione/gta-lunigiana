@@ -3,6 +3,7 @@
   --ink: #f2efe6;
   --shadow: #17161a;
   --accent: #f0c93c;
+  --alarm: #b8312b;
   --panel: rgb(23 22 26 / 0.72);
   font: 700 15px/1.25 "Courier New", ui-monospace, Menlo, Consolas, monospace;
   -webkit-font-smoothing: none;
@@ -25,6 +26,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2c3d22; }
 .score dd { margin: 0; min-width: 2ch; font-size: 22px; color: var(--accent); }
 
 #hud-prompt { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); padding: 6px 12px; background: var(--panel); border: 2px solid var(--accent); }
+
+/* Killed: the screen darkens and "Sei morto" fades in over a second, until the player is back at the start (hud.ts). */
+#hud-wasted { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: rgb(23 22 26 / 0.45); animation: fade-in 1s ease-out; }
+#hud-wasted p { margin: 0; font-size: 48px; color: var(--alarm); text-align: center; text-shadow: 3px 3px 0 var(--shadow); }
+#hud-wasted small { display: block; font-size: 16px; color: var(--ink); opacity: 0.85; }
+@keyframes fade-in { from { opacity: 0; } }
 
 #hud-speedo { position: absolute; right: 16px; bottom: 28px; text-align: right; }
 #hud-speed { font-size: 40px; color: var(--accent); }
@@ -87,7 +94,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2c3d22; }
 #title .go { margin: 0 0 16px; animation: blink 1s steps(2, start) infinite; }
 #title .fine { margin: 0; font-size: 11px; opacity: 0.85; }
 @keyframes blink { to { visibility: hidden; } }
-@media (prefers-reduced-motion: reduce) { #title .go, #hud-map .marker { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #title .go, #hud-map .marker, #hud-wasted { animation: none; } }
 
 /* Mobile mode (html.touch, set in index.html): controls on the screen, a smaller HUD, landscape only. */
 /* !important: the mode outranks each element's own display (#title .keys is a grid). */
@@ -125,6 +132,8 @@ html.touch .map-title { font-size: 16px; }
    something to do. */
 #hud-touch { position: absolute; inset: 0; }
 #hud-touch[data-mode="driving"] .on-foot, #hud-touch:not([data-mode="driving"]) .driving, #hud-touch-action:empty { display: none; }
+/* Dead, the player can only turn the view (as Q and E do) until they are back at the start. */
+#hud-touch[data-mode="dead"] .on-foot { display: none; }
 #hud-stick { position: absolute; left: 28px; bottom: 28px; box-sizing: border-box; width: 112px; height: 112px; border: 2px solid var(--ink); border-radius: 50%; background: rgb(23 22 26 / 0.35); opacity: 0.5; }
 #hud-stick.held { opacity: 1; }
 #hud-stick .knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: var(--ink); opacity: 0.85; }

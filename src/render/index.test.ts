@@ -1,15 +1,25 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Group, Vector3 } from "three"
+import { Keyboard } from "@typeonce/ritmo-browser"
+import { Color, Group, Matrix4, Vector3 } from "three"
 
 import { tiltOf, turn } from "../sim/chassis.ts"
-import { lintTarget, STEP } from "../sim/index.ts"
+import { UNDAMAGED } from "../sim/damage.ts"
+import {
+  bindings, CarInput, Chassis, Damage, Game, KeyboardInput, lintTarget, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, STEP, update, Vehicle
+} from "../sim/index.ts"
+import { lanePoint, laneOf, laneSide } from "../sim/route.ts"
+import { rollingChassis } from "../sim/spawning.ts"
+import { BATTISTI, burning, door, ON_BATTISTI, stage } from "../sim/testing.ts"
 import { VEHICLE_MODELS, VEHICLES } from "../sim/vehicles.ts"
-import { PersonNode, vehicleNode, wheelLayout } from "./actors.ts"
-import { solidMaterial } from "./geometry.ts"
+import { PersonNode, vehicleBody, vehicleNode, wheelLayout } from "./actors.ts"
+import { FIREBALL, FLASH } from "./blasts.ts"
+import { linear, solidMaterial } from "./geometry.ts"
 import { yOf } from "./ground.ts"
-import { makeRegistries, placeVehicle } from "./index.ts"
+import { Effects, makeEffects, makeRegistries, People, placeVehicle, render, RenderClock, Vehicles } from "./index.ts"
+import { PALETTE } from "./palette.ts"
+import { PLUMES_AT_ONCE } from "./wrecks.ts"
 
 // Regression: detached vehicle nodes kept their x-ray geometry, so despawned traffic leaked GPU buffers.
 test("registries: a detached node frees its own geometry, not its vehicle's shared body", () => {
@@ -21,11 +31,32 @@ test("registries: a detached node frees its own geometry, not its vehicle's shar
     geometry.addEventListener("dispose", () => freed.add(name))
   watch("car x-ray", car.xray.geometry)
   watch("car body", car.body.geometry)
+  // Blown up, it is left a charred shell: shared like the intact body.
+  car.body.geometry = vehicleBody("panda", 0xb8312b, true)
+  watch("car shell", car.body.geometry)
   watch("person x-ray", person.xray.geometry)
   person.frames.forEach((frame, i) => watch(`frame ${i}`, frame))
   assert.ok(vehicles.remove(1) && people.remove(2))
   assert.deepEqual([...freed].sort(), ["car x-ray", "frame 0", "frame 1", "frame 2", "person x-ray"])
   assert.equal(car.parent, null)
+})
+
+test("a charred shell is its model's body darkened toward charcoal, shaped the same, one per model and paint", () => {
+  for (const model of VEHICLE_MODELS) {
+    const intact = vehicleBody(model, 0xb8312b), shell = vehicleBody(model, 0xb8312b, true)
+    assert.equal(vehicleBody(model, 0xb8312b, true), shell, `${model}: shared`)
+    assert.notEqual(vehicleBody(model, 0x3d6155, true), shell, `${model}: one per paint`)
+    assert.notEqual(shell, intact)
+    assert.deepEqual(shell.getAttribute("position").array, intact.getAttribute("position").array, `${model}: the same shape`)
+    // Every part (linear RGB) a grey, its hue burnt off, a quarter as light or less, and none lighter than a sixth of white.
+    const was = intact.getAttribute("color").array, now = shell.getAttribute("color").array, soot = linear(PALETTE.outline)
+    const light = (c: ArrayLike<number>, i: number) => 0.2126 * c[i]! + 0.7152 * c[i + 1]! + 0.0722 * c[i + 2]!
+    for (let i = 0; i < was.length; i += 3) {
+      const spread = Math.max(now[i]!, now[i + 1]!, now[i + 2]!) - Math.min(now[i]!, now[i + 1]!, now[i + 2]!)
+      assert.ok(spread <= Math.max(...soot) - Math.min(...soot) + 1e-6, `${model}: vertex ${i / 3} is ${now.slice(i, i + 3)}`)
+      assert.ok(light(now, i) <= Math.max(light(was, i) / 4, light(soot, 0) * 1.5) && light(now, i) < 1 / 6, `${model}: vertex ${i / 3} ${light(was, i)} → ${light(now, i)}`)
+    }
+  }
 })
 
 test("the host schedules (render, audio) read the world and never write it", async () => {
@@ -104,4 +135,66 @@ test("wheels are drawn where the sim has them, on the ground line: three on the 
     body.computeBoundingBox()
     assert.ok(Math.abs(body.boundingBox!.min.y) < 1e-6, `${model}: the tyres touch y = 0`)
   }
+})
+
+/** `along` m down Via Cesare Battisti, in a Panda's lane. */
+const on = (along: number): PoseValue => ({ ...lanePoint(laneOf(BATTISTI.edge, BATTISTI.forward), along, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle })
+/** A Panda at `pose` that blew up: a charred shell. */
+const shell = (pose: PoseValue) => Game.Command.spawn(
+  [Vehicle, { model: "panda", color: 0x8b8170 }], [Pose, pose], [PrevPose, pose], [Motion, { vx: 0, vy: 0, spin: 0 }],
+  [CarInput, { throttle: 0, steer: 0, handbrake: true }], [Chassis, rollingChassis("panda", pose, 0)], [Damage, { ...UNDAMAGED, amount: 1, exploded: true }]
+)
+/** The game drawn into a scene of its own, the player on foot 55 m down the road and the `cars` on it; `frame` steps and draws. */
+const drawn = (cars: ReadonlyArray<ReturnType<typeof burning>>) => {
+  const scene = new Group(), { people, vehicles } = makeRegistries(scene), effects = makeEffects(scene)
+  const made = makeRuntime({
+    seed: 1,
+    services: Game.Runtime.services(
+      Game.Runtime.service(KeyboardInput, Keyboard.scripted(bindings, [])),
+      Game.Runtime.service(People, people),
+      Game.Runtime.service(Vehicles, vehicles),
+      Game.Runtime.service(RenderClock, { alpha: 0 }),
+      Game.Runtime.service(Effects, effects)
+    )
+  })
+  assert.ok(made.ok)
+  const runtime = made.value
+  assert.ok(runtime.tick(setup).ok)
+  assert.ok(runtime.tick(stage(door(on(55)), { cars })).ok)
+  assert.ok(runtime.tick(render).ok)
+  return { vehicles, effects, frame: () => assert.ok(runtime.tick(update, render).ok) }
+}
+/** The colours of the engine smoke in the air. */
+const smokeColors = ({ smoke }: ReturnType<typeof makeEffects>["wrecks"]) =>
+  Array.from({ length: smoke.mesh.count }, (_, i) => new Color().fromArray(smoke.mesh.instanceColor!.array, i * 3).getHex())
+
+test("a burning wreck that blows up: a blast where it stood, then a charred shell giving off a thin smoke and no flames", () => {
+  // The wreck 25 m down the road from the player, its fuse burning down 0.5 s from now.
+  const { vehicles, effects, frame } = drawn([burning("panda", on(30), 30)])
+  const node = [...vehicles.entries()][0]![1], { wrecks, blasts } = effects
+  let frames = 0
+  while (blasts.fireball.mesh.count === 0 && frames++ < 60) {
+    assert.equal(node.body.geometry, vehicleBody("panda", 0x8b8170), "intact until it blows")
+    frame()
+  }
+  assert.ok(frames > 10 && wrecks.flames.mesh.count > 0, `blew after ${frames} frames, burning till then`)
+  assert.deepEqual([blasts.flash.mesh.count, blasts.fireball.mesh.count], [FLASH.count, FIREBALL.count])
+  const flash = new Matrix4()
+  blasts.flash.mesh.getMatrixAt(0, flash)
+  const off = new Vector3().setFromMatrixPosition(flash).distanceTo(node.position)
+  assert.ok(off < 0.1, `the flash ${off} m off the wreck's centre`)
+  assert.equal(node.body.geometry, vehicleBody("panda", 0x8b8170, true), "a charred shell")
+  for (let n = 0; n < 60; n++) frame()
+  assert.equal(wrecks.flames.mesh.count, 0, "its flames out within a second")
+  assert.ok(smokeColors(wrecks).includes(PALETTE.cobbleDark), "a thin dark grey smoke from the shell")
+})
+
+// Regression: the nearest damaged engines smoked, so charred shells nearer the player took every plume from a wreck about to blow.
+test("a burning wreck smokes and burns before the charred shells nearer the player, and the nearest shells keep the rest", () => {
+  // As many shells as there are plumes, 5–47 m from the player; the wreck 68 m away, its fuse far off.
+  const { effects, frame } = drawn([...Array.from({ length: PLUMES_AT_ONCE }, (_, i) => shell(on(50 - 6 * i))), burning("panda", on(-13), 100000)])
+  for (let n = 0; n < 60; n++) frame()
+  assert.ok(effects.wrecks.flames.mesh.count > 0, "the wreck burns")
+  const colors = smokeColors(effects.wrecks)
+  assert.ok(colors.includes(PALETTE.outline) && colors.includes(PALETTE.cobbleDark), "black smoke over the fire, and the shells' grey wisps")
 })

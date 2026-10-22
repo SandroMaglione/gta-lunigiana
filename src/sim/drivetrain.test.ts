@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { NEW_ENGINE } from "./damage.ts"
 import { driveForce, engineRevs, fullTorque, gearFor, shiftGear } from "./drivetrain.ts"
 import { VEHICLE_MODELS, VEHICLES } from "./vehicles.ts"
 
@@ -35,15 +36,15 @@ test("the automatic gearbox climbs every gear under full pedal, one at a time an
 
 test("launch and reverse: standing, the clutch slips up to the launch revs; backing up selects reverse and drives backwards", () => {
   const spec = VEHICLES.panda
-  assert.equal(engineRevs(spec, { gear: 0, shiftUntil: 0 }, 0, 1, 0).rpm, spec.gearbox.launch)
-  assert.equal(engineRevs(spec, { gear: 0, shiftUntil: 0 }, 0, 0, 0).rpm, spec.engine.idle)
+  assert.equal(engineRevs(spec, { gear: 0, shiftUntil: 0 }, 0, 1, 0, NEW_ENGINE).rpm, spec.gearbox.launch)
+  assert.equal(engineRevs(spec, { gear: 0, shiftUntil: 0 }, 0, 0, 0, NEW_ENGINE).rpm, spec.engine.idle)
   const reverse = shiftGear(spec, { gear: 0, shiftUntil: 0 }, 0, -1, 0)
   assert.equal(reverse.gear, -1)
-  assert.ok(driveForce(spec, reverse, 0, -1, 0) < 0)
-  assert.equal(engineRevs(spec, { gear: 2, shiftUntil: 10 }, 15, 1, 5).load, 0, "a shift cuts the drive")
+  assert.ok(driveForce(spec, reverse, 0, -1, 0, NEW_ENGINE) < 0)
+  assert.equal(engineRevs(spec, { gear: 2, shiftUntil: 10 }, 15, 1, 5, NEW_ENGINE).load, 0, "a shift cuts the drive")
   // Regression: rolling back slower than the brake pedal's threshold, the throttle forward stayed in reverse and did nothing.
   const back = shiftGear(spec, { gear: -1, shiftUntil: 0 }, -0.4, 1, 0)
-  assert.ok(back.gear === 0 && driveForce(spec, back, -0.4, 1, 0) > 0, "pulling forward stops a car rolling back")
+  assert.ok(back.gear === 0 && driveForce(spec, back, -0.4, 1, 0, NEW_ENGINE) > 0, "pulling forward stops a car rolling back")
   assert.equal(shiftGear(spec, { gear: -1, shiftUntil: 0 }, -2, 1, 0).gear, -1, "faster, the throttle is the brake and the gear stays")
-  assert.equal(engineRevs(VEHICLES.truck, { gear: 11, shiftUntil: 0 }, 25.5, 1, 0).load, 0, "the truck's limiter")
+  assert.equal(engineRevs(VEHICLES.truck, { gear: 11, shiftUntil: 0 }, 25.5, 1, 0, NEW_ENGINE).load, 0, "the truck's limiter")
 })

@@ -1,7 +1,8 @@
 /**
  * The audio schedule: once per animation frame it projects what can be heard into plain `Heard`
- * data (the player's ears; vehicles someone drives or that move, with the drivetrain's revs and load,
- * whether their wheels or their body are down and how their tyres skid; people on foot; the Impact and Honk events
+ * data (the player's ears; vehicles someone drives, that move or that burn, with the drivetrain's
+ * revs and load from their worn engines, their damage, whether they burn, whether their wheels or
+ * their body are down and how their tyres skid; people on foot; the Impact, Honk and Explosion events
  * since the last frame, each impact with the bodies it struck; the horn key) and hands it to the
  * `Audio` service. No acoustics here: the director behind the service decides what is loud enough
  * and where it sits.
@@ -13,9 +14,10 @@ import { Descriptor } from "@typeonce/ritmo"
 
 import { forwardSpeed } from "../sim/body.ts"
 import { hullDown, overturned } from "../sim/chassis.ts"
+import { burning, destroyed } from "../sim/damage.ts"
 import { engineRevs } from "../sim/drivetrain.ts"
 import {
-  CarInput, Chassis, Down, Driving, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle, View
+  CarInput, Chassis, Damage, Down, Driving, Explosion, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle, View
 } from "../sim/index.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
@@ -51,6 +53,7 @@ const Hear = Game.System("Lunigiana/Hear", {
         vehicle: Game.Query.read(Vehicle),
         input: Game.Query.read(CarInput),
         chassis: Game.Query.read(Chassis),
+        damage: Game.Query.read(Damage),
         traffic: Game.Query.optional(Traffic)
       }
     }),
@@ -67,7 +70,9 @@ const Hear = Game.System("Lunigiana/Hear", {
     })
   },
   resources: { input: Game.System.readResource(Input), view: Game.System.readResource(View), time: Game.System.readResource(Time) },
-  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid) },
+  events: {
+    impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid), explosions: Game.System.readEvent(Explosion)
+  },
   services: { audio: Game.System.service(Audio) }
 }, ({ queries, resources, events, services }) => {
   const found = queries.player.singleOptional()
@@ -91,16 +96,18 @@ const Hear = Game.System("Lunigiana/Hear", {
   const vehicles = queries.vehicles.each().flatMap(({ entity, data }): Array<HeardVehicle> => {
     const at = data.pose.get(), v = data.motion.get(), chassis = data.chassis.get(), { model } = data.vehicle.get()
     bodies.set(entity.id, { model, ...at })
-    const mine = entity.id === car
-    const running = mine || data.traffic.present
+    const mine = entity.id === car, wear = data.damage.get(), damage = wear.amount, fire = burning(wear)
+    // A destroyed engine is dead, whoever sits at the wheel; its fire is heard however still the wreck lies, until it blows up.
+    const running = (mine || data.traffic.present) && !destroyed(damage)
     const moving = v.vx * v.vx + v.vy * v.vy > STILL * STILL || v.spin !== 0
     const shaking = Math.max(Math.abs(chassis.vz), Math.abs(chassis.pitchRate), Math.abs(chassis.rollRate)) > STILL
-    if (!running && !moving && !shaking) return []
-    const spec = VEHICLES[model], revs = engineRevs(spec, chassis, forwardSpeed(v, at.angle), data.input.get().throttle, step)
+    if (!running && !moving && !shaking && !fire) return []
+    const spec = VEHICLES[model], revs = engineRevs(spec, chassis, forwardSpeed(v, at.angle), data.input.get().throttle, step, { damage, seed: entity.id })
     const lift = chassis.z - groundZ(at.x, at.y, chassis.z - spec.cg) - spec.cg, skid = skids.get(entity.id)
     return [{
       id: entity.id, model, x: at.x, y: at.y, z: chassis.z, angle: at.angle, vx: v.vx, vy: v.vy, rpm: revs.rpm, load: revs.load,
-      wheelsDown: !overturned(chassis) && lift < AIRBORNE, hullDown: hullDown(model, at, chassis), ...(skid === undefined ? {} : { skid }), running, mine
+      wheelsDown: !overturned(chassis) && lift < AIRBORNE, hullDown: hullDown(model, at, chassis), ...(skid === undefined ? {} : { skid }), running, mine,
+      damage, misfire: revs.misfire, burning: fire
     }]
   })
   /** Vehicle `id`'s model and the zone of it a hit at (x, y) landed on (by the face that struck, for a ground hit); undefined once it is gone. */
@@ -122,7 +129,8 @@ const Hear = Game.System("Lunigiana/Hear", {
       if (body === undefined || (hit.hit === "car" && otherBody === undefined)) return []
       return [{ kind: "impact", ...hit, body, ...(otherBody === undefined ? {} : { otherBody }) }]
     }),
-    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk }))
+    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk })),
+    ...events.explosions.all().map(({ car, x, y, z }) => ({ kind: "explosion" as const, car, x, y, z }))
   ]
   services.audio.hear({
     listener: { x: pose.x, y: pose.y, vx: motion.vx, vy: motion.vy, car, turns: resources.view.get().turns },

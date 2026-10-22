@@ -13,7 +13,7 @@ import { makeWorldMap } from "./worldmap.ts"
 /** What the action key would do now, and to which vehicle (none when getting out); undefined when nothing. */
 export const actionFor = (view: PlayerViewModel): { readonly verb: string; readonly vehicle?: string } | undefined => {
   if (view.mode === "driving") return { verb: "exit" }
-  if (view.mode === "down" || view.nearby === undefined) return undefined
+  if (view.mode === "down" || view.mode === "dead" || view.nearby === undefined) return undefined
   const { occupied, stolen, label } = view.nearby
   return { verb: occupied ? "carjack" : stolen ? "enter" : "steal", vehicle: label }
 }
@@ -32,7 +32,7 @@ export const makeHud = (document: Document) => {
   const road = element(document, "hud-road"), district = element(document, "hud-district")
   const stolen = element(document, "hud-stolen"), knocked = element(document, "hud-knocked")
   const speedo = element(document, "hud-speedo"), speed = element(document, "hud-speed"), vehicle = element(document, "hud-vehicle")
-  const prompt = element(document, "hud-prompt")
+  const prompt = element(document, "hud-prompt"), wasted = element(document, "hud-wasted")
   const minimap = makeMinimap(document)
   const worldMap = makeWorldMap(document)
   let last = { x: Number.NaN, y: Number.NaN, angle: 0 }
@@ -78,6 +78,8 @@ export const makeHud = (document: Document) => {
       const text = promptText(view)
       show(prompt, text !== "")
       set(prompt, text)
+      // Killed by a blast: "Sei morto" until the player comes back at the start (`Respawn`).
+      show(wasted, view.mode === "dead")
       minimap.draw(x, y, angle, yaw)
     }
   }

@@ -1,9 +1,10 @@
 /**
- * The crash renderer's primitives, pure TypeScript (no Web Audio): random draws, struck modes, and a
- * noise engine of ten octave bands. Every noise layer (the crunch, glass, grit, debris, rustle) only
- * adds power to the bands' envelopes, held at a control rate; one pass at the end multiplies each
- * band's precomputed noise loop by its envelope. So a render costs ten multiply-adds a sample however
- * many noise layers it has, and a mode costs one recurrence step a sample until it falls 60 dB.
+ * The primitives of the pure-TypeScript renders (the crash, the explosion), no Web Audio: random
+ * draws, struck modes, a noise engine of ten octave bands, and the render's last pass. Every noise
+ * layer (the crunch, glass, grit, debris, rustle, a fireball's roar) only adds power to the bands'
+ * envelopes, held at a control rate; one pass at the end multiplies each band's precomputed noise
+ * loop by its envelope. So a render costs ten multiply-adds a sample however many noise layers it
+ * has, and a mode costs one recurrence step a sample until it falls 60 dB.
  *
  * @module audio/synth/crash/dsp
  */
@@ -238,3 +239,18 @@ export const strike = (mix: Mix, t0: number, hz: number, eta: number, amp: numbe
 /** A noise burst into the mix (`spectrum` in power). */
 export const puff = (mix: Mix, t0: number, rise: number, tau: number, peak: number, spectrum: Spectrum): void =>
   burst(mix.noise, t0, rise, tau, peak, spectrum)
+
+/** No render peaks over this (a +6 dB crash with an unlucky draw is scaled down to it): the audition page's clipping mark. */
+const LIMIT = 0.95
+
+/** `out` × `scale`, trimmed after its last sample within 60 dB of its peak, faded over its last 0.15 s, never over `LIMIT`. */
+export const finish = (out: Float32Array, scale: number, sampleRate: number): Float32Array<ArrayBuffer> => {
+  let peak = 0
+  for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]!))
+  let end = out.length
+  while (end > 1 && Math.abs(out[end - 1]!) < peak * 1e-3) end--
+  end = Math.min(out.length, end + Math.round(0.02 * sampleRate))
+  const fade = Math.min(Math.round(0.15 * sampleRate), end >> 2), k = peak * scale > LIMIT ? LIMIT / peak : scale, result = new Float32Array(end)
+  for (let i = 0; i < end; i++) result[i] = out[i]! * k * (i < end - fade ? 1 : 0.5 + 0.5 * Math.cos((Math.PI * (i - end + fade)) / fade))
+  return result
+}

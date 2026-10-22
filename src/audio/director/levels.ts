@@ -38,7 +38,11 @@ export const LEVELS = {
   horn: { db: 116, rMin: 2 },
   siren: { db: 117, rMin: 2.5 },
   beeper: { db: 100, rMin: 2 },
+  // TUNED (estimated, no recording measured): a car burning out, its roar and crackle; checked to sit 3–6 dB over an idling Panda.
+  fire: { db: 82, rMin: 2 },
   crash: { db: 115, rMin: 2 },
+  // TUNED (estimated, no recording measured): a burning car's fuel going up, 9 dB over the reference crash (5.4 in the mix), the size of its fireball.
+  explosion: { db: 124, rMin: 3 },
   thud: { db: 85, rMin: 1 },
   // TUNED (estimated, no recording measured): a car slamming its bump stops at 5 m/s, 20 dB under a Panda's crash at that speed (105).
   clunk: { db: 85, rMin: 1.5 },
@@ -55,12 +59,14 @@ export const LEVELS = {
 } as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">, Level>
 
 /**
- * TUNED: a crash's direct sound plays at most this many dB over gain 1, where the master limiter takes
- * a few dB of a 15 m/s crash's peak. Nearer (the listener's own crash comes about 25 dB over), it took
- * 20 dB off the hit and, released 0.25 s later, gave the crunch's sub-hits back nearly as loud as the
- * hit: an echo.
+ * TUNED: a crash's or an explosion's direct sound plays at most this many dB over gain 1, where the
+ * master limiter takes a few dB of its peak. Nearer (the listener's own crash comes about 25 dB over),
+ * it took 20 dB off a crash's hit and, released 0.25 s later, gave the crunch's sub-hits back nearly
+ * as loud as the hit: an echo. Centred, an explosion (crest 6–7 dB, a crash's 13) at 10 dB meters
+ * 4–5.5 dB over a 40 m/s wreck at 8 while the limiter takes 2.5 dB of it (5.3 of the wreck); at 12 it
+ * took 4.3 dB, held into the roar for up to 0.8 s.
  */
-export const CRASH_MOST_DB = 8
+export const MOST_DB = { crash: 8, explosion: 10 } as const satisfies Partial<Record<OneShot["kind"], number>>
 
 /** Water's level comes from places (the line source at the listener); its size is the 1 m that level is clamped at. */
 export const WATER_R_MIN = 1
@@ -76,7 +82,7 @@ export const HEIGHT = { vehicle: 0.8, person: 1, water: 2 } as const
 
 /** At most this many voices of each kind play; the loudest at the listener win. */
 export const CAPS = {
-  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, water: 4, wind: 1, crickets: 1
+  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, fire: 2, water: 4, wind: 1, crickets: 1
 } as const satisfies Record<Continuous["kind"], number>
 
 /** A voice that played last frame keeps its place under the cap until a newcomer is this many dB louder: near-equals do not swap every frame. */
@@ -101,6 +107,7 @@ export const REVERB = { db: 8, ref: 10, near: 2.5, far: 40, cabin: 0.25 } as con
 /** An echo plays at least this many dB under the direct sound: a rock face's own reflection loss (places.ts). */
 export const ECHO_MIN_DB = 10
 
-/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices and bells (physics.md §7). */
+/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, explosions, honks, barks, voices and bells (physics.md §7). */
 export const echoes = (sound: OneShot): boolean =>
-  sound.kind === "crash" ? sound.speed >= 6 : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell"
+  sound.kind === "crash" ? sound.speed >= 6
+  : sound.kind === "explosion" || sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell"

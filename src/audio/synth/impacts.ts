@@ -191,7 +191,7 @@ const renderIgnition = (rate: number, kit: Kit, model: VehicleModel) => bake(rat
   const running = engine({ ctx, out: caught, cents, kit })
   for (let t = crank.seconds; t < crank.seconds + CATCH; t += 1 / 60) {
     const since = t - crank.seconds, blip = since < 0.12 ? 0.7 : 0.7 * Math.exp(-(since - 0.12) / 0.25)
-    running.update({ kind: "engine", model, rpm: spec.idle + blip * (gearbox.launch - spec.idle), load: blip, inside: false, variant: 0.5 }, t)
+    running.update({ kind: "engine", model, rpm: spec.idle + blip * (gearbox.launch - spec.idle), load: blip, inside: false, variant: 0.5, damage: 0, misfire: false }, t)
   }
 })
 

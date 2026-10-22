@@ -4,14 +4,16 @@ import { test } from "node:test"
 import { Keyboard } from "@typeonce/ritmo-browser"
 import { Vec2 } from "@typeonce/ritmo-math"
 
+import { misfires, NEW_ENGINE, UNDAMAGED } from "../sim/damage.ts"
 import { engineRevs } from "../sim/drivetrain.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { laneOf, lanePoint, laneSide, roadOf, walkSide } from "../sim/route.ts"
 import {
-  bindings, CarInput, Chassis, type ChassisValue, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, Skid, update, Vehicle
+  bindings, CarInput, Chassis, type ChassisValue, Damage, type DamageValue, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, Skid,
+  update, Vehicle
 } from "../sim/index.ts"
 import { parkedCar, pedestrian, rollingChassis } from "../sim/spawning.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, type Timeline } from "../sim/testing.ts"
+import { BATTISTI, battistiTraffic, burning, door, ON_BATTISTI, press, rolling, stage, type Timeline, wear } from "../sim/testing.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { Audio, audio } from "./index.ts"
 import type { Heard } from "./types.ts"
@@ -38,13 +40,13 @@ const listen = (timeline: Timeline, ...staging: Parameters<typeof stage>) => {
   return { runtime, run, hear, frames }
 }
 
-/** An unmanned `model` at `pose` rolling at `speed` along its heading with the pedal at `throttle`, its chassis changed by `chassis`. */
-const staged = (model: VehicleModel, pose: PoseValue, speed: number, throttle: number, chassis: Partial<ChassisValue> = {}) => {
+/** An unmanned `model` at `pose` rolling at `speed` along its heading with the pedal at `throttle`, its chassis changed by `chassis`, as worn as `damage`. */
+const staged = (model: VehicleModel, pose: PoseValue, speed: number, throttle: number, chassis: Partial<ChassisValue> = {}, damage: DamageValue = UNDAMAGED) => {
   const body = { ...rollingChassis(model, pose, speed), ...chassis }
   const spawn = Game.Command.spawn(
     [Vehicle, { model, color: 0x8b8170 }], [Pose, pose], [PrevPose, pose],
     [Motion, { vx: Math.cos(pose.angle) * speed, vy: Math.sin(pose.angle) * speed, spin: 0 }],
-    [CarInput, { throttle, steer: 0, handbrake: false }], [Chassis, body]
+    [CarInput, { throttle, steer: 0, handbrake: false }], [Chassis, body], [Damage, damage]
   )
   return { spawn, body }
 }
@@ -127,9 +129,63 @@ test("hear: a vehicle's revs and load are the drivetrain's, from its chassis's g
   const { spawn, body } = staged("panda", at, 12, 1)
   const { hear, frames } = listen([], door(ON_BATTISTI), { cars: [spawn] })
   hear()
-  const heard = frames[0]!.vehicles.find((v) => v.model === "panda")!, revs = engineRevs(VEHICLES.panda, body, 12, 1, 0)
+  const heard = frames[0]!.vehicles.find((v) => v.model === "panda")!, revs = engineRevs(VEHICLES.panda, body, 12, 1, 0, NEW_ENGINE)
   assert.ok(body.gear > 0 && revs.load === 1 && revs.rpm > VEHICLES.panda.engine.idle, `gear ${body.gear}, ${revs.rpm} rpm`)
   assert.ok(Math.abs(heard.rpm - revs.rpm) < 1e-6 && heard.load === revs.load, `${heard.rpm} rpm, load ${heard.load}`)
+})
+
+test("hear: a destroyed car is dead and burns: the player at its wheel runs it no more, and a wreck nobody drives is heard however still it lies", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const parked = { ...lanePoint(lane, 30, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle }
+  const { runtime, run, hear, frames } = listen(press(1, "action"), door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI), parkedCar("panda", 0x3d6155, parked)] })
+  run(3)
+  const seated = frames.at(-1)!
+  assert.deepEqual(seated.vehicles.map((v) => [v.mine, v.running, v.damage]), [[true, true, 0]], "the parked car, still and intact, is silent")
+  assert.ok(runtime.tick(wear(1)).ok)
+  hear()
+  const [mine, wreck] = [true, false].map((own) => frames.at(-1)!.vehicles.find((v) => v.mine === own))
+  assert.deepEqual([mine?.running, mine?.damage, mine?.rpm, mine?.load, mine?.misfire, mine?.burning], [false, 1, 0, 0, false, true])
+  assert.ok(wreck !== undefined && Vec2.distance(wreck, parked) < 0.5 && !wreck.running && wreck.damage === 1 && wreck.burning)
+})
+
+test("hear: a wreck burns until it blows up, its Explosion passed on once; the charred shell is heard only while it moves", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  const pose = (metres: number) => ({ ...lanePoint(lane, metres, side), angle: ON_BATTISTI.angle })
+  // A shell that blew up earlier lies still 25 m on, out of the blast's reach.
+  const shell = staged("panda", pose(55), 0, 0, {}, { ...UNDAMAGED, amount: 1, exploded: true })
+  const { run, frames } = listen([], door(ON_BATTISTI), { cars: [burning("panda", pose(30), 10), shell.spawn] })
+  run(16)
+  const id = frames[0]!.vehicles.find((v) => Vec2.distance(v, pose(30)) < 0.5)!.id, of = (frame: Heard) => frame.vehicles.find((v) => v.id === id)
+  const blasts = frames.flatMap((f) => f.happenings.filter((h) => h.kind === "explosion"))
+  assert.equal(blasts.length, 1, "once")
+  const blew = frames.findIndex((f) => f.happenings.length > 0), [blast] = blasts
+  // At its centre of mass, as high as it was heard the frame before.
+  assert.ok(blast !== undefined && blast.car === id && Vec2.distance(blast, pose(30)) < 0.1 && Math.abs(blast.z - of(frames[blew - 1]!)!.z) < 1e-9, JSON.stringify(blast))
+  assert.ok(blew > 0 && frames.slice(0, blew).every((f) => of(f)?.burning === true && of(f)?.running === false), "burning until the blast")
+  // It leaps and tumbles from the blast on: heard while it moves, burning no more.
+  assert.ok(frames.slice(blew).every((f) => of(f) !== undefined && of(f)!.burning === false), "a charred shell")
+  assert.ok(frames.every((f) => !f.vehicles.some((v) => Vec2.distance(v, pose(55)) < 0.5)), "the still shell is silent")
+})
+
+test("hear: a worn engine misfires in the sim's windows for its seed, its load still the pedal's", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward)
+  const at = { ...lanePoint(lane, 30, laneSide(BATTISTI, "panda")), angle: ON_BATTISTI.angle }
+  const { spawn, body } = staged("panda", at, 12, 1)
+  const rolling = listen([], door(ON_BATTISTI), { cars: [spawn] })
+  assert.ok(rolling.runtime.tick(wear(0.95)).ok)
+  rolling.hear()
+  const worn = rolling.frames[0]!.vehicles.find((v) => v.model === "panda")!, revs = engineRevs(VEHICLES.panda, body, 12, 1, 0, { damage: 0.95, seed: worn.id })
+  assert.deepEqual([worn.damage, worn.load, worn.misfire], [0.95, 1, revs.misfire])
+
+  // Sitting 4 s in a worn car, idling: whole 0.25 s windows misfire, as the sim's `misfires` draws them for the car's id.
+  const seated = listen(press(1, "action"), door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)] })
+  seated.run(3)
+  assert.ok(seated.runtime.tick(wear(0.95)).ok)
+  seated.run(240)
+  const mine = seated.frames.slice(3).map((f) => f.vehicles.find((v) => v.mine)!)
+  const id = mine[0]!.id, flags = mine.map((v) => v.misfire)
+  assert.ok(flags.includes(true) && flags.includes(false) && mine.every((v) => v.load === 0), flags.map((f) => (f ? "X" : ".")).join(""))
+  assert.ok(Array.from({ length: 15 }, (_, s0) => s0).some((s0) => flags.every((f, k) => f === misfires({ damage: 0.95, seed: id }, s0 + k))))
 })
 
 test("hear: each vehicle's skids since the last frame, the hardest-sliding wheel's surface, the most it slid and how fast", () => {

@@ -2,7 +2,7 @@
  * The audio host's shared vocabulary. Three layers meet here:
  *
  * - `Heard`: what the world sounds like this frame, as plain data. The audio schedule reads it
- *   from the simulation (components, the `Impact`, `Skid` and `Honk` events, the horn key) and
+ *   from the simulation (components, the `Impact`, `Skid`, `Honk` and `Explosion` events, the horn key) and
  *   hands it to the `Audio` service once per animation frame.
  * - The director (pure TypeScript, tested in Node) turns `Heard` into sound requests: continuous
  *   voices it holds frame after frame (`Continuous`) and one-shots (`OneShot`), each with a
@@ -33,7 +33,7 @@ export interface Body { readonly model: VehicleModel; readonly zone: Zone; reado
 /** A vehicle's tyres sliding this frame: the most any wheel went past its grip (0…1), the fastest one slid (m/s), and the surface under the one furthest past. */
 export interface Skidding { readonly amount: number; readonly slip: number; readonly surface: Surface }
 
-/** A vehicle someone could hear: running (someone at the wheel) or moving (rolling over and bouncing too). Parked, still cars are left out. */
+/** A vehicle someone could hear: running (someone at the wheel), moving (rolling over and bouncing too) or burning. Parked, still cars that do not burn are left out. */
 export interface HeardVehicle {
   /** Entity id: stable while the vehicle exists, the key of its voices. */
   readonly id: number
@@ -45,19 +45,25 @@ export interface HeardVehicle {
   readonly angle: number
   readonly vx: number
   readonly vy: number
-  /** The engine's revs and load (0…1) as the sim's drivetrain turns them (`engineRevs`). */
+  /** The engine's revs and load (0…1, the pedal's) as the sim's drivetrain turns them (`engineRevs`). */
   readonly rpm: number
   readonly load: number
+  /** Its worn engine misfires this step: the drive is cut (`engineRevs`, from the severe stage of damage on). */
+  readonly misfire: boolean
   /** Its wheels are on the ground: not in the air, nor on its side or roof. */
   readonly wheelsDown: boolean
   /** Its body touches the ground (`hullDown`): down on its belly, side or roof, it grinds along it while it slides. */
   readonly hullDown: boolean
   /** Its tyres sliding, from the `Skid` events since the last frame; none when no wheel slid. */
   readonly skid?: Skidding
-  /** Someone is at the wheel (AI traffic or the player), so the engine runs. */
+  /** Someone is at the wheel (AI traffic or the player) of an engine that is not destroyed, so it runs. */
   readonly running: boolean
   /** The player is at the wheel. */
   readonly mine: boolean
+  /** The sim's Damage: the share of its durability its crashes used up, 0 (as new) … 1 (destroyed: its engine dead; `destroyed`). */
+  readonly damage: number
+  /** It is on fire: destroyed and not yet blown up (the sim's `burning`); the charred shell left by the blast burns no more. */
+  readonly burning: boolean
 }
 
 /** A person on foot (the player too, unless in a car). */
@@ -103,6 +109,14 @@ export type Happening =
     readonly x: number
     readonly y: number
   }
+  | {
+    /** A burning wreck `car` blew up, at its centre of mass (z m a.s.l.). */
+    readonly kind: "explosion"
+    readonly car: number
+    readonly x: number
+    readonly y: number
+    readonly z: number
+  }
 
 /** The ears: the player, on foot or in `car`. */
 interface HeardListener {
@@ -145,8 +159,10 @@ export interface Placement {
  * one live voice per key and fades it out on the first frame it is not held.
  */
 export type Continuous =
-  /** Revs `rpm` and `load` 0…1; `inside`: heard from the driver's seat; `variant` 0…1: which of its model's engines (0.5 the nominal one). */
-  | { readonly kind: "engine"; readonly model: VehicleModel; readonly rpm: number; readonly load: number; readonly inside: boolean; readonly variant: number }
+  /** Revs `rpm` and `load` 0…1; `inside`: heard from the driver's seat; `variant` 0…1: which of its model's engines (0.5 the nominal one);
+   *  `damage` 0…1 the sim's (rough, knocking, duller); `misfire`: the sim cuts its drive this step (the voice cuts out). */
+  | { readonly kind: "engine"; readonly model: VehicleModel; readonly rpm: number; readonly load: number; readonly inside: boolean; readonly variant: number;
+      readonly damage: number; readonly misfire: boolean }
   /** Rolling noise, squeal or gravel crunch: `speed` m/s over the ground, `skid` 0…1 past the tyres' grip, sliding at `slip` m/s. */
   | { readonly kind: "tyres"; readonly speed: number; readonly skid: number; readonly slip: number; readonly surface: Surface; readonly heavy: boolean }
   /** Grinding along a wall at `speed` m/s, on `material`. */
@@ -157,6 +173,8 @@ export type Continuous =
   | { readonly kind: "siren" }
   /** The truck's reversing beeper. */
   | { readonly kind: "beeper" }
+  /** A destroyed vehicle burning, until it blows up. */
+  | { readonly kind: "fire" }
   /** Running water: `flow` 0 (trickle) … 1 (the Lucido in spate); `body` sets the texture. */
   | { readonly kind: "water"; readonly body: "fountain" | "stream" | "river"; readonly flow: number }
   /** Wind at the listener: `strength` 0…1 (altitude, exposure), `forest` 0…1 (leaves in it). */
@@ -172,6 +190,8 @@ export type OneShot =
   | { readonly kind: "crash"; readonly speed: number; readonly mass: number; readonly body: Body;
       readonly against: { readonly kind: "wall"; readonly material: Material } | { readonly kind: "car"; readonly body: Body };
       readonly surface: Surface }
+  /** A burning wreck blowing up; its debris rains down on `surface`. */
+  | { readonly kind: "explosion"; readonly surface: Surface }
   /** A body hit by a vehicle. */
   | { readonly kind: "thud"; readonly speed: number }
   /** The suspension bottoming out over a hump or a light landing, at `speed` m/s into its bump stops; `heavy`: the truck. */

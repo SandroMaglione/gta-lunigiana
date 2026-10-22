@@ -1,7 +1,7 @@
 import type { Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, vehicleInReach } from "./body.ts"
-import { Chassis, Down, Driving, Game, Handling, Motion, Player, Pose, type PoseValue, PrevPose, Score, Stolen, Traffic, Vehicle, View } from "./schema.ts"
+import { Chassis, Damage, Dead, Down, Driving, Game, Handling, Motion, Player, Pose, type PoseValue, PrevPose, Score, Stolen, Traffic, Vehicle, View } from "./schema.ts"
 import { VEHICLES } from "./vehicles.ts"
 
 /** Plain view data for the camera and HUD. */
@@ -11,7 +11,7 @@ export interface PlayerViewModel {
   readonly pose: PoseValue
   /** Player velocity, m/s (the vehicle's while driving; zero on the step they get in or out). */
   readonly velocity: Vec2.Vec2
-  readonly mode: "foot" | "driving" | "down"
+  readonly mode: "foot" | "driving" | "down" | "dead"
   /** The vehicle being driven: label, forward speed in m/s (negative when reversing). */
   readonly vehicle: { readonly label: string; readonly speed: number } | undefined
   /** The vehicle the action key would enter right now, when on foot (not knocked down). */
@@ -30,7 +30,8 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
         pose: Game.Query.read(Pose),
         motion: Game.Query.read(Motion),
         driving: Game.Query.optional(Driving),
-        down: Game.Query.optional(Down)
+        down: Game.Query.optional(Down),
+        dead: Game.Query.optional(Dead)
       },
       with: [Player]
     }),
@@ -39,6 +40,7 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
         vehicle: Game.Query.read(Vehicle),
         pose: Game.Query.read(Pose),
         chassis: Game.Query.read(Chassis),
+        damage: Game.Query.read(Damage),
         motion: Game.Query.read(Motion),
         traffic: Game.Query.optional(Traffic),
         stolen: Game.Query.optional(Stolen)
@@ -60,12 +62,14 @@ export const PlayerView = Game.Inspector("Lunigiana/PlayerView", {
   }
   const near = driving !== undefined || data.down.present
     ? undefined
-    : vehicleInReach(pose, queries.vehicles.each(), ({ data: v }) => ({ model: v.vehicle.get().model, pose: v.pose.get(), chassis: v.chassis.get() }))
+    : vehicleInReach(pose, queries.vehicles.each(), ({ data: v }) => ({
+      model: v.vehicle.get().model, pose: v.pose.get(), chassis: v.chassis.get(), damage: v.damage.get().amount
+    }))
   return {
     prev: data.prev.get(),
     pose,
     velocity: { x: motion.vx, y: motion.vy },
-    mode: driving !== undefined ? "driving" : data.down.present ? "down" : "foot",
+    mode: driving !== undefined ? "driving" : data.dead.present ? "dead" : data.down.present ? "down" : "foot",
     vehicle,
     nearby: near === undefined
       ? undefined

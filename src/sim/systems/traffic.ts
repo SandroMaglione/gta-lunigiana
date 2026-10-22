@@ -10,7 +10,7 @@ import {
   nextTrafficEdge, roadOf, walkSide
 } from "../route.ts"
 import {
-  Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
+  Autopilot, CarInput, Chassis, type ChassisValue, Dead, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
 } from "../schema.ts"
 import { PERSON_RADIUS } from "../tuning.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
@@ -122,7 +122,8 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
       with: [Traffic]
     }),
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose), vehicle: Game.Query.read(Vehicle) } }),
-    people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving] })
+    // The dead are no one to wait for: a car nudges a body aside (Contacts) rather than queue behind it until it is gone.
+    people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving, Dead] })
   },
   resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
   events: { honk: Game.System.writeEvent(Honk) }

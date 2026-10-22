@@ -2,12 +2,13 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, moveCar, wallsAlong } from "../body.ts"
 import { overturned, type Rig, rigFor, RIGS } from "../chassis.ts"
+import { destroyed, NEW_ENGINE, type Wear } from "../damage.ts"
 import { BRAKING, driveForce, shiftGear } from "../drivetrain.ts"
 import { type BodyState, type Ground, integrate } from "../dynamics.ts"
 import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { groundZ } from "../map/ground.ts"
 import { type Surface, surfaceAt } from "../map/surface.ts"
-import { CarInput, Chassis, type ChassisValue, Game, Handling, Impact, Motion, Pose, type PoseValue, Skid, Time, Vehicle } from "../schema.ts"
+import { CarInput, Chassis, type ChassisValue, Damage, Game, Handling, Impact, Motion, Pose, type PoseValue, Skid, Time, Vehicle } from "../schema.ts"
 import type { VehicleModel, VehicleSpec } from "../vehicles.ts"
 
 /** Wall hits: share of the impact speed bounced back, and speed lost per m/s of impact. */
@@ -78,13 +79,13 @@ const CREEP = 0.045
  */
 export const rests = (
   model: VehicleModel, at: VehicleState, input: Pedals, step: number, dt: number, ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt,
-  handling: HandlingValue = REAL_HANDLING
+  handling: HandlingValue = REAL_HANDLING, wear: Wear = NEW_ENGINE
 ): boolean => {
   let state: VehicleState = { pose: at.pose, motion: { vx: 0, vy: 0, spin: 0 }, chassis: { ...at.chassis, vz: 0, pitchRate: 0, rollRate: 0 } }
   let half = 0
   for (let k = 0; k < TRIAL; k++) {
     if (k === TRIAL / 2) half = Math.sqrt(state.motion.vx * state.motion.vx + state.motion.vy * state.motion.vy)
-    const { body, steer, gearbox } = advance(model, state, input, step + k, dt, ground, surface, handling)
+    const { body, steer, gearbox } = advance(model, state, input, step + k, dt, ground, surface, handling, wear)
     state = {
       pose: { x: body.x, y: body.y, angle: body.angle }, motion: { vx: body.vx, vy: body.vy, spin: body.spin },
       chassis: { z: body.z, vz: body.vz, pitch: body.pitch, pitchRate: body.pitchRate, roll: body.roll, rollRate: body.rollRate, steer, ...gearbox }
@@ -113,16 +114,19 @@ interface Pedals {
 
 /**
  * One step of a vehicle of `model` driven with `input`, before the walls: the steering turns toward
- * the keys within the lock for its speed, the gearbox picks a gear, the throttle against the motion
- * is the brake pedal, and the body moves on its springs and tyres over `ground` (`surface` under
- * each wheel). Returns the moved body, the new steering angle and gearbox, what the tyres and body
- * did, and the surfaces.
+ * the keys within the lock for its speed, the gearbox picks a gear, the engine worn by `wear` drives
+ * through it, the throttle against the motion is the brake pedal, and the body moves on its springs
+ * and tyres over `ground` (`surface` under each wheel); a destroyed one never rights itself.
+ * Returns the moved body, the new steering angle and gearbox, what the tyres and body did, and the
+ * surfaces.
  */
 export const advance = (
   model: VehicleModel, { pose, motion, chassis }: VehicleState, input: Pedals, step: number, dt: number,
-  ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt, handling: HandlingValue = REAL_HANDLING
+  ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt, handling: HandlingValue = REAL_HANDLING,
+  wear: Wear = NEW_ENGINE
 ) => {
-  const rig = rigFor(model, handling), spec = rig.spec
+  // A wreck, burning or a charred shell, does not right itself: it stays where it lies.
+  const rig = rigFor(model, destroyed(wear.damage) && handling.selfRighting === 1 ? { ...handling, selfRighting: 0 } : handling), spec = rig.spec
   const speed = forwardSpeed(motion, pose.angle)
   const gearbox = shiftGear(spec, chassis, speed, input.throttle, step)
   // The throttle against the motion is the brake pedal; standing with no pedal, the driver keeps a foot on the brake.
@@ -134,7 +138,7 @@ export const advance = (
   const surfaces = rig.wheels.map((w) => surface(pose.x + w.at.f * c - w.at.l * s, pose.y + w.at.f * s + w.at.l * c, level))
   const body: BodyState = { ...pose, ...motion, ...chassis }
   const result = integrate(rig, body, {
-    steer, drive: driveForce(spec, gearbox, speed, input.throttle, step), brake: braking ? Math.abs(input.throttle) || 1 : 0, handbrake: input.handbrake, surfaces
+    steer, drive: driveForce(spec, gearbox, speed, input.throttle, step, wear), brake: braking ? Math.abs(input.throttle) || 1 : 0, handbrake: input.handbrake, surfaces
   }, dt, ground)
   return { body, steer, gearbox, result, surfaces }
 }
@@ -142,19 +146,19 @@ export const advance = (
 /**
  * The drive physics of every vehicle, from its CarInput and its model's data: the steering turns
  * toward the keys at a rate and within a lock that shrinks with speed; the automatic gearbox picks
- * the gear and the engine's torque reaches the driven wheels through it; the throttle against the
- * motion is the brake pedal and the handbrake locks the rear wheels; then the body moves on its
- * springs and tyres (`integrate`), and its planar move is swept against the drive walls: a hit keeps
- * the sliding part, bounces a little and costs speed by how hard it was. Wall and ground hits are
- * Impact events, sliding tyres Skid events. A vehicle at rest with its pedal up sleeps until
- * something moves it.
+ * the gear and the engine's torque, worn by the vehicle's Damage, reaches the driven wheels through
+ * it; the throttle against the motion is the brake pedal and the handbrake locks the rear wheels;
+ * then the body moves on its springs and tyres (`integrate`), and its planar move is swept against
+ * the drive walls: a hit keeps the sliding part, bounces a little and costs speed by how hard it
+ * was. Wall and ground hits are Impact events, sliding tyres Skid events. A vehicle at rest with
+ * its pedal up sleeps until something moves it.
  */
 export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
   queries: {
     vehicles: Game.Query({
       selection: {
         pose: Game.Query.write(Pose), motion: Game.Query.write(Motion), chassis: Game.Query.write(Chassis), vehicle: Game.Query.read(Vehicle),
-        input: Game.Query.read(CarInput)
+        input: Game.Query.read(CarInput), damage: Game.Query.read(Damage)
       }
     })
   },
@@ -171,11 +175,12 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
     const motion = data.motion.get()
     const chassis = data.chassis.get()
     // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing; one lying overturned wakes to
-    // right itself when the handling's self-righting is on.
+    // right itself when the handling's self-righting is on, unless it is a wreck.
+    const wear = { damage: data.damage.get().amount, seed: entity.id }
     const still = motion.vx === 0 && motion.vy === 0 && motion.spin === 0 && chassis.vz === 0 && chassis.pitchRate === 0 && chassis.rollRate === 0
-    if (input.throttle === 0 && still && !(handling.selfRighting === 1 && overturned(chassis))) continue
+    if (input.throttle === 0 && still && !(handling.selfRighting === 1 && overturned(chassis) && !destroyed(wear.damage))) continue
 
-    const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt, groundZ, surfaceAt, handling)
+    const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt, groundZ, surfaceAt, handling, wear)
 
     // The planar move against the walls. A turn that wedges the body into a wall is undone; if moving at all does, the car stays put.
     let vx = body.vx, vy = body.vy
@@ -205,7 +210,9 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
           const point = contact(spec, moved.position.x, moved.position.y, angle, into)
           // How hard it hit: the velocity into the wall at contact. The speed lost this step is less by what the step
           // travelled before contact, and the rest is lost next step: one hit would read as two softer ones.
-          events.impact.emit({ hit: "wall", x: point.x, y: point.y, speed: Math.max(impact, vx * into.x + vy * into.y), mass: spec.mass / 1000, car: entity.id })
+          // Never faster than the car was going: a push-out of the body counts in what was lost, not in how hard it hit.
+          const hard = Math.min(Math.sqrt(vx * vx + vy * vy), Math.max(impact, vx * into.x + vy * into.y))
+          events.impact.emit({ hit: "wall", x: point.x, y: point.y, speed: hard, mass: spec.mass / 1000, car: entity.id })
         }
         const keep = Math.max(0.2, 1 - IMPACT_LOSS * impact)
         // Never faster than before the hit (push-outs from a rotation can add speed).
@@ -225,7 +232,7 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
 
     data.pose.set({ x: at.x, y: at.y, angle })
     const next = { ...body, steer, ...gearbox }
-    if (input.throttle === 0 && settles(motion, { vx, vy, spin }, next) && rests(model, { pose: { x: at.x, y: at.y, angle }, motion, chassis: next }, input, step, dt, groundZ, surfaceAt, handling)) {
+    if (input.throttle === 0 && settles(motion, { vx, vy, spin }, next) && rests(model, { pose: { x: at.x, y: at.y, angle }, motion, chassis: next }, input, step, dt, groundZ, surfaceAt, handling, wear)) {
       data.motion.set({ vx: 0, vy: 0, spin: 0 })
       data.chassis.set({ z: next.z, vz: 0, pitch: next.pitch, pitchRate: 0, roll: next.roll, rollRate: 0, steer: next.steer, gear: next.gear, shiftUntil: next.shiftUntil })
     } else {

@@ -20,6 +20,7 @@ test("the prompt names the action the key would take", () => {
   assert.equal(promptText(view({ nearby: { label: "Piaggio Ape", occupied: true, stolen: false } })), "F — carjack Piaggio Ape")
   assert.equal(promptText(view({ mode: "driving", vehicle: { label: "Fiat Panda", speed: 3 } })), "F — exit")
   assert.equal(promptText(view({ mode: "down", nearby: { label: "Fiat Panda", occupied: false, stolen: false } })), "")
+  assert.equal(promptText(view({ mode: "dead", nearby: { label: "Fiat Panda", occupied: false, stolen: false } })), "")
 })
 
 test("speed reads in whole km/h, reversing included", () => {

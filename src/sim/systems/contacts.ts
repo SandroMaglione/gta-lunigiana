@@ -2,13 +2,13 @@ import { Clock } from "@typeonce/ritmo"
 import { Vec2 } from "@typeonce/ritmo-math"
 
 import { carCircles, carRadius, moveCar, walkBy, wallsAlong } from "../body.ts"
-import { Down, Driving, Game, Impact, Motion, Pedestrian, Person, Player, Pose, Route, Score, STEP, Time, Vehicle } from "../schema.ts"
+import { Dead, Down, Driving, Game, Impact, Motion, Pedestrian, Person, Player, Pose, Route, Score, STEP, Time, Vehicle } from "../schema.ts"
 import { KNOCK_SPEED, PERSON_RADIUS } from "../tuning.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
 import { FLEE_TIME, runFrom } from "./pedestrians.ts"
 
 /** How long a knocked-down person stays on the ground. */
-const DOWN_TIME = Clock.duration(STEP, 2.5)
+export const DOWN_TIME = Clock.duration(STEP, 2.5)
 /** Car-to-car restitution. */
 const RESTITUTION = 0.2
 /** A knocked person slides with this share of the car's velocity, plus this push away from it (m/s). */
@@ -82,7 +82,8 @@ const stopInto = (person: Body, nx: number, ny: number) => {
  * standing person faster than KNOCK_SPEED knocks them down and throws them (a
  * point for the player when it was their car), slower it pushes them aside,
  * and a person pinned against a wall stops the vehicle instead; people step apart.
- * Vehicles closing on each other and knockdowns are Impact events.
+ * Vehicles closing on each other, knockdowns and a vehicle stopped against a
+ * wall through a pinned person (faster than KNOCK_SPEED) are Impact events.
  */
 export const Contacts = Game.System("Lunigiana/Contacts", {
   queries: {
@@ -151,6 +152,10 @@ export const Contacts = Game.System("Lunigiana/Contacts", {
         car.vx -= into * nx
         car.vy -= into * ny
       }
+      // Pinned, the person stops the car against the wall behind them: a wall hit as hard as it was going into it.
+      if (into > KNOCK_SPEED) {
+        events.impact.emit({ hit: "wall", x: person.x + nx * PERSON_RADIUS, y: person.y + ny * PERSON_RADIUS, speed: into, mass: car.mass, car: owner.entity.id })
+      }
     }
     if (!knocked) {
       stopInto(person, nx, ny)
@@ -190,11 +195,17 @@ export const Contacts = Game.System("Lunigiana/Contacts", {
   }
 })
 
-/** Knocked-down people get up when their time is over; a pedestrian then runs off along its route, away from the nearest vehicle. */
+/**
+ * Knocked-down people get up when their time is over; a pedestrian then runs off along its route, away from the nearest vehicle.
+ * The dead stay down.
+ */
 export const Recover = Game.System("Lunigiana/Recover", {
   queries: {
-    peds: Game.Query({ selection: { down: Game.Query.read(Down), pose: Game.Query.read(Pose), ped: Game.Query.write(Pedestrian), route: Game.Query.write(Route) } }),
-    others: Game.Query({ selection: { down: Game.Query.read(Down) }, without: [Pedestrian] }),
+    peds: Game.Query({
+      selection: { down: Game.Query.read(Down), pose: Game.Query.read(Pose), ped: Game.Query.write(Pedestrian), route: Game.Query.write(Route) },
+      without: [Dead]
+    }),
+    others: Game.Query({ selection: { down: Game.Query.read(Down) }, without: [Pedestrian, Dead] }),
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Vehicle] })
   },
   resources: { time: Game.System.thisTick(Game.System.readResource(Time)) },

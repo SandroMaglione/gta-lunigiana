@@ -45,8 +45,9 @@ and the minimap's top always match the screen.
 `EnterExit` (`systems/enter-exit.ts`) handles the action key (F or Enter), once per press:
 
 - **Enter**: on foot and standing, the player enters the vehicle whose body is nearest, within
-  2 m (`ENTER_GAP`), with no walk wall in between. The HUD prompt uses the same test
-  (`vehicleInReach`), so it shows exactly what the key would do: `steal`, `enter` or `carjack`.
+  2 m (`ENTER_GAP`), with no walk wall in between, unless it lies on its side or roof or is
+  destroyed ([Damage](#damage)). The HUD prompt uses the same test (`vehicleInReach`), so it shows
+  exactly what the key would do: `steal`, `enter` or `carjack`.
 - **Steal**: the first entry of any vehicle scores one theft and tags it `Stolen`. Entering it
   again scores nothing.
 - **Carjack**: entering a traffic car removes its AI. Its driver gets out at the first free door
@@ -139,13 +140,15 @@ Simulation preset). A new game starts on the Balanced preset ([Presets](#presets
   slides on instead: a Panda coasting up a 50% grass bank at 0.5–14 m/s never sleeps on it, one
   on its roof sleeps on a 50% slope and slides off a 62% one. With the handling's self-righting
   on ([Handling](#handling)), a vehicle lying on its side or roof does not sleep, and one already
-  asleep there wakes to roll back onto its wheels.
+  asleep there wakes to roll back onto its wheels; a destroyed one stays where it lies
+  ([Damage](#damage)).
 
 Events: a wall or ground hit is an `Impact` (a ground hit names the face that struck: `under`
 when the suspension bottoms out on landing, `roof`, `side`, `front`, `rear`), and each step a
 tyre slides past its grip it is a `Skid` (sliding speed, how far past its grip: 0.25 for ABS at
 the limit, 1 sliding, spinning or locked). The renderer lays tyre marks and smoke from `Skid`;
-the audio plays both ([audio.md](audio.md)).
+the audio plays both ([audio.md](audio.md)), and every crash `Impact` harder than a scuff wears
+the vehicles it struck ([Damage](#damage)).
 
 ### Vehicles
 
@@ -176,8 +179,9 @@ On gravel a Panda stops from 100 km/h in 68.4 m and on grass in 84.9 m; full thr
 spins its front wheels on gravel but not on asphalt, and after 10 s up a 15% grade it does 16 m/s
 on asphalt and 1.5 m/s on grass. On a new game's Balanced handling it stops in 47.0 m on gravel
 and does 14.9 m/s up the 15% grass ([Presets](#presets)). The Ape climbs 15% at 2.6 m/s. Adding a
-model to `VEHICLE_MODELS` fails to compile until it has data here, a mesh in
-`src/render/actors.ts` and a trim in the audio.
+model to `VEHICLE_MODELS` fails to compile until it has data here, a durability
+([Damage](#damage)), a mesh and an engine for its smoke and fire in `src/render/actors.ts`, and a
+trim in the audio.
 
 The camera zooms out with speed (6 texels/m in a car, 5 above 16 m/s). The HUD speedometer shows
 km/h.
@@ -278,7 +282,7 @@ Body and suspension), with each preset's value. Multipliers and shares move in s
 | Air drag | `drag` | 0–2 × | 1 | 0.9 | 0.6 | air resistance: lower raises the top speed and coasts further, higher holds a vehicle back at speed |
 | ABS on every vehicle | `abs` | off, on | off (each vehicle's own) | on | on | on: no vehicle's brakes lock its wheels, so it still steers braking hard (the Ape has no ABS of its own); the handbrake still locks the rear wheels |
 | Stability assist | `stability` | 0–1 | 0 (off) | 0 | 1 | an assist no real car has: it turns a sliding car's yaw back toward the line it steers (the steered yaw rate, v · tan(steer) / wheelbase, capped at what the tyres' grip can turn the path at) and damps the rear axle's sideways slide (not the centre of mass's, which a clean turn has too); at 1 a car holds the line it steers and does not spin (a Panda tapped to full lock at 160 km/h off the throttle, which spins round at 0; on Arcade, full lock held 5 s at 100–160 km/h slides a Giulia or a Panda at most 4°), except while the handbrake is held, so a handbrake turn swings it round exactly as without it; off in the air and under 2 m/s |
-| Self-righting | `selfRighting` | off, on | off | off | on | on: a vehicle lying on its side or roof, or rolling up onto some of its wheels, tilted more than 25° and nearly stopped (under 3 m/s), rolls back onto its wheels by itself, hopping off its roof: every model from its side in 0.3 s and from its roof in about 1.1 s on flat ground, and the laden truck across a 20% slope too, without falling back; an overturned vehicle asleep wakes for it |
+| Self-righting | `selfRighting` | off, on | off | off | on | on: a vehicle lying on its side or roof, or rolling up onto some of its wheels, tilted more than 25° and nearly stopped (under 3 m/s), rolls back onto its wheels by itself, hopping off its roof: every model from its side in 0.3 s and from its roof in about 1.1 s on flat ground, and the laden truck across a 20% slope too, without falling back; an overturned vehicle asleep wakes for it; a destroyed one stays where it lies ([Damage](#damage)) |
 | Traction control on every vehicle | `traction` | off, on | off (each vehicle's own) | on | on | on: no vehicle spins its driven wheels; the engine gives only what the tyres can take and leaves them grip to corner (only the truck and the Giulia have it of their own) |
 | Steering at speed | `steering` | 0.5–2.5 × | 1 | 1 | 2 | how far the wheels turn at speed, where the lock shrinks to what the grip and the tipping point allow (full lock at walking pace stays): higher turns tighter but slides or tips sooner, lower is steadier |
 | Steering speed | `steeringRate` | 0.5–4 × | 1 | 1.4 | 3 | how fast the wheels turn toward the keys (2.5 rad/s) and back to straight (4 rad/s): higher reacts at once but is twitchy, lower is smoother but slower |
@@ -310,10 +314,108 @@ ground and asphalt unless named, no walls), the scenarios of `src/sim/handling.t
 
 ### Horn and siren
 
-H sounds the car's horn while held, from the driver's seat only: on foot it does nothing. In the
-Carabinieri Giulia each press of H turns the two-tone siren on or off instead; the siren stops when
-the player gets out. Neither has a gameplay effect: nobody gets out of the way. The `horn` binding
-is read only by the audio host ([audio.md](audio.md)).
+H sounds the car's horn while held, from the driver's seat only: on foot, or in a destroyed car
+([Damage](#damage)), it does nothing. In the Carabinieri Giulia each press of H turns the two-tone
+siren on or off instead; the siren stops when the player gets out or the car is destroyed. Neither
+has a gameplay effect: nobody gets out of the way. The `horn` binding is read only by the audio
+host ([audio.md](audio.md)).
+
+## Damage
+
+Crashes wear vehicles out, every vehicle alike: the player's, parked and traffic. `CrashDamage`
+(`systems/damage.ts`, the rules in `src/sim/damage.ts`) keeps each vehicle's `Damage`: the share of
+its durability its crashes have used up, from 0 (as new) to 1 (destroyed). Nothing repairs it.
+
+- **What a crash costs.** Each `Impact` is a hit at the struck vehicle's barrier-equivalent speed:
+  the speed into a wall that would shake it as hard. A wall counts at the impact's speed; two
+  vehicles split their closing speed by mass, each taking the other's share, so a Panda driven
+  into the laden truck takes 96% of it and the truck 4%. A landing on the wheels (`under`) counts
+  less the 2 m/s the bump stops take, and a side or the roof striking the ground counts at least
+  half the body's speed over it, so a car rolling over at speed takes a beating at each turn.
+  Knocking a person down costs nothing, but a person pinned against a wall does not cushion the
+  car: it is a wall hit as hard as the car was going into it. A hit up to 3 m/s (`SCUFF`) only
+  scuffs. Past that a crash at `v` costs ((v − 3) / (d − 3))^1.5, where the durability `d` is the
+  barrier speed of the one crash that destroys the model outright (`DURABILITY`): growing faster
+  than the speed but slower than the crash's energy, so one ordinary fast crash rarely skips a
+  stage. A crash makes more than one contact with what it strikes (the body still pressing into
+  the wall the next step, a rebound), so hits within 0.2 s of the crash's first on the same
+  vehicle, or on any wall or the ground (an `Impact` does not say which wall), cost only what a
+  harder one adds: a crash costs what its hardest hit does.
+- **Stages.** What the player sees and hears, by damage (`STAGE_FROM`): under 0.4 no smoke shows and
+  the engine loses no drive, though it already sounds duller, and rough from 0.2
+  ([audio.md](audio.md#engines)); from 0.4 (medium) the engine smokes white, from 0.7 (severe)
+  black, and at 1 (destroyed) it burns under black smoke
+  ([architecture.md](architecture.md#rendering), [audio.md](audio.md)).
+- **The engine.** From the medium stage the engine gives less torque, falling in a straight line
+  to 60% just short of destroyed, and from the severe stage it misfires: a share of 0.25 s
+  windows, none at 0.7 and 20% at the brink, gives no drive at all, so the car coughs and lurches
+  under the pedal. The drivetrain reports both (`engineRevs`), so the engine heard misfires when
+  the one that drives does. The misfires are drawn per vehicle and window from its entity id, so
+  a replay misfires alike.
+- **Destroyed.** The engine is dead, and with it the horn and the siren: no drive and no engine
+  braking, though the steering and the brakes still work and the wreck rolls. It burns until it
+  blows up ([Explosions](#explosions)), and the handling's self-righting leaves it where it lies.
+  Nobody can get in (`vehicleInReach`, so the HUD offers nothing); a player inside can still get
+  out. A traffic car is abandoned the step it is destroyed: its driver gets out at the first free
+  door and flees for 4 s, as from a carjacking, and it stops being traffic, its handbrake on.
+  `Populate` removes a wreck once it is out of view (farther than `VIEW_REACH`, 90 m), whoever it
+  belonged to, so wrecks never pile up.
+
+A vehicle rolled square on into a house wall on Via Cesare Battisti, its damage after the one
+crash (the handling does not change what a crash costs):
+
+| Model | Durability | 30 km/h | 50 | 70 | 90 | 110 | 130 | 150 |
+|---|---|---|---|---|---|---|---|---|
+| `ape` | 26 m/s (94 km/h) | 0.11 | 0.32 | 0.60 medium | 0.93 severe | destroyed | | |
+| `panda` | 40 m/s (144 km/h) | 0.05 | 0.16 | 0.30 | 0.46 medium | 0.64 medium | 0.84 severe | destroyed |
+| `carabinieri` | 46 m/s (166 km/h) | 0.04 | 0.13 | 0.24 | 0.37 | 0.51 medium | 0.67 medium | 0.85 severe |
+| `truck` | 60 m/s (216 km/h) | 0.03 | 0.08 | 0.15 | 0.24 | 0.34 | 0.45 medium | 0.56 medium |
+
+So a Panda turns white after three crashes into a wall at 50 km/h, black after five and burns
+after seven; at 90 km/h it takes one, two and three.
+
+How a worn engine drives, floored from rest on flat test ground (`drive`, the Simulation preset,
+misfire seed 7): the time to 100 km/h (30 km/h for the Ape, 50 km/h for the truck), the speed
+after 180 s, and the steepest grade it still climbs from rest. The 0.85 and 0.99 columns depend on
+when the misfires fall, drawn from the vehicle's id: over seeds 1, 3, 7, 42 and 100 the times move
+by 1–4 s, except the Ape at 0.85, which reaches 30 km/h in 61–107 s:
+
+| Model | As new (and up to 0.4) | 0.55 | 0.7 | 0.85 | 0.99 |
+|---|---|---|---|---|---|
+| `panda` | 12.7 s, 164 km/h, 36% | 14.2 s, 159 km/h, 32% | 16.3 s, 152 km/h, 28% | 22.0 s, 137 km/h, 21% | 30.7 s, 125 km/h, 16% |
+| `carabinieri` | 6.5 s, 243 km/h, 60% | 7.0 s, 233 km/h, 60% | 7.6 s, 222 km/h, 60% | 9.0 s, 204 km/h, 55% | 11.6 s, 184 km/h, 42% |
+| `ape` | 17.0 s, 41 km/h, 18% | 20.3 s, 40 km/h, 16% | 25.9 s, 38 km/h, 14% | 106.9 s, 31 km/h, 10% | never, 24 km/h, 8% |
+| `truck` | 15.1 s, 90 km/h, 16% | 16.5 s, 90 km/h, 15% | 18.3 s, 90 km/h, 16% | 24.3 s, 90 km/h, 15% | 31.6 s, 84 km/h, 16% |
+
+The Giulia's climb is held by its grip on the steepest grades (60% is as far as was tried), and the
+laden truck's by its tyres at about 15% whatever the damage. Traffic hardly wears itself out: with
+the player standing 3 minutes at the start while traffic fills the roads (seed 1), 6 of the 220
+vehicles on the map in that time (210 at once) took any damage, at most 0.17.
+
+### Explosions
+
+`Explode` (`systems/explosions.ts`) blows burning wrecks up:
+
+- **The fuse.** The step after a vehicle is destroyed its fuse is lit: 5–10 s (`FUSE`), drawn from
+  the world's `Rng`, so a replay blows up alike. When it burns down the wreck explodes (an
+  `Explosion` event, which the render draws and the audio plays) and is left a charred shell
+  (`Damage.exploded`): it leaps 4 m/s and tumbles at up to 1.5 rad/s, then lies smoking.
+- **Vehicles.** Every other vehicle whose body is within 10 m of the wreck's (their half lengths
+  apart) takes a hit like a crash at up to 45 m/s barrier-equivalent, less in a straight line with
+  the gap, and a shove of up to 12,000 N·s away from it and a third as much again upward (`BLAST`).
+  A Panda parked bumper to bumper (0.8 m) is destroyed and blows up in turn 5–10 s later, one 6.3 m
+  off takes 0.22, and the laden truck 2.35 m behind 0.41; the shove sends a Panda off at up to 12
+  m/s and the truck at under 0.5.
+- **People.** On foot within 5 m of the blast they die (`Dead`), within 12 m they are knocked down
+  for 2.5 s, and both are thrown away from it at up to 9 m/s; walkers within 30 m run off for 4 s.
+  The player sitting in the wreck dies with it, thrown out at a door. Anyone sitting in another
+  vehicle is shielded by it. The dead lie where they fall and never get up; traffic does not wait
+  for them (a car nudges a body aside) and `Populate` removes a body once it is out of view
+  (beyond 90 m). Nothing scores.
+- **Dying and coming back.** Killed, the player lies still for 4 s (`WASTED`) under the HUD's "Sei
+  morto", unable to act, then `Respawn` brings them back on foot at the start, where a new game
+  begins (in front of the Carabinieri station). The score, the world and its wrecks stay as they
+  are.
 
 ## Traffic AI
 
@@ -343,7 +445,7 @@ the lane helpers in `src/sim/route.ts`.
   stream, stops rather than tip over: it brakes while moving, then holds the handbrake with the
   wheel straight once under 0.5 m/s. Stuck there, it backs up like for anything else.
 - **Braking.** Anything in a cone ahead (8 m + 1.2 s × speed long, 1.8 m half-width), vehicle or
-  person, slows the car to keep a 2 m gap. Standing still, it holds the handbrake.
+  living person, slows the car to keep a 2 m gap. Standing still, it holds the handbrake.
 - **Unsticking.** A car stuck below 1 m/s for 3 s reverses for 1.5 s at 3 m/s. If it is lined up
   with its lane, it may turn round: half the time when the way back is not a dead end, always
   from its second try, never on a oneway, and never on a bridge or in a tunnel, nor on an edge
@@ -356,6 +458,9 @@ the lane helpers in `src/sim/route.ts`.
   person) the driver honks once, a `Honk` event the audio host plays. It honks again only in a new
   stuck episode: after backing up, or after getting going above 2.5 m/s.
 - **Lost.** A car more than 12 m from its edge joins the nearest usable road.
+- **Wrecked.** A damaged car drives on, as slowly as its worn engine goes; a destroyed one is
+  abandoned, its driver fleeing ([Damage](#damage)). Other traffic treats the wreck like a parked
+  car in its lane until it is removed out of view.
 - **How it flows.** With the player standing 3 minutes while traffic fills the roads, at a new
   game's handling (Balanced), the share of the traffic's time under 1 m/s and the honks were 0.10
   and 41 in Monzone's street (0.10 and 28 before the drive physics), 0.10 and 48 at Equi Terme
@@ -388,12 +493,14 @@ through a wall.
 - **Car and car**: they separate by mass share and exchange an impulse (restitution 0.2).
 - **Car and standing person**: a car moving into them faster than 3 m/s (`KNOCK_SPEED`) knocks
   them down for 2.5 s. They are thrown with 0.6 of the car's velocity plus 3 m/s away from it.
-  Slower, the car pushes them aside. A person pinned against a wall stops the car instead. The
-  car's own speed decides, so running into a parked car never floors the runner.
+  Slower, the car pushes them aside. A person pinned against a wall stops the car instead (a wall
+  hit for the car, [Damage](#damage)). The car's own speed decides, so running into a parked car
+  never floors the runner.
 - **Person and person**: they step apart.
 
-The player can be knocked down too, and cannot act until they get up. `Recover` lifts people when
-their time is over. A pedestrian then runs from the nearest vehicle for 4 s.
+The player can be knocked down too, and cannot act until they get up; an explosion can kill them
+([Explosions](#explosions)). `Recover` lifts people when their time is over. A pedestrian then runs
+from the nearest vehicle for 4 s.
 
 `Score` has two counters, shown on the HUD:
 
@@ -420,7 +527,8 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
   does not fit. It spawns at least 15 m from any vehicle and clear of walls, heads out of dead-end
   spurs, and starts at 0.6 × cruising speed.
 - The player's car is never despawned. Parked, stolen and carjacked cars are not traffic, so they
-  stay where they are left.
+  stay where they are left. A destroyed vehicle, traffic or not, and a dead body go once they are
+  beyond 90 m (`VIEW_REACH`), out of view; the dead do not count toward the 22 pedestrians.
 
 ## Tuning
 
@@ -429,6 +537,8 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | `src/sim/tuning.ts` | `ENTER_GAP`, `PERSON_RADIUS`, `WALK_SPEED`, `SPRINT_SPEED`, `KNOCK_SPEED` |
 | `src/sim/handling.ts` | `HANDLING`: each handling knob's group, name, description, kind, range and step; `REAL_HANDLING`; `HANDLING_PRESETS`, the three presets; `DEFAULT_HANDLING` (a new game's: Balanced) |
 | `src/sim/vehicles.ts` | `VEHICLES`: each model's body, mass, wheels, tyres, brakes, engine, gearbox, drag and suspension; `CAR_COLORS` |
+| `src/sim/systems/explosions.ts` | `FUSE` (how long a wreck burns before it blows), `BLAST` (who dies, falls, flees, how hard vehicles are hit and shoved), `WASTED` (how long the dead player lies) |
+| `src/sim/damage.ts` | `DURABILITY` per model, `SCUFF`, the stages (`STAGE_FROM`), how ground hits count (bump stops, tumbling), how long one crash lasts, the torque a worn engine keeps and how often it misfires |
 | `src/sim/tyres.ts` | `GRIP` per surface, the slip curve, ABS and traction-control shares, load sensitivity, the static-friction speed |
 | `src/sim/dynamics.ts` | substeps, bump-stop travel, damper limit, the body's ground contacts, in-air tumbling damping, the ground-hit speed |
 | `src/sim/drivetrain.ts` | shift points, engine braking, driveline efficiency |
@@ -441,11 +551,10 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | `src/render/pipeline.ts` | `zoomFor` zoom levels, `turnToward` view turn speed |
 | `src/audio/director/levels.ts` | how loud each sound is and how far it carries (see [audio.md](audio.md#known-limits-and-tuning)) |
 
-Gameplay changes need a test: the scenario tests in `src/sim/index.test.ts` and
-`src/sim/walls.test.ts` stage exact situations with `src/sim/testing.ts`,
-`src/sim/physics.test.ts` drives each model on flat, sloping and ramped test ground with
-`advance` (no walls), and `src/sim/handling.test.ts` proves each handling knob's effect the same
-way. Fixtures find map
-features by geometry, never by index (`BATTISTI` is the Via Cesare Battisti traffic edge nearest
-(-412, 438), eastbound), so they survive map rebuilds. Re-run `pnpm check`
-after any change.
+Gameplay changes need a test: the scenario tests in `src/sim/index.test.ts`,
+`src/sim/walls.test.ts`, `src/sim/damage.test.ts` and `src/sim/explosions.test.ts` stage exact
+situations with `src/sim/testing.ts`, `src/sim/physics.test.ts` drives each model on flat, sloping
+and ramped test ground with `advance` (no walls), and `src/sim/handling.test.ts` proves each
+handling knob's effect the same way. Fixtures find map features by geometry, never by index
+(`BATTISTI` is the Via Cesare Battisti traffic edge nearest (-412, 438), eastbound), so they survive
+map rebuilds. Re-run `pnpm check` after any change.

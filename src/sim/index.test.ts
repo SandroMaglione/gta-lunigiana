@@ -12,12 +12,13 @@ import { graph, isDrivable, MAP, wallsNear } from "./map/index.ts"
 import { pointInRing } from "./collide.ts"
 import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkIndex } from "./route.ts"
 import { settle, uprightness } from "./chassis.ts"
-import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
+import { STAGE_FROM, UNDAMAGED } from "./damage.ts"
+import { bindings, CarInput, Chassis, Damage, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
 import { roadLevel } from "./map/ground.ts"
 import { parkedCar, pedestrian, trafficCar } from "./spawning.ts"
 import { PEDESTRIANS, PEOPLED, TRAFFIC } from "./systems/populate.ts"
 import { PARKED } from "./systems/spawn.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, start, straightOn, teleport, type Timeline, walkClear, World } from "./testing.ts"
+import { BATTISTI, battistiTraffic, burning, door, facing, FAR, ON_BATTISTI, press, rolling, stage, start, straightOn, teleport, TOWARD, type Timeline, walkClear, World } from "./testing.ts"
 import { KNOCK_SPEED } from "./tuning.ts"
 import { screenAxes, VIEW_REACH } from "./view.ts"
 import { VEHICLES } from "./vehicles.ts"
@@ -356,7 +357,11 @@ test("populate: pedestrians spawn in the villages, never inside a house, and non
   }
 })
 
-/** Walk to a car, drive it hard around Via Cesare Battisti, turn the view, get out: every system has work to do. */
+/**
+ * Walk to a car, drive it hard around Via Cesare Battisti, turn the view, get out, while another car crashes into a house wall and
+ * goes on pushing at it on its worn, misfiring engine, and a wreck across the road blows up, killing a bystander and setting
+ * the car beside it on fire: every system has work to do.
+ */
 const joyride: Timeline = [
   { frame: 0, press: ["left"] }, { frame: 10, release: ["left"] },
   ...press(12, "action"),
@@ -364,7 +369,14 @@ const joyride: Timeline = [
   { frame: 170, release: ["handbrake", "right"] }, ...press(200, "turnLeft"), { frame: 240, release: ["up"], press: ["down"] }, { frame: 300, release: ["down"] },
   ...press(330, "action"), { frame: 340, press: ["up", "sprint"] }, { frame: 400, release: ["up", "sprint"] }
 ]
-const joyrideCast = [door(ON_BATTISTI), { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)] }] as const
+const BYSTANDER = { x: FAR.x, y: FAR.y + 2.5, angle: 0 }
+const joyrideCast = [door(ON_BATTISTI), {
+  cars: [
+    parkedCar("panda", 0xb8312b, ON_BATTISTI), rolling("panda", { ...facing(4.85), angle: TOWARD }, 34, 1), burning("panda", FAR, 100),
+    parkedCar("panda", 0xf2efe6, { x: FAR.x + VEHICLES.panda.length + 0.8, y: FAR.y, angle: 0 })
+  ],
+  peds: [pedestrian({ skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }, BYSTANDER, { edge: walkIndex.nearest(BYSTANDER.x, BYSTANDER.y), forward: true, side: 0 }, { mood: "walk", until: 0 })]
+}] as const
 
 test("determinism: the same scripted joyride replays bit for bit", () => {
   const result = Determinism.check(({ hostClock }) => {
@@ -390,6 +402,10 @@ test("saves: a snapshot taken mid-joyride restores through JSON and plays on ide
   })
   assert.deepEqual(modes, ["foot", "driving", "foot"], "the joyride gets in, drives and gets out")
   assert.equal(a.view()!.turns, 1, "and turns the view")
+  assert.ok(a.world().vehicles.some((v) => v.damage.amount >= STAGE_FROM.severe && v.damage.amount < STAGE_FROM.destroyed), "and a car misfires after its crash")
+  assert.equal(a.heard.explosions.length, 1, "and a wreck blows up")
+  assert.ok(a.world().peds.some((p) => p.dead), "killing a bystander")
+  assert.ok(a.world().vehicles.some((v) => !v.damage.exploded && v.damage.fuse > 0), "and setting the car beside it burning")
   const b = start()
   assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
   assert.deepEqual(b.view(), a.view())
@@ -419,7 +435,7 @@ test("enter: a car lying on its roof cannot be entered, and the HUD offers none"
   const roof = { ...settle("panda", ON_BATTISTI), roll: Math.PI }
   const wreck = Game.Command.spawn(
     [Vehicle, { model: "panda", color: 0xb8312b }], [Pose, ON_BATTISTI], [PrevPose, ON_BATTISTI], [Motion, { vx: 0, vy: 0, spin: 0 }],
-    [CarInput, { throttle: 0, steer: 0, handbrake: true }], [Chassis, roof]
+    [CarInput, { throttle: 0, steer: 0, handbrake: true }], [Chassis, roof], [Damage, UNDAMAGED]
   )
   const { run, view } = start(press(0, "action"), [door(ON_BATTISTI), { cars: [wreck] }])
   assert.equal(view()?.nearby, undefined)
@@ -463,7 +479,7 @@ test("sleep: a car on its roof with its handbrake off comes to rest and sleeps",
   const roof = { ...settle("panda", ON_BATTISTI), roll: Math.PI, z: settle("panda", ON_BATTISTI).z - VEHICLES.panda.cg + VEHICLES.panda.height - VEHICLES.panda.cg + 0.02 }
   const wreck = Game.Command.spawn(
     [Vehicle, { model: "panda", color: 0xb8312b }], [Pose, ON_BATTISTI], [PrevPose, ON_BATTISTI], [Motion, { vx: 0, vy: 0, spin: 0.01 }],
-    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, roof]
+    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, roof], [Damage, UNDAMAGED]
   )
   const { run, world } = start([], [FAR_AWAY, { cars: [wreck] }])
   run(240)

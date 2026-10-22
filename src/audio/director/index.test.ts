@@ -10,91 +10,13 @@ import { hash01 } from "../../tools/geometry.ts"
 import { AMBIENT_DB, CABIN, dbToGain, gainToDb, SPEED_OF_SOUND } from "../acoustics.ts"
 import { bells, streetAt, wallAt } from "../places.ts"
 import { stepRate } from "../synth/steps.ts"
-import type { Continuous, Happening, Heard, HeardPerson, HeardVehicle, OneShot, Placement, Speaker, Zone } from "../types.ts"
-import { makeDirector, type WallClock } from "./index.ts"
-import { CRASH_MOST_DB, TOWERS, windDb } from "./levels.ts"
-
-/**
- * Real map spots (found by probing the map): a treeless meadow on Monte dei Bianchi clear for 300 m to the south and
- * screen-right, a lane at Pian del Molino with a 10.7 m building 30 m east and open ground 30 m north-west, a wooded
- * ridge above Aiola (900 m) with no water within 400 m, Monzone station 68 m from the Torrente Lucido, a street
- * 50 m from Monzone Alto's tower, the woods above Isolano, in earshot of eleven bell towers, and the street of Monzone
- * where the game starts, 50 m from the Lucido behind the houses; a bank 15 m from the Lucido with nothing in the way,
- * the two flanks of Monte San Giorgio, 400 m apart (the west one in the open under a rock face), Gragnola's centre,
- * walled in on every side, the rendered house wall on Via Cesare Battisti where src/sim/index.test.ts drives a
- * Panda, on its cobbles, and the riverbed's gravel 16 m under a bridge's asphalt deck.
- */
-const MEADOW = { x: -329, y: 1078 }, STREET = { x: -916.6, y: 1706.8 }, BEHIND = { x: -886.6, y: 1706.8 }, OPEN = { x: -937.8, y: 1728 }
-const RIDGE = { x: 1600, y: -494.5 }, STATION = { x: -494, y: 437 }, BELFRY = { x: -41.8, y: -306.6 }
-const HILLSIDE = { x: -950, y: 71 }, SPAWN = { x: -412.6, y: 437.8 }, BANK = { x: -418.6, y: 395.8 }
-const WEST_FLANK = { x: 785.7, y: -563.4 }, EAST_FLANK = { x: 1185.7, y: -563.4 }, HOUSE_WALL = { x: -429.85, y: 452.9 }
-const GRAGNOLA = { x: -1751.2, y: 3360.4 }, UNDER_BRIDGE = { x: -1190.3, y: 1273.1 }
-const FRAME = 1 / 60
-/** Screen-right on the ground, with the view in its home seat. */
-const SCREEN_RIGHT = screenAxes(0).right
-
-/** A small deterministic random source. */
-const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
-
-/** A one-shot played at speaker time `t`, `delay` s ahead. */
-interface Played { readonly sound: OneShot; readonly at: Placement; readonly delay: number; readonly t: number }
-
-/** A director on a recording speaker whose clock (from `t`; 0 is no context yet) the test advances by `dt` per `hear`. */
-const rig = (clock: () => WallClock = () => ({ hour: 10, minute: 10, second: 0 }), t = 1) => {
-  let holding = new Map<string, { readonly sound: Continuous; readonly at: Placement }>()
-  let held = holding
-  const plays: Array<Played> = []
-  const speaker: Speaker = {
-    now: () => t,
-    hold: (key, sound, at) => void holding.set(key, { sound, at }),
-    play: (sound, at, delay) => void plays.push({ sound, at, delay, t }),
-    flush: () => {
-      held = holding
-      holding = new Map()
-    }
-  }
-  const director = makeDirector(speaker, { random: seeded(7), clock })
-  return {
-    plays,
-    /** What the last frame held. */
-    held: () => held,
-    hear: (heard: Heard, frames = 1, dt = FRAME) => {
-      for (let i = 0; i < frames; i++) {
-        t += dt
-        director.hear(heard)
-      }
-    },
-    /** Plays of `kind` since it was last taken. */
-    take: (kind: OneShot["kind"]): Array<Played> => {
-      const taken = plays.filter((p) => p.sound.kind === kind)
-      plays.splice(0, plays.length, ...plays.filter((p) => p.sound.kind !== kind))
-      return taken
-    }
-  }
-}
-
-/** Vehicle `id`, idling on its wheels at `at`. */
-const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly y: number }, more: Partial<HeardVehicle> = {}): HeardVehicle => ({
-  id, model, x: at.x, y: at.y, z: groundZ(at.x, at.y) + VEHICLES[model].cg, angle: 0, vx: 0, vy: 0, rpm: VEHICLES[model].engine.idle, load: 0,
-  wheelsDown: true, hullDown: false, running: true, mine: false, ...more
-})
-/** A Panda revving at the redline under full load. */
-const FULL = { rpm: VEHICLES.panda.engine.redline, load: 1 } as const
-const person = (id: number, at: { readonly x: number; readonly y: number }, more: Partial<HeardPerson> = {}): HeardPerson => ({
-  id, x: at.x, y: at.y, vx: 0, vy: 0, player: false, fleeing: false, down: false, ...more
-})
-const world = (at: { readonly x: number; readonly y: number }, more: Partial<Heard> = {}, car?: number): Heard => ({
-  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 }, vehicles: [], people: [], happenings: [], horn: false, ...more
-})
-const away = (from: { readonly x: number; readonly y: number }, metres: number, dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT) =>
-  ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
-const SOUTH = { x: 0, y: -1 }
-/** A Panda's mass, t. */
-const PANDA = VEHICLES.panda.mass / 1000
-/** Car `car`, a Panda, hitting a wall at `at` on its `zone` (nose first). */
-const wallHit = (at: { readonly x: number; readonly y: number }, speed: number, car = 1, zone: Zone = "front"): Happening => ({
-  kind: "impact", hit: "wall", x: at.x, y: at.y, speed, mass: PANDA, car, body: { model: "panda", zone }
-})
+import type { Happening, Zone } from "../types.ts"
+import type { WallClock } from "./index.ts"
+import { MOST_DB, TOWERS, windDb } from "./levels.ts"
+import {
+  away, BANK, BELFRY, BEHIND, car, EAST_FLANK, FRAME, FULL, GRAGNOLA, HILLSIDE, HOUSE_WALL, MEADOW, OPEN, PANDA, person, RIDGE, rig, SCREEN_RIGHT, SOUTH, SPAWN,
+  STATION, STREET, UNDER_BRIDGE, wallHit, WEST_FLANK, world
+} from "./testing.ts"
 
 test("a running car 30 m away on screen-right is heard there; 2 km away it is not (proximity)", () => {
   const near = rig()
@@ -124,10 +46,12 @@ test("a car at full load 300 m across the open meadow is heard; 400 m away behin
   assert.equal(behind.held().has("engine:1"), false)
 })
 
-test("an engine plays the sim's revs and load, with a variant of its model's sound drawn from its id", () => {
+test("an engine plays the sim's revs, load, damage and misfires, with a variant of its model's sound drawn from its id", () => {
   const director = rig()
-  director.hear(world(MEADOW, { vehicles: [car(41, "truck", away(MEADOW, 30), { rpm: 1800, load: 0.6 })] }))
-  assert.deepEqual(director.held().get("engine:41")?.sound, { kind: "engine", model: "truck", rpm: 1800, load: 0.6, inside: false, variant: hash01(41) })
+  director.hear(world(MEADOW, { vehicles: [car(41, "truck", away(MEADOW, 30), { rpm: 1800, load: 0.6, damage: 0.8, misfire: true })] }))
+  assert.deepEqual(director.held().get("engine:41")?.sound, {
+    kind: "engine", model: "truck", rpm: 1800, load: 0.6, inside: false, variant: hash01(41), damage: 0.8, misfire: true
+  })
 })
 
 // Regression: masking and the caps counted every engine at full load, so an idling car 50 m away outranked one revving 100 m away.
@@ -408,7 +332,7 @@ test("the reverb follows the surroundings: a honk in the open meadow plays dry, 
   assert.ok(walled.length > 0 && walled[0]!.at.wet > 1, JSON.stringify(walled))
 })
 
-test("inside the Panda its own crash plays open, at most CRASH_MOST_DB over gain 1, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
+test("inside the Panda its own crash plays open, at most MOST_DB.crash over gain 1, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
   const crash = (spot: { readonly x: number; readonly y: number }, own: boolean) => {
     const director = rig(), other = away(spot, 3, SOUTH), at = own ? spot : other
     const vehicles = [car(5, "panda", spot, { mine: true }), car(2, "panda", other)]
@@ -417,7 +341,7 @@ test("inside the Panda its own crash plays open, at most CRASH_MOST_DB over gain
   }
   const [own] = crash(GRAGNOLA, true), [outside] = crash(GRAGNOLA, false)
   // Regression: it came about 25 dB over gain 1, and the master limiter, taking 20 dB off the hit, gave the sub-hits back as loud as it.
-  assert.equal(own!.at.gain, dbToGain(CRASH_MOST_DB))
+  assert.equal(own!.at.gain, dbToGain(MOST_DB.crash))
   assert.ok(own!.at.cutoff === 20000 && outside!.at.cutoff <= CABIN.panda.cutoff && own!.at.wet < outside!.at.wet, `${JSON.stringify(own!.at)} against ${JSON.stringify(outside!.at)}`)
   for (const spot of [WEST_FLANK, BELFRY]) {
     const [direct, ...echoes] = crash(spot, true), [, ...outsides] = crash(spot, false)

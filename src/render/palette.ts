@@ -13,7 +13,7 @@ export const PALETTE = {
   grassDry: 0xb4b06a, grass: 0x7d9447, forestLight: 0x62783f, forest: 0x47592f,
   forestDark: 0x2c3d22, conifer: 0x1b2c24, dirtTrack: 0x8f7a58, waterShallow: 0x8db4b0,
   waterDeep: 0x3f6d63, asphalt: 0x4b4d50, asphaltWorn: 0x74746f, carabinieriBlue: 0x1d2b4f,
-  signalRed: 0xb8312b, signYellow: 0xf0c93c
+  signalRed: 0xb8312b, signYellow: 0xf0c93c, flameOrange: 0xe8762c
 } as const satisfies Record<string, number>
 
 /** `#rrggbb` CSS string of a palette (or any sRGB hex) colour. */

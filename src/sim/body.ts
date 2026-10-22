@@ -9,6 +9,7 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { overturned } from "./chassis.ts"
 import { moveCircles, segmentDistance } from "./collide.ts"
+import { destroyed } from "./damage.ts"
 import { type Segment, wallsNear } from "./map/index.ts"
 import type { ChassisValue, PoseValue } from "./schema.ts"
 import { ENTER_GAP, PERSON_RADIUS } from "./tuning.ts"
@@ -58,18 +59,18 @@ export const crossesAny = (segs: ReadonlyArray<Segment>, p: Vec2.Vec2, q: Vec2.V
 /**
  * Of `vehicles`, the one a person at `at` gets into with the action key: the nearest body (the
  * capsule around its circles) within ENTER_GAP, the later one on a tie, with no walk wall between
- * the person and its axis; never one lying on its side or roof. The action (EnterExit) and the HUD
- * prompt (PlayerView) both ask this.
+ * the person and its axis; never one lying on its side or roof, nor a destroyed one. The action
+ * (EnterExit) and the HUD prompt (PlayerView) both ask this.
  */
 export const vehicleInReach = <T>(
   at: Vec2.Vec2,
   vehicles: ReadonlyArray<T>,
-  bodyOf: (vehicle: T) => { readonly model: VehicleModel; readonly pose: PoseValue; readonly chassis: ChassisValue }
+  bodyOf: (vehicle: T) => { readonly model: VehicleModel; readonly pose: PoseValue; readonly chassis: ChassisValue; readonly damage: number }
 ): T | undefined => {
   let best = ENTER_GAP, found: T | undefined
   for (const vehicle of vehicles) {
-    const { model, pose, chassis } = bodyOf(vehicle)
-    if (overturned(chassis)) continue
+    const { model, pose, chassis, damage } = bodyOf(vehicle)
+    if (overturned(chassis) || destroyed(damage)) continue
     const { length, width } = VEHICLES[model]
     const k = length / 2 - width / 2
     const fx = Ops.cos(pose.angle), fy = Ops.sin(pose.angle)

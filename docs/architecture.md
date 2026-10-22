@@ -45,20 +45,27 @@ keys).
 | 4 | `TurnView` | `index.ts` | turn keys: the view's quarter turns (`View`) |
 | 5 | `ApplyHandling` | `index.ts` | each `SetHandling` request sets its knob in `Handling`, kept in the knob's range |
 | 6 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
-| 7 | `applyDeferred` | | applies the enter/exit commands before anything moves |
-| 8 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
-| 9 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
-| 10 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
-| 11 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
-| 12 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
-| 13 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
-| 14 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
-| 15 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
-| 16 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians |
-| 17 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
+| 7 | `applyDeferred` | | applies the enter/exit commands, so the blast knows who sits in which vehicle |
+| 8 | `Explode` | `systems/explosions.ts` | lights a burning wreck's fuse; a wreck whose fuse has burnt down blows up (`Explosion`): hits and shoves the vehicles near it, kills, knocks down and scares the people |
+| 9 | `applyDeferred` | | applies the blast's deaths and knockdowns before anything moves |
+| 10 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
+| 11 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
+| 12 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
+| 13 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
+| 14 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
+| 15 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits, knockdowns and a car stopped against a wall by a pinned person (faster than `KNOCK_SPEED`) are `Impact` events |
+| 16 | `CrashDamage` | `systems/damage.ts` | this step's `Impact` events wear the vehicles they struck (`Damage`); a traffic car destroyed is abandoned, its driver fleeing |
+| 17 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
+| 18 | `Recover` | `systems/contacts.ts` | knocked-down people get up, never the dead; pedestrians then flee |
+| 19 | `Respawn` | `systems/explosions.ts` | the dead player comes back on foot at the start after 4 s |
+| 20 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians, and removes destroyed vehicles and the dead once out of view (`VIEW_REACH`) |
+| 21 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
 
-Controls and the handling are read before movement, all movement happens before contacts, and
-contacts happen before the player's pose follows the car. Gameplay is in [gameplay.md](gameplay.md).
+Controls and the handling are read before movement, a blast is set off once getting in and out are
+applied and before anything moves, all movement happens before contacts, crash damage is counted
+after both, from the same step's hits, and contacts happen before the player's pose follows the car.
+The physics drives on the crash damage counted the step before, and on a blast's in the same step.
+Gameplay is in [gameplay.md](gameplay.md).
 
 ### Where state lives
 
@@ -72,9 +79,11 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Person` | player, pedestrians | look: skin, hair, shirt, trousers colours (immutable) |
 | `Pedestrian` | pedestrians | mood (`walk` or `flee`), flee end step, steps blocked |
 | `Down` | knocked-down people | step at which they get up |
+| `Dead` | people killed by an explosion (with `Down`) | step they died |
 | `Vehicle` | vehicles | model and paint colour (immutable) |
 | `CarInput` | vehicles | throttle, steer, handbrake for this step |
 | `Chassis` | vehicles | centre-of-mass elevation and vertical speed, pitch and roll with their rates, road-wheel steering angle, gear, step the current shift ends |
+| `Damage` | vehicles | share of its durability its crashes used up (0 as new, 1 destroyed); its latest crash's hardest hit (barrier-equivalent m/s), first step and what it struck (another vehicle's entity id, −1 a wall or the ground); the step its fire blows it up (`fuse`) and whether it has (`exploded`) |
 | `Traffic` | AI vehicles | tag |
 | `Route` | traffic, pedestrians | current graph edge, direction, lateral offset |
 | `Autopilot` | traffic | next edge, stuck counter, reverse end step, unstick tries |
@@ -82,10 +91,10 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Driving` | the player | handle of the vehicle being driven |
 
 `Schema.requires` enforces the bundles: a `Player` has a pose, previous pose, motion and look; a
-`Vehicle` has a pose, previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs
-`Route` and `Autopilot`. Spawns put a vehicle on its springs at rest on the ground (`settle` in
-`src/sim/chassis.ts`), in the gear for its speed. No save is ever persisted, so the new
-`Chassis` and `Handling` need no snapshot migration.
+`Vehicle` has a pose, previous pose, motion, `CarInput`, `Chassis` and `Damage`; `Traffic` also
+needs `Route` and `Autopilot`; the `Dead` are always `Down`. Spawns put a vehicle on its springs at
+rest on the ground (`settle` in `src/sim/chassis.ts`), in the gear for its speed, undamaged. No save
+is ever persisted, so the new `Chassis`, `Damage`, `Dead` and `Handling` need no snapshot migration.
 
 Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`), `View` (`turns`, the net quarter turns
 of the camera) and `Handling` (the 15 handling knobs, [gameplay.md](gameplay.md#handling)) are
@@ -94,13 +103,16 @@ saved. `Input` is transient: it is rebuilt every step and never saved.
 Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person or the ground:
 where, which is the contact point for a wall, a vehicle or the ground, how hard, with how much mass
 in tonnes, and for the ground which face of the body struck), `Skid` (a tyre slid this step: where,
-how fast, how far past its grip, on what surface) and `Honk` (an AI driver held up sounds the horn)
-carry moments that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI`
-emit them; the audio schedule reads all three ([audio.md](audio.md#data-flow)) and the render
-schedule reads `Skid` (tyre marks and smoke). `SetHandling` (set one handling knob to a value) is
-a host intent: no system emits it, the host's handling store (`src/hud/handling.ts`) sends it
-with `runtime.send` for the settings and the dev debug menu, and `ApplyHandling` reads it.
-Snapshots hold no events, and emitting them changes neither the determinism nor the saves test.
+how fast, how far past its grip, on what surface), `Honk` (an AI driver held up sounds the horn) and
+`Explosion` (a burning wreck blew up: which, of what model, where) carry moments. `VehiclePhysics`,
+`Contacts`, `TrafficAI` and `Explode` emit them; the audio schedule reads all four
+([audio.md](audio.md#data-flow)), the render schedule reads `Skid` (tyre marks and smoke) and
+`Explosion` (the blast), and `CrashDamage` reads `Impact` later in the same step, the one trace an
+event leaves in the components (`Damage`). `SetHandling` (set one handling knob to a value) is a
+host intent: no system emits it, the host's handling store (`src/hud/handling.ts`) sends it with
+`runtime.send` for the settings and the dev debug menu, and `ApplyHandling` reads it. Snapshots hold
+no events: `CrashDamage` reads each `Impact` in the step it is emitted (`thisTick`), so a snapshot
+between steps loses none and a restored save plays on alike.
 
 Static data is module content, not state. `MAP` and `graph` (`src/sim/map/index.ts`), the wall,
 tree, building and edge lookups, the per-model lane tables in `src/sim/route.ts` and the per-model
@@ -133,10 +145,10 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   cells at load. The renderer converts it to render y (`src/render/ground.ts`).
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
-streamed world's chunks, the tyre marks and smoke, the HUD's DOM, the player's handling (a
-preset's name or the knobs set by hand, kept in `localStorage` by `src/hud/handling.ts`), and the
-audio context, live voices and the director's memory of each sound source (pruned as sources go;
-see [audio.md](audio.md#where-state-lives)).
+streamed world's chunks, the tyre marks and smoke, the wrecks' smoke and flames, the HUD's DOM, the
+player's handling (a preset's name or the knobs set by hand, kept in `localStorage` by
+`src/hud/handling.ts`), and the audio context, live voices and the director's memory of each sound
+source (pruned as sources go; see [audio.md](audio.md#where-state-lives)).
 
 ## Input
 
@@ -220,7 +232,10 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
 
 - `SyncPeople` and `SyncVehicles` (`RenderSync.system`) keep one three.js node per entity with a
   `Person` or a `Vehicle`, in the `People` and `Vehicles` node registries. A person in a car is
-  hidden; a knocked-down person lies flat.
+  hidden; a knocked-down or dead person lies flat. A vehicle that has blown up (`Damage.exploded`)
+  shows a charred shell (`vehicleBody` in `src/render/actors.ts`): its body's geometry with every
+  vertex colour turned to its luminance and blended 90% toward `PALETTE.outline`, cached per model
+  and paint like the intact one and never disposed.
 - `MarkDriven` shows the x-ray silhouette (drawn only where the world hides the actor) on the
   player's car and no other vehicle. `SyncPeople` shows it on the player's figure.
 - `PlacePeople` (`RenderSync.interpolate`) blends `PrevPose` → `Pose` at the render alpha and
@@ -238,11 +253,12 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
   stands on y = 0 at rest, centred on the centre of mass, with its wheels where `VEHICLES` puts
   them (the truck's one sim rear axle drawn as a tandem 1.3 m apart); body and x-ray proxy hang
   `cg` below the node (`VehicleNode` in `src/render/actors.ts`).
-- `DrawEffects` reads the `Skid` events since the last frame and feeds the effects host
-  (`makeEffects` in `src/render/index.ts`, made in `main.ts` beside the registries, passed as the
-  `Effects` service, and `gta.effects` in dev builds). The marks and the smoke age by sim time
-  (`Time.step` plus the render alpha), so both stand still while the game is paused. They are
-  host state for the page's life: nothing loads a save in the browser.
+- `DrawEffects` reads the `Skid` and `Explosion` events since the last frame and every vehicle's
+  `Damage`, and feeds the effects host (`makeEffects` in `src/render/index.ts`, made in `main.ts`
+  beside the registries, passed as the `Effects` service, and `gta.effects` in dev builds). The
+  marks, the smoke and the flames age by sim time (`Time.step` plus the render alpha), so they stand
+  still while the game is paused. They are host state for the page's life: nothing loads a save in
+  the browser.
   - Tyre marks (`src/render/marks.ts`): one dynamic mesh for the whole map, a ring buffer of 4,096
     quads, the oldest overwritten first. Each (car, wheel) draws a strip joining its consecutive
     steps; a step without a skid breaks it. Width by model's tread (Panda 0.18 m, Ape 0.1 m,
@@ -260,11 +276,61 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
     on leaves, hardly any on grass. A puff swells, rises, drifts and thins away over 1–2 s; when
     all 256 are in the air, the puffs owed meanwhile are dropped. Being transparent it draws after
     every opaque mesh, the x-ray silhouettes included, and it writes no depth.
+  - Damaged engines (`src/render/wrecks.ts`), by the stage of damage
+    ([gameplay.md](gameplay.md#damage)): white smoke from the medium stage (10 puffs a second,
+    0.5–0.9 m in radius at their peak, a little bigger than a tyre's 0.4–0.8), black from the severe
+    (12), and once destroyed black smoke billowing from 0.5 m over the engine (12) above flames (40
+    a second). Each leaves its model's engine (`ENGINE` in `src/render/actors.ts`, just outside the
+    body: over the Panda's and the Giulia's bonnet, in front of the truck's grille, behind the Ape's
+    cab), so a car on its side or roof smokes from over its body. Only 8 damaged engines within
+    150 m of the player smoke (`PLUME_REACH`: the view reaches 90): burning wrecks first, as they
+    are about to blow, then the smoking ones, white or black alike so a near one is not dropped for
+    a far one, each the nearest first, and the charred shells last. The pools are sized for 8 plumes
+    and fires with every puff and flame living its longest, so they always hold them in full. Each
+    node keeps what it owes, so emission does not depend on the frame rate; each puff is born when
+    it was due, where the engine was then, so a moving car trails its smoke, while the flames burn
+    on the engine as it is placed each frame, so they stay with it as it moves, stops dead or
+    tumbles. The smoke is a pool of `Smoke` puffs of its own (336), so wrecks and tyre smoke never
+    starve each other. The flames are 224 small octahedra in one `InstancedMesh` with an unlit
+    material, so they glow in shadow: they lick up within 0.5 m of the engine, rise 1.2–2 m/s,
+    shrink and turn from yellow through orange to red over 0.35–0.7 s, their colours over 1 so they
+    burn hot through the pipeline, and they draw after the smoke and write no depth, so the outline
+    pass leaves their edges alone. An empty pool uploads nothing. A charred shell gives off only a
+    thin dark grey smoke (`PLUMES.burnt`: 4 puffs a second, 0.3–0.5 m, rising 0.6–1 m/s for 2–3 s)
+    and no flames.
+  - Blasts (`src/render/blasts.ts`), from the `Explosion` events within 150 m of the player, each
+    started at the drawn moment's sim time: a flash (an unlit icosahedron swelling from 1.2 to 4 m
+    in radius, 2.4 to 8 m across, in 0.12 s, white-hot to yellow, gone by 0.3 s), a fireball of 40
+    unlit octahedra flung out and up at 4–12 m/s (air drag 3/s, rising 4 m/s², 0.7–1.7 m in radius,
+    0.6–1.2 s, white through yellow and orange to red), 30 embers (0.12–0.24 m in radius, 6–14 m/s
+    under gravity, about 1 s), 24 pieces of debris (lit boxes 0.25–0.6 m long, a third in the body's
+    paint, the rest charred, thrown at 4–11 m/s and spinning, gone when they fall back to the ground
+    or after 2.5 s) and 24 black puffs of its own `Smoke` pool (1.2–2.2 m in radius, rising
+    1.5–2.5 m/s for 3–5 s). A falling piece's ground is where it comes down, found as it is thrown:
+    where it would land on level ground at the wreck's foot, then twice more where it would land on
+    the ground found the pass before, on the level nearest the wreck's (a bridge's deck, then the
+    valley past its edge). Each pass only lowers it, so it is never over the wreck's foot and a bank
+    across a valley does not lift it back up. On a hillside falling away at 50 % every shard lands
+    within 0.35 m of the ground (with the wreck's ground alone some vanished 6 m up in the air); off
+    5 bridges 6.5–24 m over their valleys, 10 blasts each, 2 of the 975 shards that came down
+    vanished over 0.5 m up (514 of 1,205 with the wreck's ground alone). Each layer is one
+    `InstancedMesh` sized for 4 blasts at once, dropping the pieces of any more; the fire draws over
+    the smoke and writes no depth. No light: a light's count is part of every lit program's key, so
+    adding one would recompile them all. All the meshes are in the scene from the first frame, so
+    their programs compile behind the title card. The flash writes no depth, so the outline pass
+    draws the car's edges as faint lines through it for about 0.2 s.
   - Measured in headless Chrome on an M4 Pro, 1280×720, dev server, seed 7: "Press any key" at
     ≈ 0.66–0.69 s (0.68–0.85 s before the change); JS heap after GC at the spawn 96.1–96.6 MB
     (96.0 MB before), 97.2 MB with a full ring of marks and the smoke at its cap; 60 fps and no
     frame over 16.8 ms through handbrake slides on asphalt and a dirt track, and with 4,095 marks
     and up to 256 puffs in view.
+  - Measured the same way with the damaged engines' smoke and fire (a fresh Chrome profile per run):
+    "Press any key" at 758–811 ms (753–764 ms before), JS heap after GC at the spawn 92.9 MB
+    (92.4–92.5 MB before); with every parked car started damaged (a third each burning, at 0.5 and
+    at 0.8), 8 plumes in view, 226 puffs and 64 flames in the air: 60 fps, no frame over 16.8 ms,
+    94.7 MB. With the two Carabinieri cars burning by the spawn and blowing up 3 s apart, over the
+    12 s around both blasts: 60 fps, no frame over 16.8 ms (as without the blasts); JS heap after
+    GC 93.9 MB before them and 94.0 MB after (93.6 and 93.8 MB without).
 
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
@@ -335,18 +401,17 @@ The pixel pipeline (`src/render/pipeline.ts`):
 ## Audio
 
 The audio schedule (`src/audio/index.ts`) is host code beside render. Its one system,
-`Lunigiana/Hear`, reads the player, the vehicles that run or move (with the revs and load the sim's
-drivetrain gives for their `Chassis`, speed and pedal at the `Time` step, and whether their wheels
-are down), the people on foot, the `Impact`, `Skid` and `Honk` events, the horn key and the view's
-turns (the stereo image turns with the screen), and hands them as plain `Heard` data to the
-`Audio` service.
-`main.ts` provides the director (`src/audio/director`, plain TypeScript), which runs the outdoor
-acoustics and drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths
-(`src/audio/synth`). The speaker starts its AudioContext on the first key, click or tap once it
-exists (made during the last loading steps, so normally the one that dismisses the title card), and
-suspends it while the full map or the settings are open or the tab is hidden. In dev builds
-`gta.audio` exposes the speaker, its output level and the context. Everything else is in
-[audio.md](audio.md).
+`Lunigiana/Hear`, reads the player, the vehicles that run, move or burn (with the revs and load the
+sim's drivetrain gives for their `Chassis`, speed, pedal and `Damage` at the `Time` step, and
+whether their wheels are down), the people on foot, the `Impact`, `Skid`, `Honk` and `Explosion`
+events, the horn key and the view's turns (the stereo image turns with the screen), and hands them
+as plain `Heard` data to the `Audio` service. `main.ts` provides the director (`src/audio/director`,
+plain TypeScript), which runs the outdoor acoustics and drives the Web Audio speaker
+(`src/audio/speaker.ts`) and its synths (`src/audio/synth`). The speaker starts its AudioContext on
+the first key, click or tap once it exists (made during the last loading steps, so normally the one
+that dismisses the title card), and suspends it while the full map or the settings are open or the
+tab is hidden. In dev builds `gta.audio` exposes the speaker, its output level and the context.
+Everything else is in [audio.md](audio.md).
 
 ## HUD
 
@@ -355,8 +420,13 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
 `HandlingView` inspector:
 
 - `PlayerView` returns a `PlayerViewModel`: previous and current pose, velocity, mode (`foot`,
-  `driving`, `down`), the driven vehicle's label and speed, the vehicle in reach (label,
+  `driving`, `down`, `dead`), the driven vehicle's label and speed, the vehicle in reach (label,
   occupied, stolen), the score, and the view's quarter turns.
+- Killed (mode `dead`), the HUD darkens the screen, the minimap included, and shows "Sei morto"
+  (`#hud-wasted`, an alert, so screen readers announce it), fading in over 1 s (at once under
+  `prefers-reduced-motion`), until the player is back at the start; the touch controls hide all but
+  ↺ and ↻, as on a keyboard only Q and E still act on the game; the full map (M, or a tap on the
+  minimap) and the settings (Esc) still open.
 - `vehicleInReach` (`src/sim/body.ts`) answers both the HUD prompt and the `EnterExit` action, so
   the prompt never offers something the key will not do. The touch controls' action button shows
   the prompt's verb (`actionFor` in `src/hud/hud.ts`).
@@ -449,15 +519,16 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   - in `src/audio/**`: a ban on importing `hud` or `main.ts` (they wire the audio host, never the
     reverse).
 - `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
-  (described, not run) `render` and `audio` schedules. Any warning fails: without the audio
-  schedule described, `Impact` and `Honk` would be `event-never-read`. `lintTarget` declares
-  `SetHandling` a host event (`hostEvents`), since only the host sends it; undeclared it would be
-  `event-never-written`. It also fails if a module the sim loads is not covered by the oxlint
-  simulation override.
+  (described, not run) `render` and `audio` schedules. Any warning fails: without the audio schedule
+  described, `Honk` would be `event-never-read` (`CrashDamage` reads `Impact` in `update`).
+  `lintTarget` declares `SetHandling` a host event (`hostEvents`), since only the host sends it;
+  undeclared it would be `event-never-written`. It also fails if a module the sim loads is not
+  covered by the oxlint simulation override.
 - `node --test`. Beside the unit tests, these guard the architecture:
   - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
-    twice, with the handling off its real values (`SetHandling`), and requires identical state,
-    transient components included.
+    twice, with the handling off its real values (`SetHandling`), a car crashing into a house wall
+    to drive on misfiring and a wreck blowing up, and requires identical state, transient
+    components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
     into a fresh runtime, and plays on identically.
   - `src/sim/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
@@ -472,7 +543,9 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 
 `src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with
-scripted keys and collects every `Impact` and `Honk` emitted (`heard`), `stage` clears the map and
-places exactly the cars and pedestrians a test needs, `World` inspects everything as plain data,
-the handling included, and `drive` steps one vehicle with `advance` alone (test ground, no walls)
-under a given handling.
+scripted keys and collects every `Impact`, `Honk` and `Explosion` emitted (`heard`), `stage` clears
+the map and places exactly the cars and pedestrians a test needs, `wear` sets every vehicle's
+damage, `burning` makes a wreck that blows up at a given step, `World` inspects everything as plain
+data, the handling and the damage included, `facing` places things in front of a house wall on Via
+Cesare Battisti, and `drive` steps one vehicle with `advance` alone (test ground, no walls) under a
+given handling, its engine worn as given.

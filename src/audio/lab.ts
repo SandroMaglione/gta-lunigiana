@@ -6,8 +6,9 @@
  * acoustic chain (director/hearing.ts), over open, flat ground with nothing in the way. "Render
  * all" renders every voice and shot offline at a few representative params (the crashes over a
  * matrix of bodies, targets and speeds, the scrape along every material, each engine at its redline
- * under full load, where its trim is calibrated) and tabulates peak, RMS, spectral centroid and
- * NaNs; `window.lab.renderAll()` returns the same rows, for CDP checks.
+ * under full load, where its trim is calibrated, and worn by damage, one misfiring) and tabulates
+ * peak, RMS, spectral centroid and NaNs; `window.lab.renderAll()` returns the same rows, for CDP
+ * checks.
  *
  * @module audio/lab
  */
@@ -50,7 +51,7 @@ type Calibration = Level & { readonly wet?: number; readonly under?: number; rea
 
 /** `sound`'s calibration: the beds and the own engine (from the driver's seat, through no cabin) sound at the ears. */
 const sourceOf = (sound: Sound): Calibration =>
-  sound.kind === "engine" ? (sound.inside ? { db: OWN_ENGINE_DB, rMin: 1, wet: 0 } : { ...ENGINE[sound.model], quiet: engineQuiet(sound.model, sound.rpm, sound.load) })
+  sound.kind === "engine" ? (sound.inside ? { db: OWN_ENGINE_DB, rMin: 1, wet: 0 } : { ...ENGINE[sound.model], quiet: engineQuiet(sound.model, sound.rpm, sound.load, sound.damage) })
   : sound.kind === "crash" ? { ...LEVELS.crash, quiet: crashQuiet(sound) }
   : sound.kind === "clunk" ? { ...LEVELS.clunk, quiet: clunkQuiet(sound.speed) }
   : sound.kind === "water" ? { db: WATER_DB[sound.body], rMin: WATER_R_MIN }
@@ -106,12 +107,13 @@ const paired = (a: VehicleModel, b: VehicleModel): number => 1 / (1 / tonnes(a) 
 
 /** Each kind's params as first shown; the controls are made from these (numbers: sliders, strings: menus, flags: checkboxes). */
 const HELD = {
-  engine: { kind: "engine", model: "panda", rpm: 3000, load: 0.5, inside: false, variant: 0.5 },
+  engine: { kind: "engine", model: "panda", rpm: 3000, load: 0.5, inside: false, variant: 0.5, damage: 0, misfire: false },
   tyres: { kind: "tyres", speed: 12, skid: 0, slip: 0, surface: "asphalt", heavy: false },
   scrape: { kind: "scrape", speed: 8, material: "masonry" },
   horn: { kind: "horn", model: "panda" },
   siren: { kind: "siren" },
   beeper: { kind: "beeper" },
+  fire: { kind: "fire" },
   water: { kind: "water", body: "stream", flow: 0.6 },
   wind: { kind: "wind", strength: 0.6, forest: 0.3 },
   crickets: { kind: "crickets", density: 0.7 }
@@ -142,6 +144,7 @@ const soundOf = (form: Form): OneShot => (form.kind === "crash" ? crashOf(form) 
 
 const PLAYED = {
   crash: CRASH,
+  explosion: { kind: "explosion", surface: "asphalt" },
   thud: { kind: "thud", speed: 8 },
   clunk: { kind: "clunk", speed: 3, heavy: false },
   door: { kind: "door", model: "panda", open: false },
@@ -159,15 +162,26 @@ const PLAYED = {
 /** Some sounds of every kind of `S`: a new kind fails to compile until "render all" plays it. */
 type Each<S extends Sound> = { readonly [K in S["kind"]]: ReadonlyArray<Extract<S, { readonly kind: K }>> }
 
+type Engine = Extract<Continuous, { readonly kind: "engine" }>
+/** `model`'s engine as new, outside, the nominal variant, at its redline under full load unless `more` says otherwise. */
+const engineAt = (model: VehicleModel, more: Partial<Engine> = {}): Engine =>
+  ({ kind: "engine", model, rpm: VEHICLES[model].engine.redline, load: 1, inside: false, variant: 0.5, damage: 0, misfire: false, ...more })
+/** A worn Panda misfiring in every other 0.25 s window (the sim's), as the director would hold it frame by frame. */
+const SPUTTERING = engineAt("panda", { rpm: 3000, load: 0.5, damage: 0.9 })
+const sputtering = (t: number): Engine => ({ ...SPUTTERING, misfire: Math.floor(t / 0.25) % 2 === 1 })
+
 /** "Render all": representative params per voice (rendered 2 s) and per shot. */
 const VOICE_RENDERS = {
-  // Each model at the redline under full load (its trim's calibration: flagged off nominal outside 0.42–0.6) and idling; the Giulia from its seat.
+  // Each model at the redline under full load (its trim's calibration: flagged off nominal outside 0.42–0.6), idling, and worn at the redline
+  // (flagged over nominal past 0.6, as every engine row is); the Giulia from its seat; a Panda and the truck idling worn; the truck's
+  // loudest knock.
   engine: [
-    ...VEHICLE_MODELS.flatMap((model) => {
-      const { idle, redline } = VEHICLES[model].engine
-      return [{ kind: "engine", model, rpm: redline, load: 1, inside: false, variant: 0.5 }, { kind: "engine", model, rpm: idle, load: 0, inside: false, variant: 0.5 }] as const
-    }),
-    { kind: "engine", model: "carabinieri", rpm: 3500, load: 0.5, inside: true, variant: 0.5 }
+    ...VEHICLE_MODELS.flatMap((model) => [engineAt(model), engineAt(model, { rpm: VEHICLES[model].engine.idle, load: 0 }), engineAt(model, { damage: 0.9 })]),
+    engineAt("carabinieri", { rpm: 3500, load: 0.5, inside: true }),
+    engineAt("panda", { rpm: VEHICLES.panda.engine.idle, load: 0, damage: 0.5 }),
+    engineAt("truck", { rpm: VEHICLES.truck.engine.idle, load: 0, damage: 0.8 }),
+    // The loudest knock: the truck's, at the redline off the throttle, at full damage short of destroyed.
+    engineAt("truck", { load: 0, damage: 0.99 })
   ],
   tyres: [
     // The loudest intended case, a full slide at the Giulia's top speed: peaks near 0.5.
@@ -190,6 +204,7 @@ const VOICE_RENDERS = {
   horn: VEHICLE_MODELS.map((model) => ({ kind: "horn", model }) as const),
   siren: [{ kind: "siren" }],
   beeper: [{ kind: "beeper" }],
+  fire: [{ kind: "fire" }],
   water: [{ kind: "water", body: "fountain", flow: 0.5 }, { kind: "water", body: "stream", flow: 0.6 }, { kind: "water", body: "river", flow: 1 }],
   wind: [{ kind: "wind", strength: 0.3, forest: 0 }, { kind: "wind", strength: 1, forest: 1 }],
   crickets: [{ kind: "crickets", density: 0.3 }, { kind: "crickets", density: 1 }]
@@ -215,6 +230,8 @@ const SHOT_RENDERS = {
     const form = { ...CRASH, ...row }
     return crashOf({ ...form, mass: isModel(form.against) ? paired(form.model, form.against) : tonnes(form.model) })
   }),
+  // Its debris on the road, on setts (bouncier) and on grass (muffled); each run draws a new blast.
+  explosion: (["asphalt", "stone", "grass"] as const).map((surface) => ({ kind: "explosion", surface }) as const),
   thud: [{ kind: "thud", speed: 5 }, { kind: "thud", speed: 12 }],
   clunk: [{ kind: "clunk", speed: 5, heavy: false }, { kind: "clunk", speed: 2, heavy: true }],
   door: [{ kind: "door", model: "panda", open: true }, { kind: "door", model: "panda", open: false }, { kind: "door", model: "truck", open: false }],
@@ -244,9 +261,12 @@ const SILENT = 1e-4, CLIP = 0.95
 /** An engine at the redline under full load, heard outside, peaks at the nominal 0.5 within this (its `TRIM` is off otherwise). */
 const NOMINAL = [0.42, 0.6] as const
 
-/** Whether `sound` is a calibration render that peaks off nominal. */
+/** Whether `sound` is a calibration render (an engine as new) that peaks off nominal. */
 const offNominal = (sound: Sound, peak: number): boolean =>
-  sound.kind === "engine" && !sound.inside && sound.load === 1 && sound.rpm === VEHICLES[sound.model].engine.redline && (peak < NOMINAL[0] || peak > NOMINAL[1])
+  sound.kind === "engine" && !sound.inside && sound.load === 1 && sound.damage === 0 && sound.rpm === VEHICLES[sound.model].engine.redline
+  && (peak < NOMINAL[0] || peak > NOMINAL[1])
+/** Whether `sound` is an engine peaking over its nominal: worn or misfiring, it must not. */
+const overNominal = (sound: Sound, peak: number): boolean => sound.kind === "engine" && peak > NOMINAL[1]
 
 /** One line of the render table. */
 interface Row {
@@ -260,7 +280,7 @@ interface Row {
   readonly nan: boolean
   /** How long it sounds: the voice's measured span, the shot's own end time. */
   readonly seconds: number
-  /** Anything to look at: silent, clipping, an engine off its nominal peak, NaN, sound after its stop or end. */
+  /** Anything to look at: silent, clipping, an engine off or over its nominal peak, NaN, sound after its stop or end. */
   readonly flags: string
 }
 
@@ -268,37 +288,39 @@ interface Row {
 const shown = (value: unknown): string => (typeof value === "object" && value !== null ? Object.values(value).map(shown).join("/") : String(value))
 const paramsOf = (sound: Sound): string => Object.entries(sound).filter(([name]) => name !== "kind").map(([name, value]) => `${name}=${shown(value)}`).join(" ")
 
-/** The row for `sound` measured over [from, to] s of `audio`, which must be silent from `quiet` s on. */
-const rowOf = (sound: Sound, audio: AudioBuffer, from: number, to: number, quiet: number): Row => {
+/** The row for `sound` (shown as `params`) measured over [from, to] s of `audio`, which must be silent from `quiet` s on. */
+const rowOf = (sound: Sound, audio: AudioBuffer, from: number, to: number, quiet: number, params = paramsOf(sound)): Row => {
   const span = (a: number, b: number) => Array.from({ length: audio.numberOfChannels }, (_, c) => audio.getChannelData(c).subarray(Math.floor(a * RATE), Math.floor(b * RATE)))
   const m = measure(span(from, to), RATE), after = measure(span(quiet, audio.duration), RATE)
   const flags = [
-    m.peak < SILENT && "silent", m.peak > CLIP && "clips", offNominal(sound, m.peak) && "off nominal", (m.nan || after.nan) && "NaN",
+    m.peak < SILENT && "silent", m.peak > CLIP && "clips", offNominal(sound, m.peak) ? "off nominal" : overNominal(sound, m.peak) && "over nominal",
+    (m.nan || after.nan) && "NaN",
     after.peak > SILENT && `${after.peak.toFixed(4)} after its end`
   ]
   return {
-    name: sound.kind, params: paramsOf(sound), peak: Number(m.peak.toFixed(3)), rms: Number(m.rms.toFixed(1)), centroid: Math.round(m.centroid),
+    name: sound.kind, params, peak: Number(m.peak.toFixed(3)), rms: Number(m.rms.toFixed(1)), centroid: Math.round(m.centroid),
     nan: m.nan || after.nan, seconds: Number((to - from).toFixed(2)), flags: flags.filter((flag) => flag !== false).join(", ")
   }
 }
 
-const renderVoice = async (kit: Kit, sound: Continuous): Promise<Row> => {
+/** `sound` held for 2.5 s as the director holds it, at 60 frames a second (its params at `t` s from `at`), then stopped. */
+const renderVoice = async (kit: Kit, sound: Continuous, at: (t: number) => Continuous = () => sound, params?: string): Promise<Row> => {
   const { settle, seconds, fade } = VOICE_RENDER, end = settle + seconds
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil((end + fade + 0.05) * RATE), sampleRate: RATE })
   const cents = new ConstantSourceNode(ctx, { offset: 0 })
   cents.start()
   const voice = (VOICES[sound.kind] as VoiceFactory<Continuous>)({ ctx, out: ctx.destination, cents, kit })
   // Frames at 60 Hz, as the director would hold it.
-  for (let t = 0; t < end; t += 1 / 60) voice.update(sound, t)
+  for (let t = 0; t < end; t += 1 / 60) voice.update(at(t), t)
   voice.stop(end)
-  return rowOf(sound, await ctx.startRendering(), settle, end, end + fade)
+  return rowOf(sound, await ctx.startRendering(), settle, end, end + fade, params)
 }
 
 const renderShot = async (kit: Kit, sound: OneShot): Promise<Row> => {
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: SHOT_SECONDS * RATE, sampleRate: RATE })
   const shot = SHOTS[sound.kind] as Shot<OneShot>
   await shot.prepare?.(ctx, kit)
-  // A fresh params object: the crash keeps one render per object, and every run should draw anew.
+  // A fresh params object: the crash and the explosion keep one render per object, and every run should draw anew.
   const end = Math.min(SHOT_SECONDS, shot.play({ ctx, out: ctx.destination, kit }, { ...sound }, 0))
   // The speaker frees a shot's emitter 0.1 s after its end.
   return rowOf(sound, await ctx.startRendering(), 0, end, Math.min(SHOT_SECONDS, end + 0.1))
@@ -318,6 +340,7 @@ const renderAll = async (): Promise<ReadonlyArray<Row>> => {
   const rows: Array<Row> = []
   // One at a time: a dozen 12 s stereo renders at once would hold hundreds of MB.
   for (const sound of Object.values(VOICE_RENDERS).flat()) rows.push(await renderVoice(kit, sound))
+  rows.push(await renderVoice(kit, SPUTTERING, sputtering, paramsOf(SPUTTERING).replace("misfire=false", "misfire=every other 0.25 s")))
   for (const sound of Object.values(SHOT_RENDERS).flat()) rows.push(await renderShot(kit, sound))
   const table = byId("renders")
   table.replaceChildren()

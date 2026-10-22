@@ -7,7 +7,7 @@
  *
  * @module render/smoke
  */
-import { Color, DynamicDrawUsage, IcosahedronGeometry, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3 } from "three"
+import { Color, IcosahedronGeometry, type InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3 } from "three"
 
 import { STEP } from "../sim/index.ts"
 import type { Surface } from "../sim/map/surface.ts"
@@ -15,6 +15,7 @@ import { paint } from "./geometry.ts"
 import { yOf } from "./ground.ts"
 import type { SkidValue } from "./marks.ts"
 import { PALETTE } from "./palette.ts"
+import { Pool } from "./pool.ts"
 
 /** What a sliding tyre throws up on each surface: its colour, and puffs per second per m/s of slip at a full slide. */
 export const PUFF = {
@@ -26,6 +27,16 @@ export const PUFF = {
   leaves: { hex: PALETTE.woodBrown, rate: 1 }
 } as const satisfies Record<Surface, { readonly hex: number; readonly rate: number }>
 
+/** How a kind of puff moves and lasts, each a [min, max] range drawn per puff: drift and rise (m/s), life (sim s) and peak radius (m). */
+export interface PuffLook {
+  readonly drift: readonly [number, number]
+  readonly rise: readonly [number, number]
+  readonly life: readonly [number, number]
+  readonly size: readonly [number, number]
+}
+/** A tyre's smoke or dust. */
+const TYRE: PuffLook = { drift: [0.2, 0.6], rise: [0.5, 0.9], life: [1, 2], size: [0.4, 0.8] }
+
 /** Floats per puff: spawn point (three space), drift and rise (m/s), birth and life (sim s), peak radius (m), yaw. */
 const STRIDE = 10
 
@@ -35,59 +46,63 @@ const matrix = new Matrix4(), at = new Vector3(), turn = new Quaternion(), size 
 
 /** Every puff in the air. Host state for the page's life: nothing loads a save in the browser. */
 export class Smoke {
-  readonly mesh: InstancedMesh
   private readonly random: () => number
-  private readonly max: number
   /** Live puffs, packed at the front. */
-  private readonly puffs: Float32Array
+  private readonly puffs: Pool
   /** Puffs owed but not yet spawned (a slide under one puff a step still smokes, every few steps). */
   private debt = 0
 
   constructor(random: () => number = Math.random, max = 256) {
     this.random = random
-    this.max = max
-    this.puffs = new Float32Array(max * STRIDE)
-    this.mesh = new InstancedMesh(shape, material, max)
-    this.mesh.count = 0
-    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage)
-    this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(DynamicDrawUsage)
-    this.mesh.frustumCulled = false // spread over the whole map, and the bounds would change every frame
+    this.puffs = new Pool(shape, material, max, STRIDE)
+  }
+
+  /** The puffs' mesh, for the scene. */
+  get mesh(): InstancedMesh {
+    return this.puffs.mesh
   }
 
   /** One step of a sliding tyre. */
   add(skid: SkidValue): void {
     this.debt += PUFF[skid.surface].rate * skid.amount * skid.slip * STEP.dt
-    for (; this.debt >= 1; this.debt--) this.spawn(skid)
+    for (; this.debt >= 1; this.debt--) this.puff(skid.x, yOf(skid.z) + 0.2, -skid.y, skid.step * STEP.dt, PUFF[skid.surface].hex, TYRE)
   }
 
   /** Moves every puff to sim time `now` (s) and lets the burnt-out ones go. */
   update(now: number): void {
-    const p = this.puffs, colors = this.mesh.instanceColor!.array
-    for (let i = 0; i < this.mesh.count;) {
+    const { mesh, data: p } = this.puffs
+    // Nothing in the air now or last frame: nothing to upload.
+    if (this.puffs.idle) return
+    for (let i = 0; i < mesh.count;) {
       const o = i * STRIDE, age = Math.max(0, now - p[o + 6]!), u = age / p[o + 7]!
       if (u >= 1) {
-        const last = --this.mesh.count
-        p.copyWithin(o, last * STRIDE, (last + 1) * STRIDE)
-        colors.copyWithin(i * 3, last * 3, last * 3 + 3)
+        this.puffs.drop(i)
         continue
       }
       const s = p[o + 8]! * Math.sin(Math.PI * Math.sqrt(u)) // swells quickly, then thins away
       at.set(p[o]! + p[o + 3]! * age, p[o + 1]! + p[o + 5]! * age, p[o + 2]! + p[o + 4]! * age)
-      this.mesh.setMatrixAt(i, matrix.compose(at, turn.setFromAxisAngle(up, p[o + 9]!), size.set(s, s, s)))
+      mesh.setMatrixAt(i, matrix.compose(at, turn.setFromAxisAngle(up, p[o + 9]!), size.set(s, s, s)))
       i++
     }
-    this.mesh.instanceMatrix.needsUpdate = true
-    this.mesh.instanceColor!.needsUpdate = true
+    this.puffs.upload()
   }
 
-  private spawn(skid: SkidValue): void {
-    if (this.mesh.count === this.max) return
-    const i = this.mesh.count++, r = this.random, heading = r() * 2 * Math.PI, drift = 0.2 + 0.4 * r()
-    this.puffs.set([
-      skid.x + (r() - 0.5) * 0.4, yOf(skid.z) + 0.2, -(skid.y + (r() - 0.5) * 0.4),
-      Math.cos(heading) * drift, -Math.sin(heading) * drift, 0.5 + 0.4 * r(),
-      skid.step * STEP.dt, 1 + r(), 0.4 + 0.4 * r(), r() * 2 * Math.PI
+  /**
+   * One puff within 0.2 m of (x, y, z) in three space, born at sim time `born` (s), tinted `hex`, moving and lasting as `look` says;
+   * none when every puff is in the air.
+   */
+  puff(x: number, y: number, z: number, born: number, hex: number, look: PuffLook): void {
+    const i = this.puffs.take()
+    if (i < 0) return
+    const r = this.random, heading = r() * 2 * Math.PI, drift = between(r, look.drift)
+    this.puffs.data.set([
+      x + (r() - 0.5) * 0.4, y, z + (r() - 0.5) * 0.4,
+      Math.cos(heading) * drift, -Math.sin(heading) * drift, between(r, look.rise),
+      born, between(r, look.life), between(r, look.size), r() * 2 * Math.PI
     ], i * STRIDE)
-    this.mesh.setColorAt(i, tint.setHex(PUFF[skid.surface].hex))
+    this.puffs.mesh.setColorAt(i, tint.setHex(hex))
   }
 }
+
+/** A draw from `random` in [min, max). */
+export const between = (random: () => number, [min, max]: readonly [number, number]): number => min + (max - min) * random()

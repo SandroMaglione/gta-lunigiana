@@ -8,11 +8,12 @@
 import { Ops, type Random } from "@typeonce/ritmo-math"
 
 import { settle } from "./chassis.ts"
+import { UNDAMAGED } from "./damage.ts"
 import { gearFor } from "./drivetrain.ts"
 import { groundZ, roadLevel } from "./map/ground.ts"
 import { roadOf, type Step } from "./route.ts"
 import {
-  Autopilot, CarInput, Chassis, Game, type Look, Motion, Pedestrian, Person, Pose, type PoseValue, PrevPose, Route, type RouteValue, Traffic, Vehicle
+  Autopilot, CarInput, Chassis, Damage, Game, type Look, Motion, Pedestrian, Person, Pose, type PoseValue, PrevPose, Route, type RouteValue, Traffic, Vehicle
 } from "./schema.ts"
 import { CAR_COLORS, type VehicleModel, VEHICLES } from "./vehicles.ts"
 
@@ -39,7 +40,8 @@ export const parkedCar = (model: VehicleModel, color: number, pose: PoseValue) =
     [PrevPose, pose],
     [Motion, { vx: 0, vy: 0, spin: 0 }],
     [CarInput, { throttle: 0, steer: 0, handbrake: true }],
-    [Chassis, settle(model, pose)]
+    [Chassis, settle(model, pose)],
+    [Damage, UNDAMAGED]
   )
 
 /**
@@ -66,6 +68,7 @@ export const trafficCar = (
     [Motion, { vx: Ops.cos(pose.angle) * speed, vy: Ops.sin(pose.angle) * speed, spin: 0 }],
     [CarInput, { throttle: 0, steer: 0, handbrake: false }],
     [Chassis, rollingChassis(model, pose, speed, roadLevel(roadOf(route.edge), pose.x, pose.y))],
+    [Damage, UNDAMAGED],
     [Traffic, {}],
     [Route, route],
     [Autopilot, { next: next.edge, nextForward: next.forward, stuck: 0, reverseUntil: 0, tries: 0 }]

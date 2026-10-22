@@ -5,14 +5,15 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { carClear, crossesAny, moveCar, wallsAlong } from "./body.ts"
 import { settle, tiltOf, turn } from "./chassis.ts"
+import { UNDAMAGED } from "./damage.ts"
 import { groundZ } from "./map/ground.ts"
 import { graph, MAP, wallsNear } from "./map/index.ts"
 import { pushTrunk } from "./map/kinds.ts"
-import { CarInput, Chassis, Game, Motion, Pose, PrevPose, Vehicle } from "./schema.ts"
+import { CarInput, Chassis, Damage, Game, Motion, Pose, PrevPose, Vehicle } from "./schema.ts"
 import { edgeIndex, facesForward, laneOf, lanePoint, laneSide, roadOf, walkIndex, walkSide } from "./route.ts"
 import { parkedCar, pedestrian } from "./spawning.ts"
 import { HONK_STEPS } from "./systems/traffic.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, start, walkClear } from "./testing.ts"
+import { BATTISTI, battistiTraffic, BESIDE, depth, door, facing, FAR, INTO, MID, ON_BATTISTI, press, rolling, start, TOWARD, walkClear } from "./testing.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES } from "./vehicles.ts"
 
@@ -42,20 +43,6 @@ test("wallsNear: a box touching only the corner of a tree's trunk square returns
 
 // Regressions: nothing (pushed, thrown, shoved, getting out, turning) ends up inside a building.
 
-/** A house wall on Via Cesare Battisti, (-435.2, 453.9) -> (-424.5, 451.9), the house to its north. */
-const A = { x: -435.2, y: 453.9 }, B = { x: -424.5, y: 451.9 }
-const LENGTH = Vec2.distance(A, B)
-const ALONG = { x: (B.x - A.x) / LENGTH, y: (B.y - A.y) / LENGTH }
-const INTO = { x: -ALONG.y, y: ALONG.x }
-const MID = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 }
-/** Signed distance from the wall's line, m (positive inside the house). */
-const depth = (p: { readonly x: number; readonly y: number }) => (p.x - MID.x) * INTO.x + (p.y - MID.y) * INTO.y
-/** The point `out` metres in front of the wall's middle. */
-const facing = (out: number) => ({ x: MID.x - INTO.x * out, y: MID.y - INTO.y * out })
-/** Headings: square on into the wall, and along it (left side to the wall). */
-const TOWARD = Ops.atan2(INTO.y, INTO.x)
-const BESIDE = Ops.atan2(ALONG.y, ALONG.x)
-const FAR = { ...facing(30), angle: 0 }
 const LOOK = { skin: 0xc68e6a, hair: 0x2b1d14, shirt: 0xb8312b, pants: 0x1d2b4f }
 
 test("contacts: a car pushing or knocking a pedestrian against a house wall never puts them through it", () => {
@@ -119,7 +106,7 @@ test("physics: a car tumbling end over end in a tight spot turns on smoothly as 
   const chassis = { ...settle("panda", pose), z: groundZ(pose.x, pose.y) + 2.5, pitch: 1.55, pitchRate: 6 }
   const car = Game.Command.spawn(
     [Vehicle, { model: "panda", color: 0xf2efe6 }], [Pose, pose], [PrevPose, pose], [Motion, { vx: 0, vy: 0, spin: 12 }],
-    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, chassis]
+    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, chassis], [Damage, UNDAMAGED]
   )
   const { run, world } = start([], [FAR, { cars: [car] }])
   /** The body's up axis in the world. */

@@ -3,12 +3,13 @@ import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 
 import { carClear, clearOf, wallsAlong } from "../body.ts"
 import { pointInRing } from "../collide.ts"
+import { destroyed } from "../damage.ts"
 import { buildingBoxes, buildingsIn, graph, MAP } from "../map/index.ts"
 import {
   allowsModel, cruiseSpeed, distanceToEdge, edgeIndex, endNode, laneOf, lanePoint, laneSide, leadsToDeadEnd, nextTrafficEdge, roadOf, trafficIndex, walkSide
 } from "../route.ts"
 import {
-  Autopilot, CarInput, Driving, Game, Motion, Pedestrian, Person, Player, Pose, PrevPose, Rng, Route, STEP, Time, Traffic, Vehicle
+  Autopilot, CarInput, Damage, Dead, Driving, Game, Motion, Pedestrian, Person, Player, Pose, PrevPose, Rng, Route, STEP, Time, Traffic, Vehicle
 } from "../schema.ts"
 import { pedestrian, randomColor, randomLook, trafficCar } from "../spawning.ts"
 import { PERSON_RADIUS } from "../tuning.ts"
@@ -61,19 +62,21 @@ const pickModel = (random: Random.Random, edge: number): VehicleModel | undefine
  * Every half second, keeps the world around the player alive: traffic on
  * random traffic edges and pedestrians on walk edges near buildings spawn
  * out of view and despawn once far behind, or out of sight when stuck for
- * good (never the player's own car).
+ * good (never the player's own car); destroyed vehicles and the dead go once
+ * out of sight too.
  */
 export const Populate = Game.System("Lunigiana/Populate", {
   queries: {
     player: Game.Query({ selection: { pose: Game.Query.read(Pose), driving: Game.Query.optional(Driving) }, with: [Player] }),
     traffic: Game.Query({ selection: { pose: Game.Query.read(Pose), route: Game.Query.read(Route), pilot: Game.Query.read(Autopilot) }, with: [Traffic] }),
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Vehicle] }),
-    peds: Game.Query({ selection: { pose: Game.Query.read(Pose), ped: Game.Query.read(Pedestrian) } })
+    wrecks: Game.Query({ selection: { pose: Game.Query.read(Pose), damage: Game.Query.read(Damage) }, with: [Vehicle], without: [Traffic] }),
+    peds: Game.Query({ selection: { pose: Game.Query.read(Pose), ped: Game.Query.read(Pedestrian), dead: Game.Query.optional(Dead) } })
   },
   resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)) },
   commands: Game.System.commands(
     Game.System.spawns(Vehicle, Pose, PrevPose, Motion, CarInput, Traffic, Route, Autopilot, Pedestrian, Person),
-    Game.System.despawns(Traffic, Pedestrian)
+    Game.System.despawns(Traffic, Vehicle, Pedestrian)
   )
 }, ({ queries, resources, commands }) => {
   if (!Clock.every(resources.time.get(), PERIOD)) return
@@ -93,6 +96,10 @@ export const Populate = Game.System("Lunigiana/Populate", {
     const wrecked = lost && far(pose, TRAFFIC.unseen)
     if ((far(pose, TRAFFIC.despawn) || wrecked) && entity.id !== mine) commands.despawn(entity)
     else cars++
+  }
+  // A wreck, burning or a charred shell, stays where it stopped until nobody can see it go.
+  for (const { entity, data } of queries.wrecks.each()) {
+    if (destroyed(data.damage.get().amount) && far(data.pose.get(), TRAFFIC.unseen)) commands.despawn(entity)
   }
   const taken = queries.vehicles.each().map(({ data }) => data.pose.get())
   const roads = trafficIndex.around(at.x, at.y, TRAFFIC.spawn)
@@ -120,8 +127,9 @@ export const Populate = Game.System("Lunigiana/Populate", {
   for (const { entity, data } of queries.peds.each()) {
     const pose = data.pose.get()
     const stranded = far(pose, PEDESTRIANS.unseen) && data.ped.get().blocked > GIVE_UP_STEPS
-    if (far(pose, PEDESTRIANS.despawn) || stranded) commands.despawn(entity)
-    else people++
+    // A body lies where it fell until nobody can see it go, and walks no one's share of the pavements.
+    if (far(pose, PEDESTRIANS.despawn) || stranded || (data.dead.present && far(pose, PEDESTRIANS.unseen))) commands.despawn(entity)
+    else if (!data.dead.present) people++
   }
   const paths = peopled.around(at.x, at.y, PEDESTRIANS.spawn)
   for (let slot = 0; slot < PEDESTRIANS.perTick && people < PEDESTRIANS.max; slot++) for (let k = 0; k < TRIES; k++) {

@@ -1,12 +1,14 @@
 /**
  * Web Audio building blocks every synth shares: moving params, a voice built from its first params,
  * a voice's output stage and its fade-out, struck sources, noise bursts and damped pings, one-shots
- * baked offline and cached per context, and playing a baked buffer with a little random variation.
+ * baked offline and cached per context, one-shots rendered in pure TypeScript per params object, and
+ * playing a baked buffer with a little random variation.
  *
  * Every function builds nodes only when called, so Node can import the synths.
  *
  * @module audio/synth/graph
  */
+import { bufferOf } from "../buffers.ts"
 import type { Kit, ShotIo, Voice, VoiceFactory, VoiceIo } from "../types.ts"
 
 /** Time constant (s) for continuous params: about two frames, which removes zipper noise. */
@@ -20,6 +22,11 @@ export const jitter = (spread: number): number => 1 + (Math.random() * 2 - 1) * 
 
 /** A gain within ±`db` dB of 1. */
 export const jitterDb = (db: number): number => 10 ** (((Math.random() * 2 - 1) * db) / 20)
+
+/** A value drawn over `range`. */
+export const draw = ([lo, hi]: readonly [number, number]): number => lo + (hi - lo) * Math.random()
+/** A value drawn over `range` evenly per octave. */
+export const drawLog = ([lo, hi]: readonly [number, number]): number => lo * (hi / lo) ** Math.random()
 
 /** `x` clamped to 0…1; NaN is 0 (a non-finite AudioParam value throws, which would silence that kind for good). */
 export const unit = (x: number): number => Math.min(1, Math.max(0, x)) || 0
@@ -132,4 +139,21 @@ export const playBuffer = (io: ShotIo, buffer: AudioBuffer, when: number, rate =
   source.onended = () => amp.disconnect()
   source.start(when)
   return when + buffer.duration / rate
+}
+
+/** The rate a pure-TypeScript render plays at on `ctx`, Hz: the device's up to 48 kHz (above it Web Audio resamples: a mode costs a step a sample, so 96 kHz would double the cost for nothing audible). */
+export const renderRate = (ctx: BaseAudioContext): number => Math.min(ctx.sampleRate, 48000)
+
+/**
+ * A one-shot's `play` that renders it with `render` (pure TypeScript, on the main thread) at `renderRate`, from its exact params and
+ * `Math.random`, and keeps the render per params object: the director's echoes of a sound pass the same object, played again later
+ * and fainter, and replay it instead of rendering anew.
+ */
+export const rendered = <P extends object>(render: (sound: P, sampleRate: number, random: () => number) => Float32Array<ArrayBuffer>) => {
+  const renders = new WeakMap<P, AudioBuffer>()
+  return (io: ShotIo, sound: P, when: number): number => {
+    let buffer = renders.get(sound)
+    if (buffer === undefined) renders.set(sound, (buffer = bufferOf(io.ctx, render(sound, renderRate(io.ctx), Math.random), renderRate(io.ctx))))
+    return playBuffer(io, buffer, when)
+  }
 }
