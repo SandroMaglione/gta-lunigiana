@@ -22,8 +22,9 @@ export type { Surface }
 
 /** What a vehicle hit, by how it sounds: masonry (rendered houses), stone (rubble stone, dry-stone walls,
  *  churches, ruins), sheet (metal-clad industrial walls), glass (greenhouses), rail (steel W-beam guard rail),
- *  rock (cliffs), earth (steep banks and every other drive wall), tree (a trunk). */
-export type Material = "masonry" | "stone" | "sheet" | "glass" | "rail" | "rock" | "earth" | "tree"
+ *  rock (cliffs), earth (steep banks, every other drive wall and loose ground), tree (a trunk), road (the
+ *  asphalt or paving it lands or rolls on). */
+export type Material = "masonry" | "stone" | "sheet" | "glass" | "rail" | "rock" | "earth" | "tree" | "road"
 /** Where a hit lands on a vehicle's body: its front, a side (the roof too), its rear, or under it (bottoming out after a jump). */
 export type Zone = "front" | "side" | "rear" | "under"
 /** One vehicle in a crash; `worn`: the barrier-equivalent speed (m/s) of the hardest earlier hit on this zone, so what broke then stays broken (none: intact). */
@@ -165,12 +166,12 @@ export type Continuous =
 
 /** One-shot sounds: played once, at a placement, possibly delayed (sound travelling, echoes). */
 export type OneShot =
-  /** A vehicle hitting something: closing `speed` m/s, `mass` t (the car's, or the reduced mass of two), the `body` (the listener's
-   *  car, else the Impact's `car`: query order, not necessarily the striker), what it met (a wall's material, the ground's, or
-   *  another vehicle), the `surface` debris lands on; `inside`: the listener sits in `body` (heard from its cabin). */
+  /** A vehicle hitting something: closing `speed` m/s, `mass` t (the car's, or the reduced mass of two), the `body` (the Impact's
+   *  `car`: query order, not necessarily the striker), what it met (a wall's material, the ground's, or
+   *  another vehicle), the `surface` debris lands on. */
   | { readonly kind: "crash"; readonly speed: number; readonly mass: number; readonly body: Body;
       readonly against: { readonly kind: "wall"; readonly material: Material } | { readonly kind: "car"; readonly body: Body };
-      readonly surface: Surface; readonly inside: boolean }
+      readonly surface: Surface }
   /** A body hit by a vehicle. */
   | { readonly kind: "thud"; readonly speed: number }
   /** The suspension bottoming out over a hump or a light landing, at `speed` m/s into its bump stops; `heavy`: the truck. */

@@ -226,23 +226,15 @@ export interface Mix {
   readonly random: () => number
   /** Amplitude under which a mode stops (it also stops 60 dB under its strike). */
   readonly floor: number
-  /** The listener's perspective, a power gain per band: 1 outside, the cabin's balance inside. */
-  readonly view: Spectrum
 }
 
 /** `spectrum` (power) tilted by `db` per band. */
 export const tint = (spectrum: Spectrum, db: Spectrum): Spectrum => spectrum.map((p, b) => p * 10 ** (db[b]! / 10))
 
-/** The view's amplitude gain at `hz`, interpolated in log frequency between the band centres. */
-const viewAt = (view: Spectrum, hz: number): number => {
-  const x = Math.min(BANDS.length - 1, Math.max(0, Math.log2(hz / BANDS[0]!))), b = Math.min(BANDS.length - 2, Math.floor(x)), f = x - b
-  return Math.sqrt(view[b]! ** (1 - f) * view[b + 1]! ** f)
-}
-
-/** A mode struck into the mix (driven up over `attack` s), through its view. */
+/** A mode struck into the mix (driven up over `attack` s). */
 export const strike = (mix: Mix, t0: number, hz: number, eta: number, amp: number, attack = 0): void =>
-  ring(mix.out, mix.sampleRate, t0, hz, eta, amp * viewAt(mix.view, hz), mix.floor, attack)
+  ring(mix.out, mix.sampleRate, t0, hz, eta, amp, mix.floor, attack)
 
-/** A noise burst into the mix (`spectrum` in power), through its view. */
+/** A noise burst into the mix (`spectrum` in power). */
 export const puff = (mix: Mix, t0: number, rise: number, tau: number, peak: number, spectrum: Spectrum): void =>
-  burst(mix.noise, t0, rise, tau, peak, spectrum.map((p, b) => p * mix.view[b]!))
+  burst(mix.noise, t0, rise, tau, peak, spectrum)

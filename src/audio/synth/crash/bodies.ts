@@ -20,8 +20,6 @@ export interface BodySpec {
   /** Panel modes a buckle excites (Hz) and their loss factor. */
   readonly panels: readonly [number, number]
   readonly panelEta: number
-  /** Cabin length, m: its first air mode is c/2L, heard 1.2–1.5× higher inside (critique §4.3). */
-  readonly cabin: number
   /** Its front and rear: a PP cover over foam (a dull 3–8 ms contact, a thock, cracks and clip pops) or bare steel (0.3–1 ms, a clang). */
   readonly bumper: "plastic" | "steel"
   /** A steel bumper's clang, amplitude re the crunch (0 for a PP cover). */
@@ -38,24 +36,24 @@ export const BODIES = {
   panda: {
     stiffness: 1, colour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], field: [0.025, 0.045],
     partials: { count: [1, 2], hz: [700, 3500], t60: [0.3, 0.8] }, panels: [350, 3000], panelEta: 0.012,
-    cabin: 1.9, bumper: "plastic", clang: 0, sill: 0.95, airbag: true, rattle: 1
+    bumper: "plastic", clang: 0, sill: 0.95, airbag: true, rattle: 1
   },
   // A thin, barely damped cab with no crush structure: tinny, rattly, ringing longer, little boom.
   ape: {
     stiffness: 0.5, colour: [-7, -6, -3, -1, 0, 1, 2, 2, 1, 0], field: [0.015, 0.03],
     partials: { count: [2, 3], hz: [800, 4300], t60: [0.4, 0.9] }, panels: [450, 3800], panelEta: 0.007,
-    cabin: 1.1, bumper: "steel", clang: 0.06, sill: 0.9, airbag: false, rattle: 2.5
+    bumper: "steel", clang: 0.06, sill: 0.9, airbag: false, rattle: 2.5
   },
   // Steel cab 1.0–1.5 mm, a heavy steel bumper bar on a ladder frame (its clang the truck's identity, clear of the crunch), marble in the bed: deeper, heavy clanks.
   truck: {
     stiffness: 3, colour: [1, 2, 2, 1, 0, -1, -1, -2, -3, -3], field: [0.02, 0.04],
     partials: { count: [1, 2], hz: [600, 2500], t60: [0.35, 0.9] }, panels: [250, 2200], panelEta: 0.006,
-    cabin: 1.6, bumper: "steel", clang: 0.5, sill: 1.5, airbag: true, rattle: 1.5
+    bumper: "steel", clang: 0.6, sill: 1.5, airbag: true, rattle: 1.5
   },
   // Aluminium doors and wings: brighter and louder per newton; a light bar; laminated windscreen.
   carabinieri: {
     stiffness: 1.3, colour: [0, 0, 0, 0, 0, 0, 1, 2, 2, 1], field: [0.025, 0.045],
     partials: { count: [1, 2], hz: [900, 4300], t60: [0.3, 0.7] }, panels: [400, 3500], panelEta: 0.012,
-    cabin: 2.2, bumper: "plastic", clang: 0, sill: 1, airbag: true, rattle: 1
+    bumper: "plastic", clang: 0, sill: 1, airbag: true, rattle: 1
   }
 } as const satisfies Record<VehicleModel, BodySpec>

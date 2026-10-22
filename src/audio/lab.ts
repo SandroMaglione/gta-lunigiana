@@ -68,8 +68,8 @@ const EARS = { x: 0, y: 0, z: EAR_HEIGHT, vx: 0, vy: 0, right: SCREEN_RIGHT } as
 const heard = (sound: Sound, where: Where): { readonly hearing: Hearing; readonly source: Calibration } => {
   const source = sourceOf(sound), r = source.wet === undefined ? where.r : 0, ahead = Math.sqrt(1 - where.side * where.side)
   const at = { x: r * (where.side * SCREEN_RIGHT.x + ahead * SCREEN_UP.x), y: r * (where.side * SCREEN_RIGHT.y + ahead * SCREEN_UP.y), z: EAR_HEIGHT }
-  // The game plays the listener's own engine and crash through no cabin (the synths make theirs).
-  const own = (sound.kind === "engine" || sound.kind === "crash") && sound.inside
+  // The game plays the listener's own engine through no cabin (the synth makes its own).
+  const own = sound.kind === "engine" && sound.inside
   const hearing = hear({
     ears: EARS, source: at, db: source.db, rMin: source.rMin, height: EAR_HEIGHT, quiet: source.quiet, delta: 0, forest: 0, ambient: AMBIENT_DB,
     street: where.street, cabin: own ? undefined : where.cabin
@@ -80,7 +80,7 @@ const heard = (sound: Sound, where: Where): { readonly hearing: Hearing; readonl
 
 const SURFACES = Object.keys({ asphalt: 0, stone: 0, gravel: 0, dirt: 0, grass: 0, leaves: 0 } satisfies Record<Surface, 0>)
 // Every key of a `satisfies Record<Material, 0>` is a Material.
-const MATERIALS = Object.keys({ masonry: 0, stone: 0, sheet: 0, glass: 0, rail: 0, rock: 0, earth: 0, tree: 0 } satisfies Record<Material, 0>) as ReadonlyArray<Material>
+const MATERIALS = Object.keys({ masonry: 0, stone: 0, sheet: 0, glass: 0, rail: 0, rock: 0, earth: 0, tree: 0, road: 0 } satisfies Record<Material, 0>) as ReadonlyArray<Material>
 const ZONES = Object.keys({ front: 0, side: 0, rear: 0, under: 0 } satisfies Record<Zone, 0>)
 /** Menus for the string params. */
 const OPTIONS: Readonly<Record<string, ReadonlyArray<string>>> = {
@@ -127,10 +127,9 @@ interface CrashForm {
   readonly against: Material | VehicleModel
   readonly struck: Zone
   readonly surface: Surface
-  readonly inside: boolean
 }
-/** A Panda's nose into a rendered house wall, on asphalt, heard from outside. */
-const CRASH: CrashForm = { kind: "crash", speed: 8, mass: tonnes("panda"), model: "panda", zone: "front", against: "masonry", struck: "front", surface: "asphalt", inside: false }
+/** A Panda's nose into a rendered house wall, on asphalt. */
+const CRASH: CrashForm = { kind: "crash", speed: 8, mass: tonnes("panda"), model: "panda", zone: "front", against: "masonry", struck: "front", surface: "asphalt" }
 const isModel = (name: string): name is VehicleModel => (VEHICLE_MODELS as ReadonlyArray<string>).includes(name)
 /** The crash `form` describes. */
 const crashOf = ({ model, zone, against, struck, ...rest }: CrashForm): Crash => ({
@@ -196,8 +195,8 @@ const VOICE_RENDERS = {
   crickets: [{ kind: "crickets", density: 0.3 }, { kind: "crickets", density: 1 }]
 } satisfies Each<Continuous>
 const SHOT_RENDERS = {
-  // A Panda into a house wall (a bump to a heavy hit), car–car pairs, each other target, a side hit, the cabin, a wreck, the laden truck
-  // nudging and hitting a house, a hard landing on the road: each at the sim's mass (the car's, the reduced mass of two).
+  // A Panda into a house wall (a bump to a heavy hit), car–car pairs, each other target, a side hit, a wreck, the laden truck nudging
+  // and hitting a house, a hard landing on the road and a roll onto it: each at the sim's mass (the car's, the reduced mass of two).
   crash: ([
     { speed: 2 }, { speed: 5 }, { speed: 14 }, { speed: 20 },
     { speed: 10, against: "panda" },
@@ -207,11 +206,11 @@ const SHOT_RENDERS = {
     { speed: 10, against: "tree" },
     { speed: 8, against: "earth" },
     { speed: 12, zone: "side" },
-    { speed: 14, inside: true },
     { speed: 40, model: "carabinieri" },
     { speed: 2, model: "truck" },
     { speed: 12, model: "truck" },
-    { speed: 8, zone: "under" }
+    { speed: 8, zone: "under", against: "road" },
+    { speed: 8, zone: "side", against: "road" }
   ] satisfies ReadonlyArray<Partial<CrashForm>>).map((row) => {
     const form = { ...CRASH, ...row }
     return crashOf({ ...form, mass: isModel(form.against) ? paired(form.model, form.against) : tonnes(form.model) })

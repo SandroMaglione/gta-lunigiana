@@ -95,10 +95,8 @@ export const breakage = (mix: Mix, hit: Hit, body: Crushed): void => {
     if (frontal && breaks(between(random, 10, 15))) windscreen(mix, between(random, 0.02, 0.08))
     if (breaks(between(random, 15, 20))) tempered(mix, hit, between(random, 0.02, 0.1), spec.sill)
   }
-  // The airbag fires 15–30 ms in from 5–7.2 m/s barrier-equivalent: a muffled whump outside, the loudest thing in the cabin.
-  if (frontal && spec.airbag && breaks(between(random, 5, 7.2))) {
-    puff(mix, between(random, 0.015, 0.03), 0.003, between(random, 0.025, 0.04), hit.inside && body === hit.bodies[0] ? 0.6 : between(random, 0.02, 0.08), WHUMP)
-  }
+  // The airbag fires 15–30 ms in from 5–7.2 m/s barrier-equivalent: a muffled whump.
+  if (frontal && spec.airbag && breaks(between(random, 5, 7.2))) puff(mix, between(random, 0.015, 0.03), 0.003, between(random, 0.025, 0.04), between(random, 0.02, 0.08), WHUMP)
 }
 
 /** The aftermath of `body`: debris landing from 0.25 s (to 2.5 s in a wreck), loose parts rattling, creaks decaying as t^−0.9, coolant hiss after a hard frontal hit. */

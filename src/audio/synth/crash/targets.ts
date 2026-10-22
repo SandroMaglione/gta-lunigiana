@@ -3,8 +3,8 @@
  * crush and what it adds to the car's own sound. Masonry, stone and rock barely radiate (grit, chips,
  * a dull mass); the W-beam guard rail rings on longest, at its beam bands; a sheet-metal wall rings
  * and wobbles; a greenhouse's annealed panes break into ringing shards; an earth bank is a soft,
- * longer, dull pulse; a tree knocks like wood and rustles faintly for seconds. Levels are power re
- * the crunch's main block.
+ * longer, dull pulse; a tree knocks like wood and rustles faintly for seconds; the road thumps
+ * under the car's weight and grates. Levels are power re the crunch's main block.
  *
  * @module audio/synth/crash/targets
  */
@@ -26,7 +26,7 @@ export interface TargetSpec {
   readonly tint: Spectrum
   /** How much longer than the car's aftermath it sounds, s (a rail's ring, a tree's rustle, a greenhouse falling). */
   readonly ringing: number
-  /** TUNED: how much louder its ring (driven fully from 8 m/s) makes the crash than the level law's crunch, dB (measured peaks), so masking counts it. */
+  /** TUNED: how much louder its ring or thump (driven fully from 8 m/s) makes the crash than the level law's crunch, dB (measured peaks), so masking counts it. */
   readonly adds: number
   /** Adds what the struck thing sounds like. */
   readonly add: (mix: Mix, hit: Hit) => void
@@ -51,6 +51,8 @@ const CLICK = power([-99, -99, -99, -30, -18, -8, -2, 0, -6, -16])
 const TWIG = power([-99, -99, -24, -12, -4, 0, -3, -10, -22, -36])
 /** A glass shard's tinkle. */
 const SHARD = power([-99, -99, -99, -99, -30, -18, -8, -2, 0, -4])
+/** Asphalt grating under a body, 0.5–4 kHz: coarser and darker than plaster grit. */
+const ROAD_GRIT = power([-99, -40, -22, -10, -3, 0, -1, -5, -12, -24])
 
 /** Rigid and massive: no ring, only grit, a few chips and the building's dull mass. */
 const masonry = (mix: Mix, hit: Hit): void => {
@@ -101,6 +103,27 @@ const earth = (mix: Mix, hit: Hit): void => {
   }
 }
 
+/** TUNED: the road's layers, amplitude re the crunch: the body's slap and thump, its grating, the bump stops and the suspension's steel. */
+const ROAD = { slap: 0.3, thump: 3, grit: 0.1, stops: 4, steel: 1.5 } as const
+/**
+ * The road it lands or rolls on: rigid and flat, no ring, nothing to knock loose. The body slaps down
+ * with the car's weight (a heavy 50–90 Hz thump) and grates along the coarse surface for 0.2–0.5 s,
+ * flicking grit; landing on its wheels, the bump stops thump (70–110 Hz) and the suspension's steel
+ * clanks (about 330 and 760 Hz, as a clunk's).
+ */
+const road = (mix: Mix, hit: Hit): void => {
+  const { random } = mix, hard = smoothstep(2, 10, hit.speed)
+  puff(mix, 0.003, hit.rise, between(random, 0.04, 0.07), ROAD.slap, RUMBLE)
+  strike(mix, hit.rise / 2, between(random, 50, 90), 0.1, ROAD.thump, hit.rise / 2)
+  grains(mix, 0.005, between(random, 0.2, 0.5) * (0.6 + 0.4 * hard), 2500, 0.2, 0.0008, ROAD.grit * hard, ROAD_GRIT)
+  if (hit.bodies[0]!.zone === "under") {
+    strike(mix, 0.002, between(random, 70, 110), 0.08, ROAD.stops)
+    for (const hz of [330, 760]) strike(mix, between(random, 0.005, 0.02), hz * between(random, 0.9, 1.1), 0.01, ROAD.steel * rayleigh(random))
+  }
+  for (let i = Math.round(between(random, 2, 8) * hard); i > 0; i--) {
+    land(mix, between(random, 0.1, 0.5), hit.surface, 0.004 * random(), CLICK, [[between(random, 1500, 4000), 0.03]], 0.3)
+  }
+}
 /** A trunk: a wood knock (Farnell's wood bank 62.5–790 Hz ±10 %, η 0.04–0.06), bark crunch, a creak above ~8 m/s as it bends, leaves and twigs rustling for seconds. */
 const tree = (mix: Mix, hit: Hit): void => {
   const { random } = mix, v = hit.speed, at = hit.rise / 2
@@ -173,5 +196,7 @@ export const TARGETS = {
   rock: { stiffness: Infinity, contact: [0.00035, 0.0005], soft: 0.9, tint: HARD, ringing: 1.5, adds: 0, add: rock },
   // The bank gives: the softest, slowest contact, and the dullest crunch (dirt and grass damp the panels too).
   earth: { stiffness: 0.43, contact: [0.005, 0.008], soft: 2.8, tint: [0, 0, 0, 0, -1, -2, -4, -6, -8, -10], ringing: 0, adds: 0, add: earth },
-  tree: { stiffness: 1.5, contact: [0.0015, 0.0024], soft: 1.2, tint: [0, 0, 0, 0, 0, -1, -1, -2, -3, -4], ringing: 3, adds: 0, add: tree }
+  tree: { stiffness: 1.5, contact: [0.0015, 0.0024], soft: 1.2, tint: [0, 0, 0, 0, 0, -1, -1, -2, -3, -4], ringing: 3, adds: 0, add: tree },
+  // The body meets the road face-on: a little longer than a wall's edge. Its thump peaks 3.5 (a roll) to 6 dB (a landing) over the law.
+  road: { stiffness: Infinity, contact: [0.0005, 0.0009], soft: 1, tint: HARD, ringing: 0, adds: 4.5, add: road }
 } as const satisfies Record<Material, TargetSpec>

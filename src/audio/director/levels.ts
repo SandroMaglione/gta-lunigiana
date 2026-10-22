@@ -54,6 +54,14 @@ export const LEVELS = {
   bell: { db: 118, rMin: 5 }
 } as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">, Level>
 
+/**
+ * TUNED: a crash's direct sound plays at most this many dB over gain 1, where the master limiter takes
+ * a few dB of a 15 m/s crash's peak. Nearer (the listener's own crash comes about 25 dB over), it took
+ * 20 dB off the hit and, released 0.25 s later, gave the crunch's sub-hits back nearly as loud as the
+ * hit: an echo.
+ */
+export const CRASH_MOST_DB = 8
+
 /** Water's level comes from places (the line source at the listener); its size is the 1 m that level is clamped at. */
 export const WATER_R_MIN = 1
 

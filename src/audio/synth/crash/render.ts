@@ -5,14 +5,15 @@
  * deformation for the 150–400 ms main block, with 1–3 sub-hits, ringing on in a dense modal field
  * that decays per band with T60 = 2.2 / (f·η); 3–30 power-law major buckles stand out of it, each a
  * bright burst and a few freshly drawn panel modes; 1–3 stiff parts ring as long partials. Then what
- * breaks and falls (parts.ts), what was hit (targets.ts), and from the cabin its boom-heavy balance.
- * One level law, applied once: the render's gain is `levelOf` (hit.ts).
+ * breaks and falls (parts.ts), and what was hit: a wall's or the ground's material (targets.ts), or
+ * another car, whose shell rings with this one's. One level law, applied once: the render's gain is
+ * `levelOf` (hit.ts).
  *
  * @module audio/synth/crash/render
  */
 import { smoothstep } from "../../buffers.ts"
 import { BANDS, between, excite, halfSine, type Mix, noiseFor, playNoise, power, powerLaw, puff, rayleigh, type Spectrum, strike, tint } from "./dsp.ts"
-import { type Crash, type Crushed, type Hit, hitOf, levelOf } from "./hit.ts"
+import { type Crash, crumpling, type Crushed, type Hit, hitOf, levelOf } from "./hit.ts"
 import { aftermath, breakage } from "./parts.ts"
 import { TARGETS } from "./targets.ts"
 
@@ -25,17 +26,19 @@ const RUB = [-30, -16, -4, 0, -2, -6, -8, -13, -24, -38]
 const SNAP = [-10, -8, -5, -3, -1, 0, 0, -1, -3, -6]
 /** A side hit: the door skin, no crash box, crunches brighter. */
 const SIDE = [0, 0, -1, -1, 0, 1, 2, 2, 1, 0]
-/** Heard from the cabin (critique §4.3: 82–83 % of the energy under 200 Hz, the highs muffled), about as loud overall: every layer passes it, the crunch too. */
-const CABIN = [0, 6, 6, 0, -6, -12, -18, -24, -32, -40]
 
 /** TUNED: the output scale at which the reference crash (a Panda into masonry at 15 m/s) peaks near the nominal 0.5. */
 const SCALE = 0.112
 /** No render peaks over this (a +6 dB crash with an unlucky draw is scaled down to it): the audition page's clipping mark. */
 const LIMIT = 0.95
+/** TUNED: each shell's clank in a car–car hit, how many modes and their amplitude at full drive (8 m/s). */
+const SHELL_MODES = 6, SHELL = 3
+/** TUNED: how much louder the clank makes a car–car crash than the level law's crunch at full drive, dB (measured peaks: 0.5–2.6), so masking counts it. */
+export const SHELL_ADDS = 1
 
 /** One body's crunch: its spectrum, its drive through the crush pulse, the main block and the sub-hits, its major buckles. Returns the spectrum (power, summing to 1). */
 const crunch = (mix: Mix, hit: Hit, body: Crushed): Spectrum => {
-  const { random, noise } = mix, { rate } = noise, spec = body.spec, crumples = smoothstep(2.5, 6, body.speed), target = hit.material === undefined ? undefined : TARGETS[hit.material]
+  const { random, noise } = mix, { rate } = noise, spec = body.spec, crumples = crumpling(body.zone, body.speed), target = hit.material === undefined ? undefined : TARGETS[hit.material]
   // A random tilt per render (the recordings spread 3–19 dB over 125 Hz–2 kHz; their median is flat).
   const tilt = between(random, -1.3, 1.3), db = CRUNCH.map((level, b) => {
     const rub = RUB[b]!, slope = b >= 2 && b <= 7 ? tilt * Math.log2(BANDS[b]! / 500) : 0
@@ -73,7 +76,7 @@ const crunch = (mix: Mix, hit: Hit, body: Crushed): Spectrum => {
     level = level * fall + (random() < per ? -Math.log(1 - random()) : 0)
     drive[c]! *= 0.6 + (0.4 * level) / mean
   }
-  excite(noise, drive, shape.map((p, b) => p * body.part * mix.view[b]!), t60)
+  excite(noise, drive, shape.map((p) => p * body.part), t60)
 
   // The major buckles: 3–30, energies p(E) ∝ E^−α (α 1.3–1.6) over 20 dB, mostly inside the pulse (rate ∝ cos(πt/T)), the rest through the block and the sub-hits.
   // Past a dozen their panel modes merge into the dense field the crunch already is: fewer each (and a wreck renders sooner).
@@ -99,7 +102,7 @@ export const partials = (mix: Mix, hit: Hit, body: Crushed, shape: Spectrum): vo
   for (let i = 0; i < count; i++) {
     const hz = lo * (hi / lo) ** random(), b = Math.round(Math.log2(hz / BANDS[0]!)), prominence = between(random, 20, 26)
     // A sine's power against the main block's in one 85 ms bin (≈ 25 Hz / f of its octave's); driven up with the contact.
-    const bed = (0.875 / (0.7 + 0.55 * smoothstep(2.5, 6, body.speed))) * body.part * shape[b]!
+    const bed = (0.875 / (0.7 + 0.55 * crumpling(body.zone, body.speed))) * body.part * shape[b]!
     const amp = Math.sqrt(2 * 10 ** (prominence / 10) * bed * (25 / hz)), t = between(random, 0, 0.02)
     const loss = Math.min(0.01, Math.max(0.0008, 2.2 / (hz * between(random, t60[0], t60[1]))))
     strike(mix, t, hz, loss, amp, hit.rise)
@@ -114,11 +117,15 @@ const contact = (mix: Mix, hit: Hit, shape: Spectrum): void => {
   puff(mix, 0, hit.rise, between(mix.random, 0.006, 0.012), between(mix.random, 0.8, 1.2), coloured.map((p) => p / sum))
 }
 
-/** From the cabin: its first air mode (1.2–1.5 × c/2L) booming with the hit and each sub-hit. */
-const cabin = (mix: Mix, hit: Hit): void => {
-  const { random } = mix, hz = (between(random, 1.2, 1.5) * 343) / (2 * hit.bodies[0]!.spec.cabin), eta = between(random, 0.06, 0.1)
-  strike(mix, hit.rise / 2, hz, eta, 0.5)
-  for (const sub of hit.subHits) strike(mix, sub.at, hz, eta, 0.5 * Math.sqrt(sub.level))
+/** Two cars: steel shells meeting, each ringing where it was hit (0.7 kHz up to its panels' top, η 0.008–0.015, driven up while they crush), so a car–car hit clanks where a wall's dead mass rings nothing. */
+const shells = (mix: Mix, hit: Hit): void => {
+  const { random } = mix, drive = Math.min(1, hit.speed / 8)
+  for (const body of hit.bodies) {
+    for (let i = 0; i < SHELL_MODES; i++) {
+      const hz = between(random, 700, body.spec.panels[1])
+      strike(mix, 0, hz, between(random, 0.008, 0.015), SHELL * drive * Math.sqrt(body.part) * rayleigh(random), hit.pulse / 2)
+    }
+  }
 }
 
 /** `out` × `scale`, trimmed after its last sample within 60 dB of its peak, faded over its last 0.15 s, never over `LIMIT`. */
@@ -139,7 +146,7 @@ export const renderCrash = (sound: Crash, sampleRate: number, random: () => numb
   const mix: Mix = {
     out: new Float32Array(n), noise: noiseFor(n, sampleRate), sampleRate, random,
     // −80 dBFS at the output.
-    floor: 1e-4 / (gain * SCALE), view: hit.inside ? power(CABIN) : BANDS.map(() => 1)
+    floor: 1e-4 / (gain * SCALE)
   }
   hit.bodies.forEach((body, i) => {
     const shape = crunch(mix, hit, body)
@@ -151,7 +158,7 @@ export const renderCrash = (sound: Crash, sampleRate: number, random: () => numb
     aftermath(mix, hit, body)
   }
   if (hit.material !== undefined) TARGETS[hit.material].add(mix, hit)
-  if (hit.inside) cabin(mix, hit)
+  else shells(mix, hit)
   playNoise(mix.out, mix.noise, random, mix.floor)
   return finish(mix.out, gain * SCALE, sampleRate)
 }

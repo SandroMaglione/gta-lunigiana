@@ -3,10 +3,10 @@
  * tyres rolling and skidding, horns and the Carabinieri siren, the truck's reversing beeper, crashes
  * into walls, vehicles and the ground, the suspension bottoming out, scrapes along walls and the
  * ground, people hit, AI honks, and the doors and starter of the listener getting in and out. A crash
- * knows both bodies (the listener's own car always as `body`) and how worn each is where it was hit,
- * the wall's or the ground's material and the ground under the car; a scrape, the material. Sounds of
- * the listener's own car are heard from inside it: its crash, clunk, scrape and doors through no
- * cabin, its horn and siren (out by the grille, up on the roof) through all of it.
+ * knows both bodies and how worn each is where it was hit, the wall's or the ground's material and the
+ * ground under the car; a scrape, the material. Sounds of the listener's own car are heard from inside
+ * it: its crash, clunk, scrape and doors through no cabin, its horn and siren (out by the grille, up on
+ * the roof) through all of it.
  *
  * @module audio/director/vehicles
  */
@@ -58,8 +58,8 @@ const sourceOf = (v: HeardVehicle): Source => ({ x: v.x, y: v.y, z: v.z, vx: v.v
 /** The level a vehicle stands on, for the ground and the surface under it: a deck's, a tunnel's or the riverbed's under a bridge. */
 const levelOf = (v: HeardVehicle | undefined): number | undefined => (v === undefined ? undefined : v.z - VEHICLES[v.model].cg)
 
-/** The ground struck, by how it sounds: the road and paving like a rendered wall (rigid, fine grit), loose ground like an earth bank. */
-const GROUND = { asphalt: "masonry", stone: "masonry", gravel: "earth", dirt: "earth", grass: "earth", leaves: "earth" } as const satisfies Record<Surface, Material>
+/** The ground struck, by how it sounds: the road and paving as `road` (rigid, coarse grit), loose ground like an earth bank. */
+const GROUND = { asphalt: "road", stone: "road", gravel: "earth", dirt: "earth", grass: "earth", leaves: "earth" } as const satisfies Record<Surface, Material>
 
 /** What `hit` met: the drive wall's material (`wallAt`), or the ground's under the contact point, at the struck car's `level`. */
 const materialOf = (hit: Extract<Happening, { readonly kind: "impact" }>, level: number | undefined): Material =>
@@ -139,9 +139,8 @@ export const makeVehicles = () => {
         const last = Math.max(crashes.get(hit.car)?.speed ?? 0, hit.other === undefined ? 0 : (crashes.get(hit.other)?.speed ?? 0))
         if (hit.speed < HARDER * last) continue
         for (const id of [hit.car, hit.other]) if (id !== undefined) crashes.set(id, { at: now, speed: hit.speed })
-        // The contact sounds the same from either car: the listener's is always `body`. (On foot `mine` and a wall hit's `other` are both undefined.)
-        const theirs = mine !== undefined && hit.other === mine && hit.otherBody !== undefined
-        const own = theirs || hit.car === mine
+        // On foot `mine` and a wall hit's `other` are both undefined.
+        const own = hit.car === mine || (mine !== undefined && hit.other === mine)
         const point = { x: hit.x, y: hit.y, z: groundAt(hit.x, hit.y, level) + HEIGHT.vehicle }
         // Cresting a hump or a light landing: the bump stops take it.
         if (bottomed && hit.speed < BOTTOMED) {
@@ -149,16 +148,15 @@ export const makeVehicles = () => {
           frame.play(clunk, frame.path(own ? undefined : `car:${hit.car}`, point, LEVELS.clunk, { cabin: !own, quiet: clunkQuiet(hit.speed) }))
           continue
         }
-        const [body, other] = theirs ? [hit.otherBody, hit.body] : [hit.body, hit.otherBody], [id, otherId] = theirs ? [hit.other, hit.car] : [hit.car, hit.other]
         // Debris lands where the car is: a wall hit's contact point lies on the house front, off the street (a ground hit's lies under the car).
         const ground = hit.hit === "wall" ? (v ?? hit) : hit
         const sound: Extract<OneShot, { readonly kind: "crash" }> = {
-          kind: "crash", speed: hit.speed, mass: hit.mass, body: wornOf(id, body),
-          against: other === undefined ? { kind: "wall", material: materialOf(hit, level) } : { kind: "car", body: wornOf(otherId, other) },
-          surface: surfaceAt(ground.x, ground.y, level), inside: own
+          kind: "crash", speed: hit.speed, mass: hit.mass, body: wornOf(hit.car, hit.body),
+          against: hit.otherBody === undefined ? { kind: "wall", material: materialOf(hit, level) } : { kind: "car", body: wornOf(hit.other, hit.otherBody) },
+          surface: surfaceAt(ground.x, ground.y, level)
         }
         // How hard each was crushed where it was hit, for the next crash.
-        crushSpeeds(sound).forEach((speed, i) => wear(i === 0 ? id : otherId, (i === 0 ? body : other!).zone, speed))
+        crushSpeeds(sound).forEach((speed, i) => wear(i === 0 ? hit.car : hit.other, (i === 0 ? hit.body : hit.otherBody!).zone, speed))
         frame.play(sound, frame.path(own ? undefined : `car:${hit.car}`, point, LEVELS.crash, { cabin: !own, quiet: crashQuiet(sound) }))
       }
       for (const h of heard.happenings) {

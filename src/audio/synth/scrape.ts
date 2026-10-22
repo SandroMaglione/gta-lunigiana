@@ -138,13 +138,17 @@ interface Layer {
 /** Chips knocked off masonry and stone, pebbles off rock (synthesis.md §2.8: 3 modes at 500–2500 Hz, η 0.03). */
 const chips = (every: number, hz: readonly [number, number] = [500, 2500]): Knocks => ({ every, regular: false, hz, modes: 3, eta: 0.03, level: 2 })
 
+/** Rendered plaster: fine dense grit, a few chips. */
+const PLASTER = {
+  texture: { bumps: 120, gamma: 1.7, width: [0.0001, 0.0005], grit: 3, knocks: [chips(4)] },
+  band: [100, 2500], direct: 1, panels: 0.5, gain: 0.33
+} as const satisfies Layer
+
 /** Every material's grind. TUNED in Chrome against the scrape references (centroid, band flatness, octaves) and to peak near 0.5 at 12 m/s. */
 export const LAYERS = {
-  // Rendered plaster: fine dense grit, a few chips.
-  masonry: {
-    texture: { bumps: 120, gamma: 1.7, width: [0.0001, 0.0005], grit: 3, knocks: [chips(4)] },
-    band: [100, 2500], direct: 1, panels: 0.5, gain: 0.33
-  },
+  masonry: PLASTER,
+  // A body sliding on the road or paving grinds like a rendered wall.
+  road: PLASTER,
   // Rubble stone: the level swings 10 dB at every 0.3 m stone (a 33 Hz buzz at 10 m/s), chips.
   stone: {
     texture: { bumps: 50, gamma: 1.5, width: [0.0001, 0.001], grit: 4, joints: { every: 0.3, jitter: 0.2, depth: 0.68 }, knocks: [chips(1.5)] },

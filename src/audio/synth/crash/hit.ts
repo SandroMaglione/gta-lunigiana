@@ -53,6 +53,9 @@ const severityOf = (sound: Crash): number => {
 /** The crash's level, dB re the reference crash: +6.5 dB per doubling of speed, 10·log10 μ per pair (Panda–Panda −3 dB), capped at +6. */
 export const levelOf = (sound: Crash): number => Math.min(CAP_DB, Math.max(FLOOR_DB, 10 * Math.log10(severityOf(sound))))
 
+/** How far a body at barrier-equivalent `speed` crumples (0: its cover only rubs, as in a bump); its floor landing on the tyres and bump stops never does. */
+export const crumpling = (zone: Zone, speed: number): number => (zone === "under" ? 0 : smoothstep(2.5, 6, speed))
+
 /** One body as it crushes. */
 export interface Crushed {
   readonly model: VehicleModel
@@ -91,7 +94,6 @@ export interface Hit {
   readonly tail: number
   readonly length: number
   readonly surface: Surface
-  readonly inside: boolean
 }
 
 /** A body's side of the contact: its bumper on its front and rear, its door skin on a side; its floor landing on the tyres and bump stops is as dull as a PP cover. */
@@ -131,7 +133,7 @@ export const hitOf = (sound: Crash, random: () => number): Hit => {
   const k = kOther === Infinity ? a.stiffness : (a.stiffness * kOther) / (a.stiffness + kOther)
   const pulse = Math.min(0.25, 0.1 * Math.sqrt(mu / k)) * between(random, 0.9, 1.1)
   // Past the level cap (equivalent ≈ 30 m/s) the severity goes on growing in time: a longer block and tail, more and later sub-hits.
-  const crumples = smoothstep(2.5, 6, equivalent), wreck = smoothstep(25, 60, equivalent)
+  const crumples = crumpling(bodies[0]!.zone, equivalent), wreck = smoothstep(25, 60, equivalent)
   // The main block: a bump is over in 60–75 ms, a crash holds 150–400 ms (rebound, yaw into a second contact, stiff parts ringing).
   const block = Math.max((0.06 + 0.12 * crumples + 0.12 * smoothstep(6, 30, equivalent) + 0.08 * wreck) * (side ? 1.2 : 1) * between(random, 0.85, 1.2), 0.06 + 1.2 * pulse * crumples)
   // 1–3 sub-hits at +80…600 ms, more for side hits and higher speeds; a wreck tumbles on to 1.2 s.
@@ -139,7 +141,7 @@ export const hitOf = (sound: Crash, random: () => number): Hit => {
   if (equivalent >= 4) {
     const count = 1 + Number(random() < 0.3 + 0.3 * Number(side) + 0.3 * smoothstep(10, 25, equivalent)) + Number(random() < 0.1 + 0.3 * Number(side) + 0.4 * smoothstep(15, 35, equivalent) + 0.3 * wreck)
     for (let i = 0, at = between(random, 0.08, 0.3); i < count && at < 0.6 + 0.6 * wreck; i++, at += between(random, 0.1, 0.3) * (1 + wreck)) {
-      subHits.push({ at, level: between(random, 0.3, 0.8), length: between(random, 0.04, 0.12) })
+      subHits.push({ at, level: between(random, 0.15, 0.4), length: between(random, 0.04, 0.12) })
     }
   }
   const tail = 0.5 + 2 * smoothstep(3, 30, equivalent) + wreck
@@ -149,6 +151,6 @@ export const hitOf = (sound: Crash, random: () => number): Hit => {
     rise: between(random, 0.011, 0.02) * (target?.soft ?? 1) * (side ? 0.9 : 1),
     // Springs in series again: the softer side sets the contact's length; harder hits are a little shorter (Hertz, τ ∝ v^−1/5).
     contact: Math.hypot(bodies[0]!.contact, theirs) * Math.max(0.6, Math.min(1.3, (Math.max(v, 1) / 5) ** -0.2)),
-    block, subHits, tail, length: Math.min(4, block + tail + 0.8 + (target?.ringing ?? 0)), surface: sound.surface, inside: sound.inside
+    block, subHits, tail, length: Math.min(4, block + tail + 0.8 + (target?.ringing ?? 0)), surface: sound.surface
   }
 }
