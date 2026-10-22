@@ -16,7 +16,7 @@ import type { Continuous, OneShot } from "../types.ts"
 /** A source's calibration: dB(A) at 1 m at the synth's nominal peak, and its size, m. */
 export interface Level { readonly db: number; readonly rMin: number }
 
-/** Engines at full load (pass-by levels, physics.md §8): every engine voice peaks alike, so the model's loudness lives here. */
+/** Engines at the redline under full load (pass-by levels, physics.md §8): every engine voice peaks alike, so the model's loudness lives here. */
 export const ENGINE = {
   panda: { db: 90, rMin: 2 },
   ape: { db: 92, rMin: 2 },
@@ -25,8 +25,8 @@ export const ENGINE = {
 } as const satisfies Record<VehicleModel, Level>
 
 /**
- * The listener's own engine from the driver's seat; the voice makes the cabin tone. TUNED: the voice idles about 19 dB
- * under this, so the cabin idles near 49 dB(A), as a small car's does; at full load it is quieter than a real cabin
+ * The listener's own engine from the driver's seat; the voice makes the cabin tone. TUNED: the voice idles 20–22 dB (RMS)
+ * under this in the Panda and the Giulia, so the cabin idles near 46–48 dB(A), as a small car's does; at full load it is quieter than a real cabin
  * (the voice's idle-to-redline range is narrower than an engine's), and well under the outside mix (physics.md §10).
  */
 export const OWN_ENGINE_DB = 68
@@ -40,6 +40,8 @@ export const LEVELS = {
   beeper: { db: 100, rMin: 2 },
   crash: { db: 115, rMin: 2 },
   thud: { db: 85, rMin: 1 },
+  // TUNED (estimated, no recording measured): a car slamming its bump stops at 5 m/s, 20 dB under a Panda's crash at that speed (105).
+  clunk: { db: 85, rMin: 1.5 },
   door: { db: 82, rMin: 1 },
   ignition: { db: 85, rMin: 1 },
   honk: { db: 116, rMin: 2 },

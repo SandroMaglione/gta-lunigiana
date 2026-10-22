@@ -48,6 +48,35 @@ export const sweepCircleSegment = (o: Vec2.Vec2, d: Vec2.Vec2, r: number, s: Seg
   return best
 }
 
+/** Squared distance from (px,py) to segment a-b and the projection parameter t in [0,1]. */
+export const segDist2 = (px: number, py: number, ax: number, ay: number, bx: number, by: number): { d2: number; t: number } => {
+  const ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * ex + (py - ay) * ey) / l2)) : 0
+  const dx = ax + ex * t - px, dy = ay + ey * t - py
+  return { d2: dx * dx + dy * dy, t }
+}
+
+/** Even-odd scanline fill of one polygon (flat rings) on a raster with pixel centres at x0 + (c + 0.5) * res; calls `set` per pixel index. */
+export const fillPolygon = (rings: ReadonlyArray<ReadonlyArray<number>>, x0: number, y0: number, res: number, cols: number, rows: number, set: (k: number) => void): void => {
+  let lo = Number.MAX_VALUE, hi = -Number.MAX_VALUE
+  for (const r of rings) for (let i = 1; i < r.length; i += 2) [lo, hi] = [Math.min(lo, r[i]!), Math.max(hi, r[i]!)]
+  const xs: Array<number> = []
+  for (let row = Math.max(0, Math.floor((lo - y0) / res)); row <= Math.min(rows - 1, Math.ceil((hi - y0) / res)); row++) {
+    const yc = y0 + (row + 0.5) * res
+    xs.length = 0
+    for (const r of rings) {
+      const n = r.length / 2
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = r[2 * i]!, yi = r[2 * i + 1]!, xj = r[2 * j]!, yj = r[2 * j + 1]!
+        if (yi > yc !== yj > yc) xs.push(xi + ((yc - yi) * (xj - xi)) / (yj - yi))
+      }
+    }
+    xs.sort((a, b) => a - b)
+    for (let k = 0; k + 1 < xs.length; k += 2)
+      for (let c = Math.max(0, Math.ceil((xs[k]! - x0) / res - 0.5)); c <= Math.min(cols - 1, Math.floor((xs[k + 1]! - x0) / res - 0.5)); c++) set(row * cols + c)
+  }
+}
+
 /** Distance from (x, y) to segment `s`, m. */
 export const segmentDistance = (s: Segment, x: number, y: number): number => {
   const ex = s.bx - s.ax, ey = s.by - s.ay

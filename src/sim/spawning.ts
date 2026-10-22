@@ -7,11 +7,14 @@
  */
 import { Ops, type Random } from "@typeonce/ritmo-math"
 
-import type { Step } from "./route.ts"
+import { settle } from "./chassis.ts"
+import { gearFor } from "./drivetrain.ts"
+import { groundZ, roadLevel } from "./map/ground.ts"
+import { roadOf, type Step } from "./route.ts"
 import {
-  Autopilot, CarInput, Game, type Look, Motion, Pedestrian, Person, Pose, type PoseValue, PrevPose, Route, type RouteValue, Traffic, Vehicle
+  Autopilot, CarInput, Chassis, Game, type Look, Motion, Pedestrian, Person, Pose, type PoseValue, PrevPose, Route, type RouteValue, Traffic, Vehicle
 } from "./schema.ts"
-import { CAR_COLORS, type VehicleModel } from "./vehicles.ts"
+import { CAR_COLORS, type VehicleModel, VEHICLES } from "./vehicles.ts"
 
 const SKINS = [0xe7b896, 0xc68e6a, 0xa8704f, 0x6b4630] as const
 const HAIRS = [0x2b1d14, 0x4a3222, 0x17161a, 0x5f5a51, 0x8b8b88, 0xcfccc0, 0xd4a85e] as const
@@ -35,8 +38,17 @@ export const parkedCar = (model: VehicleModel, color: number, pose: PoseValue) =
     [Pose, pose],
     [PrevPose, pose],
     [Motion, { vx: 0, vy: 0, spin: 0 }],
-    [CarInput, { throttle: 0, steer: 0, handbrake: true }]
+    [CarInput, { throttle: 0, steer: 0, handbrake: true }],
+    [Chassis, settle(model, pose)]
   )
+
+/**
+ * A vehicle of `model` on its springs at `pose`, rolling at `speed` (m/s) along its heading, in the gear for that speed: on the
+ * level `level` (m a.s.l., its road's: a deck, a tunnel's floor), or at grade.
+ */
+export const rollingChassis = (model: VehicleModel, pose: PoseValue, speed: number, level?: number) => ({
+  ...settle(model, pose, level === undefined ? undefined : (x, y) => groundZ(x, y, level)), gear: gearFor(VEHICLES[model], speed)
+})
 
 /** An AI vehicle on `edge` (travelled a -> b when `forward`) moving at `speed` along its heading. */
 export const trafficCar = (
@@ -53,6 +65,7 @@ export const trafficCar = (
     [PrevPose, pose],
     [Motion, { vx: Ops.cos(pose.angle) * speed, vy: Ops.sin(pose.angle) * speed, spin: 0 }],
     [CarInput, { throttle: 0, steer: 0, handbrake: false }],
+    [Chassis, rollingChassis(model, pose, speed, roadLevel(roadOf(route.edge), pose.x, pose.y))],
     [Traffic, {}],
     [Route, route],
     [Autopilot, { next: next.edge, nextForward: next.forward, stuck: 0, reverseUntil: 0, tries: 0 }]

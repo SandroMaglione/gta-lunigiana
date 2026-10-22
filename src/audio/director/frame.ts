@@ -7,7 +7,7 @@
  *
  * @module audio/director/frame
  */
-import { groundY, yOf } from "../../render/ground.ts"
+import { groundZ } from "../../sim/map/ground.ts"
 import { heightAt } from "../../sim/map/index.ts"
 import type { VehicleModel } from "../../sim/vehicles.ts"
 import { airCutoff, audibility, CABIN, dbToGain, gainToDb, panOf, SPEED_OF_SOUND, spreading } from "../acoustics.ts"
@@ -63,7 +63,7 @@ export interface Setup {
 }
 
 /** Elevation a.s.l. of what stands at (x, y): the terrain, a road, or the bridge deck nearest `near` (a previous elevation). */
-export const groundAt = (x: number, y: number, near?: number): number => groundY(x, y, near === undefined ? undefined : yOf(near)) - yOf(0)
+export const groundAt = (x: number, y: number, near?: number): number => groundZ(x, y, near)
 
 /** Nothing in the way (sounds of the listener's own car or body). */
 const CLEAR: Between = { delta: 0, forest: 0 }

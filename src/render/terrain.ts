@@ -7,14 +7,44 @@
  */
 import { BufferGeometry, Float32BufferAttribute } from "three"
 
+import { type Cover, coverName } from "../sim/map/cover.ts"
 import { MAP } from "../sim/map/index.ts"
 import { hash01 } from "../tools/geometry.ts"
 import { CELLS, chunkCells } from "./chunks.ts"
 import { terrainNodeY } from "./ground.ts"
-import { COVER_LOOK, coverName, type CoverLook } from "./landcover.ts"
 import { linear } from "./geometry.ts"
+import { PALETTE } from "./palette.ts"
 
 const hm = MAP.heightmap
+
+/** Base colour, variant colour and the noise level under which a cell takes the variant (`stripes`: alternate columns). */
+interface CoverLook { readonly base: number; readonly alt: number; readonly share: number; readonly stripes?: boolean }
+
+/** How each cover is painted. */
+const COVER_LOOK = {
+  meadow: { base: PALETTE.grass, alt: PALETTE.grassDry, share: 0.3 },
+  forest: { base: PALETTE.forestDark, alt: PALETTE.forest, share: 0.35 },
+  grassland: { base: PALETTE.grassDry, alt: PALETTE.grass, share: 0.35 },
+  scrub: { base: PALETTE.forestLight, alt: PALETTE.grassDry, share: 0.4 },
+  sparse: { base: PALETTE.grassDry, alt: PALETTE.limestone, share: 0.45 },
+  scree: { base: PALETTE.stoneLight, alt: PALETTE.limestone, share: 0.45 },
+  rock: { base: PALETTE.limestone, alt: PALETTE.stoneLight, share: 0.35 },
+  quarry: { base: PALETTE.marbleWhite, alt: PALETTE.limestone, share: 0.3 },
+  residential: { base: PALETTE.grass, alt: PALETTE.grassDry, share: 0.3 },
+  farmland: { base: PALETTE.grassDry, alt: PALETTE.dirtTrack, share: 0.5, stripes: true },
+  farmyard: { base: PALETTE.dirtTrack, alt: PALETTE.grassDry, share: 0.3 },
+  vineyard: { base: PALETTE.grass, alt: PALETTE.dirtTrack, share: 0.5, stripes: true },
+  park: { base: PALETTE.grass, alt: PALETTE.forestLight, share: 0.25 },
+  school: { base: PALETTE.grass, alt: PALETTE.asphaltWorn, share: 0.2 },
+  cemetery: { base: PALETTE.plasterGrey, alt: PALETTE.stoneLight, share: 0.4 },
+  pitch: { base: PALETTE.grass, alt: PALETTE.forestLight, share: 0.5, stripes: true },
+  parking: { base: PALETTE.asphaltWorn, alt: PALETTE.asphalt, share: 0.2 },
+  industrial: { base: PALETTE.asphaltWorn, alt: PALETTE.stoneMid, share: 0.3 },
+  paved: { base: PALETTE.asphaltWorn, alt: PALETTE.stoneMid, share: 0.15 },
+  platform: { base: PALETTE.asphaltWorn, alt: PALETTE.asphaltWorn, share: 0 },
+  ruins: { base: PALETTE.stoneMid, alt: PALETTE.forest, share: 0.4 },
+  pebble: { base: PALETTE.limestone, alt: PALETTE.marbleWhite, share: 0.4 }
+} as const satisfies Record<Cover, CoverLook>
 
 /** Faces steeper than this (normal y below it, ≈ 50°) show bare rock. */
 const ROCK_NORMAL_Y = 0.64

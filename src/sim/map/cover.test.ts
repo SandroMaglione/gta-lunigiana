@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { AREA_KINDS } from "../sim/map/index.ts"
-import { coverName, rasterCover } from "./landcover.ts"
+import { coverName, rasterCover } from "./cover.ts"
+import { AREA_KINDS } from "./index.ts"
 
 // 10 × 10 cells of 4 m from (0, 0); row 0 = south.
 const heightmap = { cell: 4, cols: 11, rows: 11, x0: 0, y0: 0, data: Array.from({ length: 121 }, () => 2000) }

@@ -2,8 +2,8 @@
  * The audio host's shared vocabulary. Three layers meet here:
  *
  * - `Heard`: what the world sounds like this frame, as plain data. The audio schedule reads it
- *   from the simulation (components, the `Impact` and `Honk` events, the horn key) and hands it to
- *   the `Audio` service once per animation frame.
+ *   from the simulation (components, the `Impact`, `Skid` and `Honk` events, the horn key) and
+ *   hands it to the `Audio` service once per animation frame.
  * - The director (pure TypeScript, tested in Node) turns `Heard` into sound requests: continuous
  *   voices it holds frame after frame (`Continuous`) and one-shots (`OneShot`), each with a
  *   `Placement` computed from acoustics (spreading, air absorption, occlusion, Doppler, cabin).
@@ -15,33 +15,44 @@
  *
  * @module audio/types
  */
+import type { Surface } from "../sim/map/surface.ts"
 import type { VehicleModel } from "../sim/vehicles.ts"
 
-/** What a foot or a tyre is on: road surfaces, stone paving, and the land cover off the road. */
-export type Surface = "asphalt" | "stone" | "gravel" | "dirt" | "grass" | "leaves"
+export type { Surface }
 
 /** What a vehicle hit, by how it sounds: masonry (rendered houses), stone (rubble stone, dry-stone walls,
  *  churches, ruins), sheet (metal-clad industrial walls), glass (greenhouses), rail (steel W-beam guard rail),
  *  rock (cliffs), earth (steep banks and every other drive wall), tree (a trunk). */
 export type Material = "masonry" | "stone" | "sheet" | "glass" | "rail" | "rock" | "earth" | "tree"
-/** Where a hit lands on a vehicle's body. */
-export type Zone = "front" | "side" | "rear"
+/** Where a hit lands on a vehicle's body: its front, a side (the roof too), its rear, or under it (bottoming out after a jump). */
+export type Zone = "front" | "side" | "rear" | "under"
 /** One vehicle in a crash; `worn`: the barrier-equivalent speed (m/s) of the hardest earlier hit on this zone, so what broke then stays broken (none: intact). */
 export interface Body { readonly model: VehicleModel; readonly zone: Zone; readonly worn?: number }
 
-/** A vehicle someone could hear: running (someone at the wheel) or moving. Parked, still cars are left out. */
+/** A vehicle's tyres sliding this frame: the most any wheel went past its grip (0…1), the fastest one slid (m/s), and the surface under the one furthest past. */
+export interface Skidding { readonly amount: number; readonly slip: number; readonly surface: Surface }
+
+/** A vehicle someone could hear: running (someone at the wheel) or moving (rolling over and bouncing too). Parked, still cars are left out. */
 export interface HeardVehicle {
   /** Entity id: stable while the vehicle exists, the key of its voices. */
   readonly id: number
   readonly model: VehicleModel
-  /** Pose (m, rad) and velocity (m/s), world frame. */
+  /** Pose (m, rad), the elevation of its centre of mass (m a.s.l.) and velocity (m/s), world frame. */
   readonly x: number
   readonly y: number
+  readonly z: number
   readonly angle: number
   readonly vx: number
   readonly vy: number
-  /** This step's throttle, in [-1, 1]. */
-  readonly throttle: number
+  /** The engine's revs and load (0…1) as the sim's drivetrain turns them (`engineRevs`). */
+  readonly rpm: number
+  readonly load: number
+  /** Its wheels are on the ground: not in the air, nor on its side or roof. */
+  readonly wheelsDown: boolean
+  /** Its body touches the ground (`hullDown`): down on its belly, side or roof, it grinds along it while it slides. */
+  readonly hullDown: boolean
+  /** Its tyres sliding, from the `Skid` events since the last frame; none when no wheel slid. */
+  readonly skid?: Skidding
   /** Someone is at the wheel (AI traffic or the player), so the engine runs. */
   readonly running: boolean
   /** The player is at the wheel. */
@@ -66,17 +77,19 @@ export interface HeardPerson {
 export type Happening =
   | {
     readonly kind: "impact"
-    /** What the vehicle `car` hit: a wall, another vehicle (`other`), or a person (`other`). */
-    readonly hit: "wall" | "car" | "person"
-    /** Where: the contact point (a wall or a vehicle), or the person. */
+    /** What the vehicle `car` hit: a wall, another vehicle (`other`), a person (`other`), or the ground (`face`). */
+    readonly hit: "wall" | "car" | "person" | "ground"
+    /** Where: the contact point (a wall, a vehicle or the ground), or the person. */
     readonly x: number
     readonly y: number
-    /** Impact speed, m/s: speed lost into the wall, closing speed, or the car's speed. */
+    /** Impact speed, m/s: the closing speed at contact, or the car's speed. */
     readonly speed: number
-    /** Relative mass behind the hit (VEHICLES mass; the reduced mass for two vehicles). */
+    /** Mass behind the hit, t: the vehicle's, or the reduced mass of two vehicles. */
     readonly mass: number
     readonly car: number
     readonly other?: number
+    /** The face of the body that struck the ground (hit "ground"). */
+    readonly face?: "under" | "roof" | "side" | "front" | "rear"
     /** The vehicle `car`'s model and the zone of it the hit landed on; `otherBody`, the vehicle `other`'s (hit "car"). */
     readonly body: Body
     readonly otherBody?: Body
@@ -131,10 +144,10 @@ export interface Placement {
  * one live voice per key and fades it out on the first frame it is not held.
  */
 export type Continuous =
-  /** `speed`: forward m/s (negative reversing); `throttle` in [-1, 1]; `inside`: heard from the driver's seat. */
-  | { readonly kind: "engine"; readonly model: VehicleModel; readonly speed: number; readonly throttle: number; readonly inside: boolean }
-  /** Rolling noise, squeal or gravel crunch: `speed` m/s over the ground, `slip` sideways m/s. */
-  | { readonly kind: "tyres"; readonly speed: number; readonly slip: number; readonly surface: Surface; readonly heavy: boolean }
+  /** Revs `rpm` and `load` 0…1; `inside`: heard from the driver's seat; `variant` 0…1: which of its model's engines (0.5 the nominal one). */
+  | { readonly kind: "engine"; readonly model: VehicleModel; readonly rpm: number; readonly load: number; readonly inside: boolean; readonly variant: number }
+  /** Rolling noise, squeal or gravel crunch: `speed` m/s over the ground, `skid` 0…1 past the tyres' grip, sliding at `slip` m/s. */
+  | { readonly kind: "tyres"; readonly speed: number; readonly skid: number; readonly slip: number; readonly surface: Surface; readonly heavy: boolean }
   /** Grinding along a wall at `speed` m/s, on `material`. */
   | { readonly kind: "scrape"; readonly speed: number; readonly material: Material }
   /** A held horn. */
@@ -152,14 +165,16 @@ export type Continuous =
 
 /** One-shot sounds: played once, at a placement, possibly delayed (sound travelling, echoes). */
 export type OneShot =
-  /** A vehicle hitting something: closing `speed` m/s, reduced `mass` (Panda = 1), the `body` (the listener's car, else the
-   *  Impact's `car`: query order, not necessarily the striker), what it met, the `surface` debris lands on; `inside`: the
-   *  listener sits in `body` (heard from its cabin). */
+  /** A vehicle hitting something: closing `speed` m/s, `mass` t (the car's, or the reduced mass of two), the `body` (the listener's
+   *  car, else the Impact's `car`: query order, not necessarily the striker), what it met (a wall's material, the ground's, or
+   *  another vehicle), the `surface` debris lands on; `inside`: the listener sits in `body` (heard from its cabin). */
   | { readonly kind: "crash"; readonly speed: number; readonly mass: number; readonly body: Body;
       readonly against: { readonly kind: "wall"; readonly material: Material } | { readonly kind: "car"; readonly body: Body };
       readonly surface: Surface; readonly inside: boolean }
   /** A body hit by a vehicle. */
   | { readonly kind: "thud"; readonly speed: number }
+  /** The suspension bottoming out over a hump or a light landing, at `speed` m/s into its bump stops; `heavy`: the truck. */
+  | { readonly kind: "clunk"; readonly speed: number; readonly heavy: boolean }
   | { readonly kind: "door"; readonly model: VehicleModel; readonly open: boolean }
   /** Starter motor until the engine catches. */
   | { readonly kind: "ignition"; readonly model: VehicleModel }

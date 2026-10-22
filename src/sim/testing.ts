@@ -13,12 +13,12 @@ import { Ops, Random } from "@typeonce/ritmo-math"
 
 import { clearOf, wallsAlong } from "./body.ts"
 import {
-  Autopilot, bindings, CarInput, Down, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
+  Autopilot, bindings, CarInput, Chassis, Down, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
   type PoseValue, PrevPose, Route, Score, setup, Stolen, Traffic, update, Vehicle
 } from "./index.ts"
 import { graph } from "./map/index.ts"
 import { edgeIndex, endNode, facesForward, laneOf, lanePoint, laneSide, nextTrafficEdge, roadOf, type Step } from "./route.ts"
-import { type parkedCar, type pedestrian, trafficCar } from "./spawning.ts"
+import { type parkedCar, type pedestrian, rollingChassis, trafficCar } from "./spawning.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
 
@@ -26,7 +26,7 @@ import { VEHICLES, type VehicleModel } from "./vehicles.ts"
 export type Timeline = Keyboard.Timeline<typeof bindings>
 
 /** Everything a test asserts on, as plain data. */
-const World = Game.Inspector("Test/World", {
+export const World = Game.Inspector("Test/World", {
   queries: {
     vehicles: Game.Query({
       selection: {
@@ -34,6 +34,7 @@ const World = Game.Inspector("Test/World", {
         motion: Game.Query.read(Motion),
         vehicle: Game.Query.read(Vehicle),
         input: Game.Query.read(CarInput),
+        chassis: Game.Query.read(Chassis),
         traffic: Game.Query.optional(Traffic),
         stolen: Game.Query.optional(Stolen),
         route: Game.Query.optional(Route),
@@ -45,7 +46,7 @@ const World = Game.Inspector("Test/World", {
   resources: { score: Game.System.readResource(Score) }
 }, ({ queries, resources }) => ({
   vehicles: queries.vehicles.each().map(({ entity, data }) => ({
-    id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.vehicle.get(), input: data.input.get(), traffic: data.traffic.present,
+    id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.vehicle.get(), input: data.input.get(), chassis: data.chassis.get(), traffic: data.traffic.present,
     stolen: data.stolen.present, route: data.route.value(), pilot: data.pilot.value()
   })),
   peds: queries.peds.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), ...data.ped.get(), down: data.down.present })),
@@ -164,7 +165,8 @@ export const rolling = (model: VehicleModel, pose: PoseValue, speed: number, thr
     [Pose, pose],
     [PrevPose, pose],
     [Motion, { vx: Ops.cos(pose.angle) * speed, vy: Ops.sin(pose.angle) * speed, spin: 0 }],
-    [CarInput, { throttle, steer, handbrake: false }]
+    [CarInput, { throttle, steer, handbrake: false }],
+    [Chassis, rollingChassis(model, pose, speed)]
   )
 
 /** A traffic car on Via Cesare Battisti, eastbound, standing. */

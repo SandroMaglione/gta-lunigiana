@@ -1,81 +1,24 @@
 /**
- * What the map around the listener sounds like: the surface under a foot or a tyre, what a car
- * hit (the material of the drive wall at a contact point), the mix of forest, open ground and
- * village (the ambience beds), how enclosed a street is (the reverb send), forest along a path
- * (foliage loss), rock faces that echo, and the fixed places that make
- * sound: church bells, farm dogs, birds in the trees. Running water is in places/water.ts.
- * Off the roads everything reads the renderer's land-cover raster (`mapCover`, built once and
- * shared); the other structures are built on their first query.
+ * What the map around the listener sounds like: what a car hit (the material of the drive wall at
+ * a contact point), the mix of forest, open ground and village (the ambience beds), how enclosed a
+ * street is (the reverb send), forest along a path (foliage loss), rock faces that echo, and the
+ * fixed places that make sound: church bells, farm dogs, birds in the trees. Running water is in
+ * places/water.ts; the surface under a foot or a tyre is the sim's (`surfaceAt`). Off the roads
+ * everything reads the sim's land-cover raster (`mapCover`, built once and shared); the other
+ * structures are built on their first query.
  *
  * @module audio/places
  */
-import { coverName, mapCover, type Cover } from "../render/landcover.ts"
-import { staticGrid } from "../sim/collide.ts"
-import { type Building, buildingBoxes, buildingsIn, buildingStyleOf, districtAt, heightAt, MAP, type Road, treesIn, TRUNK, wallsNear } from "../sim/map/index.ts"
-import { hash01, segDist2 } from "../tools/geometry.ts"
+import { segDist2 } from "../sim/collide.ts"
+import { type Cover, coverAt, coverName, mapCover } from "../sim/map/cover.ts"
+import { type Building, buildingBoxes, buildingsIn, buildingStyleOf, districtAt, heightAt, MAP, treesIn, TRUNK, wallsNear } from "../sim/map/index.ts"
+import { hash01 } from "../tools/geometry.ts"
 import { delayOf, EAR_HEIGHT } from "./acoustics.ts"
-import type { Material, Surface } from "./types.ts"
+import type { Material } from "./types.ts"
 
 export { waterNear, type WaterHeard } from "./places/water.ts"
 
 const { cell, x0, y0 } = MAP.heightmap, COLS = MAP.heightmap.cols - 1, ROWS = MAP.heightmap.rows - 1
-
-/** The land cover of the 4 m cell under (x, y), clamped to the map. */
-const coverAt = (x: number, y: number): Cover => {
-  const i = Math.min(COLS - 1, Math.max(0, Math.floor((x - x0) / cell))), j = Math.min(ROWS - 1, Math.max(0, Math.floor((y - y0) / cell)))
-  return coverName(mapCover()[j * COLS + i]!)
-}
-
-/**
- * Off the road, by land cover, as the terrain is painted: green covers are grass (scrub's brush is leaves), grey ones hard
- * (loose stones are gravel; bare rock, quarry floors and village paving are stone).
- */
-const COVER_SURFACE = {
-  meadow: "grass", forest: "leaves", grassland: "grass", scrub: "leaves", sparse: "gravel", scree: "gravel", rock: "stone", quarry: "stone",
-  residential: "grass", farmland: "grass", farmyard: "dirt", vineyard: "grass", park: "grass", school: "grass", cemetery: "gravel",
-  pitch: "grass", parking: "asphalt", industrial: "asphalt", paved: "stone", platform: "asphalt", ruins: "stone", pebble: "gravel"
-} as const satisfies Record<Cover, Surface>
-
-/** The roads' OSM `surface` values; anything else is asphalt. */
-const ROAD_SURFACE: Partial<Record<string, Surface>> = {
-  asphalt: "asphalt", paved: "asphalt", concrete: "asphalt", cement: "asphalt",
-  cobblestone: "stone", sett: "stone", paving_stones: "stone", pebblestone: "stone", unhewn_cobblestone: "stone", stone: "stone",
-  gravel: "gravel", fine_gravel: "gravel", compacted: "gravel",
-  dirt: "dirt", ground: "dirt", earth: "dirt", unpaved: "dirt", mud: "dirt", grass: "dirt"
-}
-
-/** A foot or a wheel this far past a carriageway's edge is still on the road, m. */
-const VERGE = 0.5
-
-/** Every road segment (flat ax, ay, bx, by) with its road, gridded by its carriageway's box. */
-const indexRoads = () => {
-  const segs: Array<number> = [], road: Array<number> = []
-  MAP.roads.forEach(({ pts }, k) => {
-    for (let i = 0; i + 3 < pts.length; i += 2) {
-      segs.push(pts[i]!, pts[i + 1]!, pts[i + 2]!, pts[i + 3]!)
-      road.push(k)
-    }
-  })
-  const near = staticGrid(road.length, (i) => {
-    const reach = MAP.roads[road[i]!]!.w / 2 + VERGE
-    const ax = segs[4 * i]!, ay = segs[4 * i + 1]!, bx = segs[4 * i + 2]!, by = segs[4 * i + 3]!
-    return [Math.min(ax, bx) - reach, Math.min(ay, by) - reach, Math.max(ax, bx) + reach, Math.max(ay, by) + reach]
-  }, 32)
-  return { segs, road, near }
-}
-let roads: ReturnType<typeof indexRoads> | undefined
-
-/** What a foot or a tyre at (x, y) is on: the road whose carriageway it is deepest inside, else the land cover. */
-export const surfaceAt = (x: number, y: number): Surface => {
-  const { segs, road, near } = (roads ??= indexRoads())
-  let deepest = 0, on: Road | undefined
-  near(x, y, x, y, (i) => {
-    const r = MAP.roads[road[i]!]!
-    const depth = r.w / 2 + VERGE - Math.sqrt(segDist2(x, y, segs[4 * i]!, segs[4 * i + 1]!, segs[4 * i + 2]!, segs[4 * i + 3]!).d2)
-    if (depth >= deepest) [deepest, on] = [depth, r]
-  })
-  return on === undefined ? COVER_SURFACE[coverAt(x, y)] : (ROAD_SURFACE[on.surface] ?? "asphalt")
-}
 
 /** A building's walls by how they sound: greenhouses are glass, industrial buildings metal sheet, rubble stone and old buildings stone, the rest rendered masonry. */
 const buildingMaterial = (building: Building): Material => {

@@ -1,11 +1,12 @@
 /// <reference types="vite/client" />
 /**
  * Browser host (imported by `boot.ts` once the map is in): makes the streamed world and the pixel
- * view, makes the runtime with the live keyboard, the render registries and the audio director,
- * and drives everything from one FixedLoop: fixed sim steps, then once per animation frame the
- * render and audio schedules, the camera, world streaming, the frame and the HUD. While the full
- * map (M) is open, both are skipped and the sound is suspended: the game is paused. The build runs
- * in steps the title card names; the card says "Press any key" once the first frame is drawn.
+ * view, makes the runtime with the live keyboard, the render registries, the tyre marks and smoke
+ * and the audio director, and drives everything from one FixedLoop: fixed sim steps, then once per
+ * animation frame the render and audio schedules, the camera, world streaming, the frame and the
+ * HUD. While the full map (M) is open, both are skipped and the sound is suspended: the game is
+ * paused. The build runs in steps the title card names; the card says "Press any key" once the
+ * first frame is drawn.
  *
  * @module main
  */
@@ -23,11 +24,11 @@ import type { Shots, Voices } from "./audio/types.ts"
 import { makeHud, pausable, toggleMapOnKey } from "./hud/hud.ts"
 import { step, titleReady } from "./hud/title.ts"
 import { groundY, terrainY } from "./render/ground.ts"
-import { blend, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
-import { mapCover } from "./render/landcover.ts"
+import { blend, Effects, makeEffects, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
 import { PALETTE } from "./render/palette.ts"
 import { followSun, PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
 import { World } from "./render/world.ts"
+import { mapCover } from "./sim/map/cover.ts"
 import { heightAt } from "./sim/map/index.ts"
 import { bindings, Game, KeyboardInput, makeRuntime, PlayerView, setup, STEP, update } from "./sim/index.ts"
 import { LOOK_AHEAD } from "./sim/view.ts"
@@ -54,7 +55,7 @@ sun.shadow.mapSize.set(2048, 2048)
 sun.shadow.normalBias = 0.05 // depth bias and range: followSun
 scene.add(sun, sun.target)
 await step(document, "Painting land cover", 0.8)
-mapCover() // built once, shared by the world and the sound
+mapCover() // built once, shared by the world, the tyres' grip and the sound
 await step(document, "Planting trees", 0.86)
 const world = new World(scene)
 await step(document, "Waking the valley", 0.92)
@@ -82,6 +83,7 @@ dpr.addEventListener("change", onDpr, { once: true })
 const keyboard = Keyboard.actions(window, bindings)
 const renderClock = { alpha: 0 }
 const { people, vehicles } = makeRegistries(scene)
+const effects = makeEffects(scene)
 // The speaker starts its AudioContext on the first key or click from here on: pressed while loading, or the one that dismisses the title card.
 const speaker = makeSpeaker(window, { ...VEHICLE_VOICES, ...WORLD_VOICES } satisfies Voices, { ...VEHICLE_SHOTS, ...WORLD_SHOTS } satisfies Shots)
 const director = makeDirector(speaker)
@@ -93,6 +95,7 @@ const made = makeRuntime({
     Game.Runtime.service(People, people),
     Game.Runtime.service(Vehicles, vehicles),
     Game.Runtime.service(RenderClock, renderClock),
+    Game.Runtime.service(Effects, effects),
     Game.Runtime.service(Audio, director)
   ),
   ...(import.meta.env.DEV ? { debug: { hostClock: BrowserHostClock.make(window) } } : {})
@@ -101,7 +104,7 @@ if (!made.ok) throw new Error(`runtime: ${JSON.stringify(made.error)}`)
 const runtime = made.value
 const ready = runtime.tick(setup)
 if (!ready.ok) throw new Error(`setup: ${JSON.stringify(ready.error)}`)
-// Before the first update: the audio system starts reading the Impact and Honk events from here on.
+// Before the first update: the audio system starts reading the Impact, Honk and Skid events from here on.
 const listening = runtime.tick(audio)
 if (!listening.ok) throw new Error(`audio: ${JSON.stringify(listening.error)}`)
 await step(document, "Building the first view", 0.97)
@@ -142,7 +145,8 @@ const draw = (frame: FixedLoop.Frame): void => {
 }
 
 // The first frame here, shader compiles included: one that throws lands on the card (boot.ts),
-// where in the loop's animation frame it would stop the loop behind "Press any key".
+// where in the loop's animation frame it would stop the loop behind "Press any key". It also
+// starts the render schedule reading Skid events before the first update.
 draw({ elapsedSeconds: 0, fixedSteps: 0, alpha: 0, droppedSeconds: 0 })
 // Keys pressed while loading arrive during the steps: drop their presses (held keys stay held).
 keyboard.snapshot()
@@ -167,7 +171,7 @@ titleReady(window)
 // No HMR hooks: nothing accepts updates, so Vite reloads the page on every edit.
 if (import.meta.env.DEV) {
   Object.assign(window, {
-    gta: { renderer, view, scene, world, heightAt, player: () => runtime.inspect(PlayerView), audio: { speaker, level: speaker.level, context: speaker.context } }
+    gta: { renderer, view, scene, world, effects, heightAt, player: () => runtime.inspect(PlayerView), audio: { speaker, level: speaker.level, context: speaker.context } }
   })
   const debug = runtime.debug
   if (debug !== undefined) {

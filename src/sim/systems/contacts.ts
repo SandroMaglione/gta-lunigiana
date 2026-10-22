@@ -42,6 +42,7 @@ interface Mover {
 }
 interface Car extends Mover {
   readonly model: VehicleModel
+  /** Tonnes, as Impact carries it. */
   readonly mass: number
   readonly r: number
   readonly reach: number
@@ -101,7 +102,7 @@ export const Contacts = Game.System("Lunigiana/Contacts", {
   const cars = queries.vehicles.each().map((match) => {
     const pose = match.data.pose.get(), motion = match.data.motion.get()
     const { model } = match.data.vehicle.get()
-    const car: Car = { model, mass: VEHICLES[model].mass, r: carRadius(model), reach: VEHICLES[model].length / 2, x: pose.x, y: pose.y, angle: pose.angle, vx: motion.vx, vy: motion.vy, moved: false }
+    const car: Car = { model, mass: VEHICLES[model].mass / 1000, r: carRadius(model), reach: VEHICLES[model].length / 2, x: pose.x, y: pose.y, angle: pose.angle, vx: motion.vx, vy: motion.vy, moved: false }
     return { match, car }
   })
   const circlesOf = (car: Car) => carCircles(car.model, car.angle).map((o) => ({ x: car.x + o.x, y: car.y + o.y }))

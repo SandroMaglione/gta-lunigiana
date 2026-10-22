@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import type { VehicleModel } from "../../../sim/vehicles.ts"
+import { VEHICLE_MODELS, VEHICLES, type VehicleModel } from "../../../sim/vehicles.ts"
 import type { Material, Surface, Zone } from "../../types.ts"
 import { BANDS, between } from "./dsp.ts"
-import { type Crash, hitOf } from "./hit.ts"
+import { type Crash, crushSpeeds, hitOf } from "./hit.ts"
 import { crashQuiet } from "./index.ts"
-import { breakage, tempered } from "./parts.ts"
+import { aftermath, breakage, tempered } from "./parts.ts"
 import { partials as longPartials, renderCrash } from "./render.ts"
 import { bandEnergy, centroidOf, type Features, features, layer, partials } from "./testing.ts"
 import { land } from "./textures.ts"
@@ -25,7 +25,6 @@ const seeded = (seed: number) => () => {
 
 interface Spec {
   readonly speed: number
-  readonly mass?: number
   readonly model?: VehicleModel
   readonly zone?: Zone
   /** A wall's material, or the model of the car hit (on its rear). */
@@ -33,33 +32,41 @@ interface Spec {
   readonly surface?: Surface
   readonly inside?: boolean
 }
-const MODELS: ReadonlyArray<string> = ["panda", "ape", "truck", "carabinieri"]
-const crash = ({ speed, mass = 1, model = "panda", zone = "front", against = "masonry", surface = "asphalt", inside = false }: Spec): Crash => ({
-  kind: "crash", speed, mass, body: { model, zone }, surface, inside,
-  against: MODELS.includes(against) ? { kind: "car", body: { model: against as VehicleModel, zone: "rear" } } : { kind: "wall", material: against as Material }
+const isModel = (name: string): name is VehicleModel => (VEHICLE_MODELS as ReadonlyArray<string>).includes(name)
+/** `model`'s mass as the sim reports it, t. */
+const tonnes = (model: VehicleModel) => VEHICLES[model].mass / 1000
+/** The crash `spec` describes, with the sim's mass behind it: the car's against a wall, the reduced mass of two cars. */
+const crash = ({ speed, model = "panda", zone = "front", against = "masonry", surface = "asphalt", inside = false }: Spec): Crash => ({
+  kind: "crash", speed, body: { model, zone }, surface, inside,
+  mass: isModel(against) ? 1 / (1 / tonnes(model) + 1 / tonnes(against)) : tonnes(model),
+  against: isModel(against) ? { kind: "car", body: { model: against, zone: "rear" } } : { kind: "wall", material: against }
 })
 
-/** The design's matrix: a Panda into a house wall from a bump to a hard hit, car–car pairs at their reduced mass, each other target, a side hit, the cabin, a wreck. */
+/** The design's matrix: a Panda into a house wall from a bump to a hard hit, car–car pairs, each other target, a side hit, the cabin, a wreck. */
 const CASES = {
   bump: { speed: 2 },
   masonry5: { speed: 5 },
   masonry14: { speed: 14 },
   masonry20: { speed: 20 },
-  pandas: { speed: 10, mass: 0.5, against: "panda" },
-  truck: { speed: 12, mass: 0.8, against: "truck" },
-  stone: { speed: 8, mass: 0.6, model: "ape", against: "stone" },
-  rail: { speed: 12, mass: 1.3, model: "carabinieri", against: "rail" },
+  pandas: { speed: 10, against: "panda" },
+  truck: { speed: 12, against: "truck" },
+  stone: { speed: 8, model: "ape", against: "stone" },
+  rail: { speed: 12, model: "carabinieri", against: "rail" },
   tree: { speed: 10, against: "tree" },
   earth: { speed: 8, against: "earth", surface: "grass" },
   side: { speed: 12, zone: "side" },
   inside: { speed: 14, inside: true },
-  wreck: { speed: 40, mass: 1.3, model: "carabinieri" },
+  wreck: { speed: 40, model: "carabinieri" },
   sheet: { speed: 12, against: "sheet" },
   masonry12: { speed: 12 },
   // The cabin with no airbag to fill its lows: a side hit, a rear hit, the Ape.
   insideSide: { speed: 12, zone: "side", inside: true },
   insideRear: { speed: 8, zone: "rear", inside: true },
-  insideApe: { speed: 14, mass: 0.6, model: "ape", inside: true }
+  insideApe: { speed: 14, model: "ape", inside: true },
+  // Bottoming out after a jump, and the laden truck: a nudge and a hard hit.
+  landing: { speed: 6, zone: "under" },
+  truckNudge: { speed: 2, model: "truck" },
+  truck12: { speed: 12, model: "truck" }
 } as const satisfies Record<string, Spec>
 type Case = keyof typeof CASES
 
@@ -130,9 +137,9 @@ test("one level law, ½·μ·v²·(1 − e²): +6.5 dB per doubling of speed, Pa
   const quiet = (spec: Spec) => crashQuiet(crash(spec))
   assert.ok(Math.abs(quiet({ speed: 15 })) < 0.01)
   for (const v of [2, 4, 8]) within(quiet({ speed: v }) - quiet({ speed: 2 * v }), 5.9, 7, `${v} → ${2 * v} m/s`)
-  within(quiet({ speed: 10, mass: 0.5, against: "panda" }) - quiet({ speed: 10 }), 2.9, 3.1, "Panda–Panda")
+  within(quiet({ speed: 10, against: "panda" }) - quiet({ speed: 10 }), 2.9, 3.1, "Panda–Panda")
   assert.equal(quiet({ speed: 30 }), -6)
-  assert.equal(quiet({ speed: 60, mass: 1.3, model: "carabinieri" }), -6)
+  assert.equal(quiet({ speed: 60, model: "carabinieri" }), -6)
   // The car crushes 30 % of its energy into an earth bank, 60 % into a tree: quieter by that much.
   within(quiet({ speed: 10, against: "earth" }) - quiet({ speed: 10 }), 5, 5.5, "earth")
   within(quiet({ speed: 10, against: "tree" }) - quiet({ speed: 10 }), 2, 2.5, "tree")
@@ -142,14 +149,45 @@ test("one level law, ½·μ·v²·(1 − e²): +6.5 dB per doubling of speed, Pa
   // Regression: a bump played 3–5 dB under the law and a guard rail's ring 2–3 dB over it, so masking culled them wrongly. Peaks re the reference's, 10 seeds.
   const peakOf = (spec: Spec) => median(SEEDS.slice(0, 10).map((seed) => renderCrash(crash(spec), RATE, seeded(seed)).reduce((p, v) => Math.max(p, Math.abs(v)), 0)))
   const reference = peakOf({ speed: 15 })
-  for (const spec of [{ speed: 2 }, { speed: 5 }, { speed: 2, against: "rail" }, { speed: 15, against: "rail" }, { speed: 15, against: "sheet" }, { speed: 10, mass: 0.5, against: "panda" }] as const) {
+  for (const spec of [{ speed: 2 }, { speed: 5 }, { speed: 2, against: "rail" }, { speed: 15, against: "rail" }, { speed: 15, against: "sheet" }, { speed: 10, against: "panda" }, { speed: 2, model: "truck" }] as const) {
     within(20 * Math.log10(peakOf(spec) / reference) + quiet(spec), -2, 2, `${JSON.stringify(spec)} peak re the law, dB`)
   }
 })
 
+// Regression: the sim's masses became kilograms and tonnes; at the full 10·log10 μ a 26 t truck's nudge played as a Panda's 15 m/s crash.
+test("a laden truck crashes loud and heavy, but its 2 m/s nudge into a house plays like a Panda's 4 m/s bump and breaks nothing", () => {
+  const quiet = (spec: Spec) => crashQuiet(crash(spec))
+  within(quiet({ speed: 2, model: "truck" }) - quiet({ speed: 4 }), -1, 1, "truck at 2 m/s re a Panda at 4")
+  within(quiet({ speed: 8, model: "truck" }) - quiet({ speed: 8 }), -7.5, -6.5, "truck re a Panda at 8 m/s")
+  assert.equal(quiet({ speed: 14, model: "truck" }), -6)
+  // Each body's barrier-equivalent speed, what its parts break by: the truck's own into a wall (under the 3 m/s of the first
+  // part to go), a Panda against the truck nearly its own, the truck hit by it barely any (it hardly moves).
+  const [nudge] = crushSpeeds(crash({ speed: 2, model: "truck" }))
+  within(nudge!, 1.99, 2.01, "the truck's nudge, m/s")
+  const [panda, truck] = crushSpeeds(crash({ speed: 12, against: "truck" }))
+  within(panda!, 9.5, 11, "the Panda against the truck, m/s")
+  within(truck!, 1, 1.4, "the truck hit by the Panda, m/s")
+})
+
+test("bottoming out after a jump breaks no glass, lamp or airbag: nothing faces the ground", () => {
+  const broken = layer(RATE, 2.5, seeded(2), (mix) => {
+    const hit = hitOf(crash({ speed: 15, zone: "under" }), seeded(4))
+    breakage(mix, hit, hit.bodies[0]!)
+  })
+  assert.ok(broken.every((v) => v === 0))
+  // Nor the Giulia's light bar: its landing settles and rattles like a body with no parts of its own (the Ape's quirks are none).
+  const settling = (model: VehicleModel) => layer(RATE, 2.5, seeded(2), (mix) => {
+    const hit = hitOf(crash({ speed: 15, model: "carabinieri", zone: "under" }), seeded(4))
+    aftermath(mix, hit, { ...hit.bodies[0]!, model })
+  })
+  const giulia = settling("carabinieri"), plain = settling("ape")
+  const off = giulia.reduce((most, v, i) => Math.max(most, Math.abs(v - plain[i]!)), 0)
+  assert.equal(off, 0, `the landing differs by up to ${off}`)
+})
+
 // Regression: every ramp ended at the level cap (about 30 m/s), so a 42 or 60 m/s wreck rendered like a 30 m/s one.
 test("past the level cap a crash grows in time: a longer tail and block, at most 3 sub-hits, another sound at 60 m/s than at 42", () => {
-  const wreck = (speed: number, zone: Zone = "front") => crash({ speed, mass: 1.3, model: "carabinieri", zone })
+  const wreck = (speed: number, zone: Zone = "front") => crash({ speed, model: "carabinieri", zone })
   const tails = [30, 42, 60].map((v) => hitOf(wreck(v), seeded(1)).tail)
   assert.ok(tails[0]! < tails[1]! && tails[1]! < tails[2]!, `${tails}`)
   const blocks = (v: number) => median(SEEDS.map((seed) => hitOf(wreck(v), seeded(seed)).block))

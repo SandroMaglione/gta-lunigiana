@@ -4,7 +4,7 @@ import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 import { clearOf, vehicleInReach, walkBy, wallsAlong } from "../body.ts"
 import { facesForward, laneOf, roadOf, walkIndex, walkSide } from "../route.ts"
 import {
-  Autopilot, CarInput, Down, Driving, Game, Input, Motion, Pedestrian, Person, Player, Pose, type PoseValue, PrevPose, Rng, Route, Score, Stolen,
+  Autopilot, CarInput, Chassis, Down, Driving, Game, Input, Motion, Pedestrian, Person, Player, Pose, type PoseValue, PrevPose, Rng, Route, Score, Stolen,
   Time, Traffic, Vehicle
 } from "../schema.ts"
 import { pedestrian, randomLook } from "../spawning.ts"
@@ -51,6 +51,7 @@ export const EnterExit = Game.System("Lunigiana/EnterExit", {
     vehicles: Game.Query({
       selection: {
         pose: Game.Query.read(Pose),
+        chassis: Game.Query.read(Chassis),
         vehicle: Game.Query.read(Vehicle),
         input: Game.Query.write(CarInput),
         traffic: Game.Query.optional(Traffic),
@@ -87,7 +88,7 @@ export const EnterExit = Game.System("Lunigiana/EnterExit", {
       commands.remove(entity, Driving)
       continue
     }
-    const near = vehicleInReach(data.pose.get(), queries.vehicles.each(), (v) => ({ model: v.data.vehicle.get().model, pose: v.data.pose.get() }))
+    const near = vehicleInReach(data.pose.get(), queries.vehicles.each(), (v) => ({ model: v.data.vehicle.get().model, pose: v.data.pose.get(), chassis: v.data.chassis.get() }))
     if (near === undefined) continue
     commands.insert(entity, [Driving, { vehicle: Game.Entity.handle(near.entity, Vehicle) }])
     data.motion.set({ vx: 0, vy: 0, spin: 0 })

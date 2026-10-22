@@ -196,9 +196,20 @@ of a 5 × 5 m square of samples. This grid is carved and flattened by the next s
 | unclassified, residential | 15% | 20 m | 2 |
 | service, track | 20% | 20 m | 3 |
 
-- Each profile is written into the grid: the core (max(w/2 + 0.5, 3) m) takes the road
-  elevation, and the next 8 m blend back to the terrain. At junctions the lower rank keeps the
-  cell, so tertiary beats rail and rail beats the rest.
+- Each profile is written into the grid: the core (max(w/2 + 0.3 + 2, 3) m, half a 4 m cell past
+  the carriageway's edge) takes the road elevation, and the next 8 m blend back to the terrain. A
+  core that stopped at w/2 + 0.5 left the outer node of most cells the carriageway's edge crossed
+  on the hillside, so the drawn road leaned across with it: under a Panda in its lane more than
+  10% at 3.5% of 40,000 sampled positions and more than 20% at 1.2%, enough to roll an Ape over.
+  With the wider core those shares are 1.1% and 0.5%, mostly at junctions and road ends. A core a
+  whole cell wider (0.9%, 0.4%) cut road banks steep enough to paint as rock 2.5% more often (0.9%
+  with this one), and a bank steeper than bare rock (50°) echoes: 17 of the 23 asphalt points of
+  a 25 m grid over Monzone hear one (the spawn an echo 312 m away, 1.8 s, off a bank beside a
+  road). The wider core also buries more of the narrow streams (under 4 m wide, which
+  roads may write over): with a core a cell wider, 664 m of stream ran more than 1 m under the
+  terrain against 474 m before, and houses on a bank above a road lost up to 8 m of base (above
+  the SR445 near (50, −290)). At junctions the lower rank keeps the cell, so tertiary beats rail and
+  rail beats the rest.
 - Grid nodes inside the wider streams (w ≥ 4 m) are protected: no road writes them. Bridges and
   tunnels write nothing. Paths and steps are not profiled.
 - Rail: level crossings meet the road at its natural level. A road under a rail bridge (or in a
@@ -235,6 +246,7 @@ follow slopes, not single-cell bumps.
 | `guard_rail` barriers | no | yes |
 | Map bounds | yes | yes |
 | Road-exit caps (4 m inside, where drivable roads leave the area) | no | yes |
+| Bridge parapets (w/2 + 0.25 m each side of a drivable bridge's deck, where `lines.ts` draws them; open where any other road, tunnels included, crosses under, joins or carries on) | no | yes |
 
 - Road buffers are padded by half a cell plus the simplification tolerance, so no traced wall
   comes within w/2 of a centreline. The carved banks of the wider streams skip the slope test.
@@ -377,6 +389,17 @@ the built map. It writes `.research/map-preview.png` by default.
   provincial roads (90th percentile), but the steep lanes of the hill villages are steeper than
   the 15% class limit and are fitted up to 3 m off the terrain there. Bridges come from the OSM
   tags: the LiDAR terrain has no decks.
+- **Junction profiles disagree.** Each road's profile is a line, flat across its ribbon, so where
+  two roads overlap their surfaces differ: by more than 0.15 m at 16% of the overlapping points
+  and up to 2.9 m (measured over 6,000 of them). The ground the wheels and feet stand on
+  (`groundZ`) blends the overlapping surfaces, so it stays continuous, while each ribbon is drawn
+  at its own profile: under the highest drawn ribbon a wheel sits more than 0.3 m low at about 2%
+  of the points inside two or more carriageways, up to about 2.7 m (a residential lane over the
+  Via di Ugliancaldo near (4188, 1477)). Tyre marks lie on the highest ribbon within 3 m over the
+  wheel (`drawnZ`), so one in a tunnel stays on its floor, not on the hill above. A bridge
+  that runs into a tunnel through a stub of at-grade road over a river bank (the 3.4 m bridge at
+  Gragnola, OSM 140780476) has no wall on the stub's sides, so a car can drive off it into the
+  river.
 - **Paths and steps follow the terrain.** They can be very steep (the summary prints the worst
   grade per class). Footways and pedestrian lanes are paths, so the HUD does not name them (Via
   Buca in Equi Terme).

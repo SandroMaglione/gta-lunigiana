@@ -4,16 +4,18 @@
  * context with an OfflineAudioContext and normalised; playing one costs a buffer source and a gain.
  *
  * - `thud`: a vehicle hitting a person, kept tasteful: a low thump and a cloth swish, no crunch.
+ * - `clunk`: the suspension bottoming out over a hump or on a light landing: the bump stops' thump,
+ *   a steel clunk, loose trim ticking.
  * - `door`: per model open (two latch clicks, the seal) and close (thump, latch, panel ring).
  * - `ignition`: the starter whirring with a dip at every compression, then the engine catching:
  *   the real engine synth flaring and settling, fading as the running engine voice takes over.
  *
  * @module audio/synth/impacts
  */
-import { VEHICLE_MODELS, type VehicleModel } from "../../sim/vehicles.ts"
+import { VEHICLE_MODELS, VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
 import { bufferOf, loop } from "../buffers.ts"
 import type { Kit, OneShot, Shot } from "../types.ts"
-import { engine, ENGINES } from "./engine.ts"
+import { engine, timbre } from "./engine.ts"
 import { bake, jitter, normalise, perContext, pick, playBuffer, strike } from "./graph.ts"
 
 const VARIANTS = 3
@@ -51,6 +53,42 @@ export const thud: Shot<Extract<OneShot, { readonly kind: "thud" }>> = {
   play: (io, sound, when) => {
     const variants = thuds.get(io.ctx)
     return variants ? playBuffer(io, pick(variants), when, jitter(0.1), Math.max(0.15, Math.min(1, sound.speed / 12))) : when
+  }
+}
+
+/** An underbody hit slower than this (m/s) is the suspension bottoming out, taken by the bump stops: a clunk, not a crash. */
+export const BOTTOMED = 5
+
+/** The clunk's level re its nominal peak at `BOTTOMED`: 6 dB per doubling of speed (its amplitude ∝ v), at least 0.2. */
+const clunkGain = (speed: number): number => Math.max(0.2, Math.min(1, speed / BOTTOMED))
+
+/** How far (dB) a clunk at `speed` plays under its nominal peak, so masking counts the level played. */
+export const clunkQuiet = (speed: number): number => -20 * Math.log10(clunkGain(speed))
+
+/** The bump stops' rubber thump (a heavy truck's lower), the suspension's steel clunking once, and the body's loose trim ticking. */
+const renderClunk = (rate: number, kit: Kit, heavy: boolean) => bake(rate, 0.35, (ctx) => {
+  const out = ctx.destination, low = heavy ? 0.65 : 1
+  strike(ctx, sweep(ctx, 110 * low * jitter(0.1), 55 * low, 0.07), out, 0, 0.9, 0.035)
+  strike(ctx, filtered(ctx, kit.brown, { type: "lowpass", frequency: 300 * low }), out, 0, 0.5, 0.02)
+  for (const hz of [330, 760]) {
+    const ring = new OscillatorNode(ctx, { frequency: hz * low * jitter(0.15) })
+    ring.start()
+    strike(ctx, ring, out, 0.006, 0.18, 0.02)
+  }
+  strike(ctx, filtered(ctx, kit.white, { type: "bandpass", frequency: 1800, Q: 3 }), out, 0.01 + 0.02 * Math.random(), 0.12, 0.005)
+})
+
+const clunks = perContext(async (ctx, kit) => {
+  const variants = (heavy: boolean) => Promise.all(Array.from({ length: VARIANTS }, () => renderClunk(ctx.sampleRate, kit, heavy).then(peaking(ctx, 0.5))))
+  return { light: await variants(false), heavy: await variants(true) }
+})
+
+/** The suspension bottoming out: full level from `BOTTOMED`. */
+export const clunk: Shot<Extract<OneShot, { readonly kind: "clunk" }>> = {
+  prepare: clunks.prepare,
+  play: (io, sound, when) => {
+    const set = clunks.get(io.ctx)
+    return set ? playBuffer(io, pick(sound.heavy ? set.heavy : set.light), when, jitter(0.06), clunkGain(sound.speed)) : when
   }
 }
 
@@ -127,7 +165,7 @@ const STARTER = 0.15
 const CATCH = 0.9
 
 const renderIgnition = (rate: number, kit: Kit, model: VehicleModel) => bake(rate, CRANK[model].seconds + CATCH, (ctx) => {
-  const out = ctx.destination, crank = CRANK[model], spec = ENGINES[model]
+  const out = ctx.destination, crank = CRANK[model], spec = timbre(model), { gearbox } = VEHICLES[model]
   const starter = new GainNode(ctx, { gain: 0 })
   starter.gain.setValueAtTime(0, 0)
   starter.gain.linearRampToValueAtTime(STARTER, 0.02)
@@ -145,15 +183,15 @@ const renderIgnition = (rate: number, kit: Kit, model: VehicleModel) => bake(rat
   motor.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 900, Q: 1 })).connect(whine).connect(starter)
   lump.connect(lumps).connect(starter)
   for (const source of [motor, lump, compression]) source.start()
-  // The catch: the engine flares on a blip of throttle and settles toward idle.
+  // The catch: the engine flares on a blip of throttle (70 % of the way to its launch revs, at 70 % load) and settles toward idle.
   const cents = new ConstantSourceNode(ctx, { offset: 0 }), caught = new GainNode(ctx)
   caught.gain.setTargetAtTime(0, crank.seconds + CATCH * 0.55, 0.12)
   caught.connect(out)
   cents.start()
   const running = engine({ ctx, out: caught, cents, kit })
   for (let t = crank.seconds; t < crank.seconds + CATCH; t += 1 / 60) {
-    const since = t - crank.seconds
-    running.update({ kind: "engine", model, speed: 0, throttle: since < 0.12 ? 0.7 : 0.7 * Math.exp(-(since - 0.12) / 0.25), inside: false }, t)
+    const since = t - crank.seconds, blip = since < 0.12 ? 0.7 : 0.7 * Math.exp(-(since - 0.12) / 0.25)
+    running.update({ kind: "engine", model, rpm: spec.idle + blip * (gearbox.launch - spec.idle), load: blip, inside: false, variant: 0.5 }, t)
   }
 })
 

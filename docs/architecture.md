@@ -42,7 +42,7 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 | 8 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
 | 9 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
 | 10 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
-| 11 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves from its `CarInput`; wall hits are `Impact` events |
+| 11 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
 | 12 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
 | 13 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
 | 14 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
@@ -66,6 +66,7 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Down` | knocked-down people | step at which they get up |
 | `Vehicle` | vehicles | model and paint colour (immutable) |
 | `CarInput` | vehicles | throttle, steer, handbrake for this step |
+| `Chassis` | vehicles | centre-of-mass elevation and vertical speed, pitch and roll with their rates, road-wheel steering angle, gear, step the current shift ends |
 | `Traffic` | AI vehicles | tag |
 | `Route` | traffic, pedestrians | current graph edge, direction, lateral offset |
 | `Autopilot` | traffic | next edge, stuck counter, reverse end step, unstick tries |
@@ -73,24 +74,33 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Driving` | the player | handle of the vehicle being driven |
 
 `Schema.requires` enforces the bundles: a `Player` has a pose, previous pose, motion and look; a
-`Vehicle` has a pose, previous pose, motion and `CarInput`; `Traffic` also needs `Route` and
-`Autopilot`.
+`Vehicle` has a pose, previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs
+`Route` and `Autopilot`. Spawns put a vehicle on its springs at rest on the ground (`settle` in
+`src/sim/chassis.ts`), in the gear for its speed. No save is ever persisted, so the new
+`Chassis` needs no snapshot migration.
 
 Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`) and `View` (`turns`, the net quarter turns
 of the camera) are saved. `Input` is transient: it is
 rebuilt every step and never saved.
 
-Events are transient too. `Impact` (a vehicle hit a wall, another vehicle or a person: where, which
-is the contact point for a wall or a vehicle, how hard, with how much mass) and `Honk` (an AI driver
-held up sounds the horn) carry moments that leave no trace in the components. `VehiclePhysics`,
-`Contacts` and `TrafficAI` emit them; only the audio schedule reads them
-([audio.md](audio.md#data-flow)). Snapshots hold no events, and emitting them changes neither the
-determinism nor the saves test.
+Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person or the ground:
+where, which is the contact point for a wall, a vehicle or the ground, how hard, with how much mass
+in tonnes, and for the ground which face of the body struck), `Skid` (a tyre slid this step: where,
+how fast, how far past its grip, on what surface) and `Honk` (an AI driver held up sounds the horn)
+carry moments that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI`
+emit them; the audio schedule reads all three ([audio.md](audio.md#data-flow)) and the render
+schedule reads `Skid` (tyre marks and smoke). Snapshots hold no events, and emitting them changes
+neither the determinism nor the saves test.
 
 Static data is module content, not state. `MAP` and `graph` (`src/sim/map/index.ts`), the wall,
-tree, building and edge lookups, and the per-model lane tables in `src/sim/route.ts` are built once
-at load and never change, so they are safe to share between runtimes. The lookups are compact
-static grids (`staticGrid` in `src/sim/collide.ts`, item indices packed into one `Int32Array`):
+tree, building and edge lookups, the per-model lane tables in `src/sim/route.ts` and the per-model
+rigs in `src/sim/chassis.ts` (static wheel loads, springs, inertias, steering lock, tipping
+threshold) are built once at load and never change, so they are safe to share between runtimes.
+The land-cover raster (`mapCover` in `src/sim/map/cover.ts`, ≈ 105 ms and 4.9 MB) and the road
+index of `surfaceAt` (`src/sim/map/surface.ts`) are built on first use: pure functions of `MAP`,
+never written after; `main.ts` builds the raster in its "Painting land cover" loading step, so
+the first physics step finds it ready. The lookups are compact static grids (`staticGrid` in
+`src/sim/collide.ts`, item indices packed into one `Int32Array`):
 
 - `wallsNear` indexes the walls straight from the decoded flat arrays and the trees as points,
   making each trunk's square (`pushTrunk` in `src/sim/map/kinds.ts`) only when a query reaches it.
@@ -102,10 +112,17 @@ static grids (`staticGrid` in `src/sim/collide.ts`, item indices packed into one
   birds) share them.
 - `edgeIndex`, `trafficIndex` and `walkIndex` (`src/sim/route.ts`) answer nearest-edge and
   spawn-band lookups without scanning the whole graph.
+- `groundZ` (`src/sim/map/ground.ts`) is where every wheel, foot, sound source and drawn actor
+  stands, in m a.s.l.: the terrain as its mesh is drawn (each 4 m cell split along its SW–NE
+  diagonal), at-grade roads `ROAD_LIFT` above their profile (blended where several overlap, so a
+  junction's ground stays continuous where their profiles disagree), and bridge decks and tunnels
+  kept to the level nearest the caller's previous height. Road segments are bucketed in 16 m
+  cells at load. The renderer converts it to render y (`src/render/ground.ts`).
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
-streamed world's chunks, the HUD's DOM, and the audio context, live voices and the director's
-memory of each sound source (pruned as sources go; see [audio.md](audio.md#where-state-lives)).
+streamed world's chunks, the tyre marks and smoke, the HUD's DOM, and the audio context, live
+voices and the director's memory of each sound source (pruned as sources go; see
+[audio.md](audio.md#where-state-lives)).
 
 ## Input
 
@@ -165,9 +182,10 @@ Measured with the production build in headless Chrome on an M4 Pro, 1280×720:
 ## Host loop
 
 `src/main.ts` drives everything from one `FixedLoop`: 60 Hz steps, at most 5 steps per frame, and
-frames clamped to 0.25 s. Before the loop starts it ticks `setup`, then the `audio` schedule once:
-a system reads the events published since its own last run, so a reader that has never run would
-miss the first steps' `Impact` and `Honk` events. Each animation frame it:
+frames clamped to 0.25 s. Before the loop starts it ticks `setup`, then the `audio` schedule once,
+and draws the first frame (the `render` schedule's first run): a system reads the events published
+since its own last run, so a reader that has never run would miss the first steps' `Impact`,
+`Honk` and `Skid` events. Each animation frame it:
 
 1. writes the loop's `alpha` (fraction of a step since the last one) into `RenderClock`;
 2. ticks the `render` and `audio` schedules (`runtime.tick(render, audio)`);
@@ -186,23 +204,64 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
   hidden; a knocked-down person lies flat.
 - `MarkDriven` shows the x-ray silhouette (drawn only where the world hides the actor) on the
   player's car and no other vehicle. `SyncPeople` shows it on the player's figure.
-- `PlacePeople` and `PlaceVehicles` (`RenderSync.interpolate`) blend `PrevPose` → `Pose` at the
-  render alpha and stand nodes on the ground or road under them (`groundY` in
-  `src/render/ground.ts`). Vehicles pitch to the slope; people swap between three walk frames.
+- `PlacePeople` (`RenderSync.interpolate`) blends `PrevPose` → `Pose` at the render alpha and
+  stands each person on the ground or road under them (`groundY` in `src/render/ground.ts`, kept
+  to the level they were on); people swap between three walk frames.
+- `PlaceVehicles` puts each vehicle's node at its centre of mass from the sim, with no ground
+  lookup of its own: x and y blended `PrevPose` → `Pose`, and the `Chassis` height, pitch and
+  roll stepped back from the current step along their rates (`vz`, `pitchRate`, `rollRate`) by
+  (1 − alpha) of a step: close to the previous step's values (within a few cm and about 1° as a
+  car lands from a jump, since the physics moves them in four substeps), with no previous copy
+  saved. A heading more than a quarter turn on from `PrevPose` is a tumble's angles folding
+  (heading + π, pitch π − pitch, roll + π: the same body), so the blend unfolds them first.
+  Rotation order YZX turns the node as the sim turns the body: heading, pitch about its right
+  axis, roll about its forward axis (a positive roll tips the roof to the right). Each mesh
+  stands on y = 0 at rest, centred on the centre of mass, with its wheels where `VEHICLES` puts
+  them (the truck's one sim rear axle drawn as a tandem 1.3 m apart); body and x-ray proxy hang
+  `cg` below the node (`VehicleNode` in `src/render/actors.ts`).
+- `DrawEffects` reads the `Skid` events since the last frame and feeds the effects host
+  (`makeEffects` in `src/render/index.ts`, made in `main.ts` beside the registries, passed as the
+  `Effects` service, and `gta.effects` in dev builds). The marks and the smoke age by sim time
+  (`Time.step` plus the render alpha), so both stand still while the game is paused. They are
+  host state for the page's life: nothing loads a save in the browser.
+  - Tyre marks (`src/render/marks.ts`): one dynamic mesh for the whole map, a ring buffer of 4,096
+    quads, the oldest overwritten first. Each (car, wheel) draws a strip joining its consecutive
+    steps; a step without a skid breaks it. Width by model's tread (Panda 0.18 m, Ape 0.1 m,
+    Giulia 0.22 m, the truck's twin tyres 0.35 m), rubber on asphalt and stone, an earth rut on the
+    rest, opacity by `amount`, fading out over 60 s. A quad lies 4 cm over the ground the event
+    names or the highest road ribbon drawn within 3 m over it (`drawnZ`; on a hairpin or at a
+    junction the wheels' blended ground can sit under it, while a tunnel's hill stands higher),
+    which clears the centre dash (2 cm over its road), and the material is pulled towards the
+    camera in depth like the decals. Only the slots written since the last
+    frame are uploaded (`addUpdateRange`), plus the whole colour buffer on a fade pass every
+    0.25 s of sim time (≈ 0.5 ms for a full buffer).
+  - Smoke and dust (`src/render/smoke.ts`): one `InstancedMesh` of up to 256 low-poly puffs
+    (an icosahedron tinted per puff, 60 % opaque), spawned at `rate` × `amount` × `slip` puffs a
+    second: white-grey burnt rubber on asphalt and stone, tan dust on gravel and dirt, dark brown
+    on leaves, hardly any on grass. A puff swells, rises, drifts and thins away over 1–2 s; when
+    all 256 are in the air, the puffs owed meanwhile are dropped. Being transparent it draws after
+    every opaque mesh, the x-ray silhouettes included, and it writes no depth.
+  - Measured in headless Chrome on an M4 Pro, 1280×720, dev server, seed 7: "Press any key" at
+    ≈ 0.66–0.69 s (0.68–0.85 s before the change); JS heap after GC at the spawn 96.1–96.6 MB
+    (96.0 MB before), 97.2 MB with a full ring of marks and the smoke at its cap; 60 fps and no
+    frame over 16.8 ms through handbrake slides on asphalt and a dirt track, and with 4,095 marks
+    and up to 256 puffs in view.
 
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
 (buildings, roofs, bridges, platforms), a decal mesh (roads, water, rail) and one `InstancedMesh`
 per tree kind. A 192 m apron of extra chunks continues the terrain, lines and trees beyond the map
-bounds. Terrain cells take their colours from the land cover (`src/render/landcover.ts`): the
+bounds. Terrain cells take their colours from the land cover (`src/sim/map/cover.ts`, painted by
+`COVER_LOOK` in `src/render/terrain.ts`): the
 map's areas, meadow where none covers a cell, paving where open ground lies within 3 m of both a
 wall and a road's edge (house fronts, sidewalks, alleys), and pebble beds along the wide streams.
 
 Streaming:
 
 - `new World(scene)` prepares, once (≈ 190 ms in Node for the whole valley): the land-cover raster
-  for the whole map (`mapCover()` in `src/render/landcover.ts`, ≈ 105 ms and 4.9 MB, cheaper than
-  clipping areas per chunk; built on first use and shared read-only with the audio host), every
+  for the whole map (`mapCover()` in `src/sim/map/cover.ts`, ≈ 105 ms and 4.9 MB, cheaper than
+  clipping areas per chunk; built on first use and shared read-only with the sim's surfaces and the
+  audio host), every
   static item as a `Piece` (an anchor polyline plus a `draw` function), the pieces bucketed per
   chunk with the range of segments that reach it, and the trees bucketed per chunk and kind. A chunk
   build reads only its own bucket; it draws each piece's segments plus one neighbour on each side
@@ -257,9 +316,11 @@ The pixel pipeline (`src/render/pipeline.ts`):
 ## Audio
 
 The audio schedule (`src/audio/index.ts`) is host code beside render. Its one system,
-`Lunigiana/Hear`, reads the player, the vehicles that run or move, the people on foot, the `Impact`
-and `Honk` events, the horn key and the view's turns (the stereo image turns with the screen), and
-hands them as plain `Heard` data to the `Audio` service.
+`Lunigiana/Hear`, reads the player, the vehicles that run or move (with the revs and load the sim's
+drivetrain gives for their `Chassis`, speed and pedal at the `Time` step, and whether their wheels
+are down), the people on foot, the `Impact`, `Skid` and `Honk` events, the horn key and the view's
+turns (the stereo image turns with the screen), and hands them as plain `Heard` data to the
+`Audio` service.
 `main.ts` provides the director (`src/audio/director`, plain TypeScript), which runs the outdoor
 acoustics and drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths
 (`src/audio/synth`). The speaker starts its AudioContext on the first key or click once it exists

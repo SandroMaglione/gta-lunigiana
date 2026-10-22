@@ -3,9 +3,12 @@ import { test } from "node:test"
 
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
-import { carClear, crossesAny, wallsAlong } from "./body.ts"
+import { carClear, crossesAny, moveCar, wallsAlong } from "./body.ts"
+import { settle, tiltOf, turn } from "./chassis.ts"
+import { groundZ } from "./map/ground.ts"
 import { graph, MAP, wallsNear } from "./map/index.ts"
 import { pushTrunk } from "./map/kinds.ts"
+import { CarInput, Chassis, Game, Motion, Pose, PrevPose, Vehicle } from "./schema.ts"
 import { edgeIndex, facesForward, laneOf, lanePoint, laneSide, roadOf, walkIndex, walkSide } from "./route.ts"
 import { parkedCar, pedestrian } from "./spawning.ts"
 import { HONK_STEPS } from "./systems/traffic.ts"
@@ -101,6 +104,33 @@ test("physics: steering into a wall alongside never wedges the car in it", () =>
     const now = world().vehicles.find((v) => v.id === id)!
     assert.ok(carClear("panda", now, 0.1), JSON.stringify(now))
     assert.ok(!crossesAny(wallsAlong("drive", now.x, now.y, last.x - now.x, last.y - now.y, 1), last, now), "no jump through a wall")
+    last = now
+  })
+})
+
+// Regression: a tumble's angles fold past vertical (heading + π, pitch π − pitch, roll + π); when the wall undid that step's turn, the
+// old heading was kept with the folded pitch and roll, and the body flipped over.
+test("physics: a car tumbling end over end in a tight spot turns on smoothly as its angles fold", () => {
+  // Between house walls by Monzone station, facing north: a turn of 0.2 rad to the left does not fit, standing still does.
+  const pose = { x: -462, y: 445, angle: Math.PI / 2 }, walls = wallsAlong("drive", pose.x, pose.y, 0, 0, 2.9)
+  assert.equal(moveCar("panda", pose, pose.angle + 0.2, { x: 0, y: 0 }, walls), undefined, "the turn is undone")
+  assert.notEqual(moveCar("panda", pose, pose.angle, { x: 0, y: 0 }, walls), undefined, "standing still fits")
+  // In the air, swinging left at 12 rad/s and pitching past vertical within the step.
+  const chassis = { ...settle("panda", pose), z: groundZ(pose.x, pose.y) + 2.5, pitch: 1.55, pitchRate: 6 }
+  const car = Game.Command.spawn(
+    [Vehicle, { model: "panda", color: 0xf2efe6 }], [Pose, pose], [PrevPose, pose], [Motion, { vx: 0, vy: 0, spin: 12 }],
+    [CarInput, { throttle: 0, steer: 0, handbrake: false }], [Chassis, chassis]
+  )
+  const { run, world } = start([], [FAR, { cars: [car] }])
+  /** The body's up axis in the world. */
+  const up = () => {
+    const v = world().vehicles[0]!, t = turn({ f: 0, l: 0, u: 1 }, tiltOf(v.chassis.pitch, v.chassis.roll)), c = Ops.cos(v.angle), s = Ops.sin(v.angle)
+    return { x: t.f * c - t.l * s, y: t.f * s + t.l * c, z: t.u }
+  }
+  let last = up()
+  run(3, (frame) => {
+    const now = up(), turned = Ops.acos(Math.min(1, now.x * last.x + now.y * last.y + now.z * last.z))
+    assert.ok(turned < 0.3, `step ${frame}: the body turned ${turned} rad`)
     last = now
   })
 })

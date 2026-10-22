@@ -3,8 +3,9 @@
  * parts switch on by threshold, read at each body's barrier-equivalent speed and chosen by the zone hit.
  * Front and rear: the PP cover's thock, cracks and clip pops from 3 m/s, the lamps from 4–6 m/s, the
  * airbag from 5–7 m/s (front), the laminated windscreen from 10–15 m/s (front), the side glass from
- * 15–20 m/s. A side: the door skin, the mirror snapping off, the side glass from 5–10 m/s. A part
- * breaks once: not when an earlier hit on the zone already passed its threshold (`worn`). Then the
+ * 15–20 m/s. A side: the door skin, the mirror snapping off, the side glass from 5–10 m/s. Under
+ * (bottoming out): nothing. A part breaks once: not when an earlier hit on the zone already passed
+ * its threshold (`worn`). Then the
  * aftermath: debris landing, rattles, creaks (Omori, t^−0.9), coolant hiss, and each model's own.
  * Levels are power re the crunch's main block.
  *
@@ -65,6 +66,8 @@ const breaking = (mix: Mix, t0: number, count: number, spread: number, level: nu
 
 /** The parts of `body` that break in this hit: those whose threshold it passes and no earlier hit on the zone did. */
 export const breakage = (mix: Mix, hit: Hit, body: Crushed): void => {
+  // Bottoming out: no bumper, lamp, pane or airbag faces the ground.
+  if (body.zone === "under") return
   const { random } = mix, v = body.speed, spec = body.spec, frontal = body.zone === "front"
   // ponytail: each threshold is drawn per render, so a harder later hit can break a part again when its draw lands between the two speeds; per-vehicle thresholds would make it exact.
   const breaks = (threshold: number) => v > threshold && body.worn <= threshold
@@ -155,8 +158,8 @@ const QUIRKS: Record<Crushed["model"], (mix: Mix, hit: Hit, body: Crushed) => vo
   },
   carabinieri: (mix, _hit, body) => {
     const { random } = mix
-    if (body.speed < 6) return
-    // The light bar: its polycarbonate cracks and its electronics rattle.
+    // The light bar: its polycarbonate cracks and its electronics rattle, in a crash (a landing breaks nothing).
+    if (body.speed < 6 || body.zone === "under") return
     breaking(mix, between(random, 0.01, 0.05), 3, 0.02, 0.2, 2, [1000, 2500], 0.015)
     train(mix, between(random, 0.05, 0.15), Math.round(between(random, 6, 20)), 1 / between(random, 30, 60), 0.2, 0.004, CLINK, [[between(random, 1000, 3000), 0.02]], 0.4)
   }

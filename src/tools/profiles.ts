@@ -97,7 +97,8 @@ export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => numbe
     }
     fitProfile(p, spec.grade, pins)
     // A sample's segment belongs to the piece whose first vertex precedes it; the last sample closes the last piece.
-    flatten(grid, p, Math.max(spec.w / 2 + 0.5, 3), 8, spec.rank, owner, protect, (k) => isLifted(pieceOfSample(k)))
+    // The core reaches half a cell past the carriageway's edge, so the terrain under the carriageway is (nearly) level across it.
+    flatten(grid, p, Math.max(spec.w / 2 + 0.3 + grid.cell / 2, 3), 8, spec.rank, owner, protect, (k) => isLifted(pieceOfSample(k)))
     runs.forEach((r, i) => {
       const z = r.map((_, j) => p.z[p.vertexSample[first[i]! + j]!]!)
       if (isLifted(i)) {
