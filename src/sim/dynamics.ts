@@ -14,7 +14,7 @@ import { Ops } from "@typeonce/ritmo-math"
 import { fitPlane, GRAVITY, type Offset, type Rig, tiltOf, turn, WHEELS_DOWN } from "./chassis.ts"
 import { groundZ } from "./map/ground.ts"
 import type { Surface } from "./map/surface.ts"
-import { GRIP, loaded, tyreForce } from "./tyres.ts"
+import { loaded, tyreForce } from "./tyres.ts"
 
 /** Substeps per simulation step: 240 Hz keeps the stiff tyre and contact forces stable. */
 const SUBSTEPS = 4
@@ -181,16 +181,18 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
       const ds = w.steered ? steer.s : 0, dc = w.steered ? steer.c : 1
       const v = along(o), vx = v.f * dc + v.l * ds, vy = -v.f * ds + v.l * dc
       const sx = load * (nf * dc + nl * ds), sy = load * (-nf * ds + nl * dc)
+      // The tyre's force tilts the body over a lever cut by the handling's weight transfer.
+      const lever = { ...o, u: o.u * rig.transfer }
       // The patch's own share of the mass, less what a push there spends tilting the body over it (or static friction overshoots).
-      const share = w.load / GRAVITY, alongMass = share / (1 + (m * o.u * o.u) / rig.iy), sideMass = share / (1 + (m * o.u * o.u) / rig.ix)
-      const grip = GRIP[controls.surfaces[i] ?? "asphalt"]
+      const share = w.load / GRAVITY, alongMass = share / (1 + (m * lever.u * lever.u) / rig.iy), sideMass = share / (1 + (m * lever.u * lever.u) / rig.ix)
+      const grip = rig.grips[controls.surfaces[i] ?? "asphalt"]
       const out = tyreForce({
         load, mu: loaded(grip.mu * spec.tyres.grip, load, w.load), slide: grip.slide, roll: grip.roll, peak: spec.tyres.slip, vx, vy,
         drive: w.driven ? controls.drive / driven : 0, brake: controls.brake * spec.brakes.decel * m * w.brake,
         locked: controls.handbrake && !w.steered, abs: spec.brakes.abs, traction: spec.traction,
         holdX: (-alongMass * vx) / h - sx, holdY: (-sideMass * vy) / h - sy
       })
-      apply(o, out.fx * dc - out.fy * ds + load * nf, out.fx * ds + out.fy * dc + load * nl, load * nu)
+      apply(lever, out.fx * dc - out.fy * ds + load * nf, out.fx * ds + out.fy * dc + load * nl, load * nu)
       const skid = skids[i]!
       if (out.amount > skid.amount) Object.assign(skid, { amount: out.amount, slip: out.slip, ...toWorld(o), z: grounds[i]! })
     })

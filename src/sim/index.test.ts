@@ -12,7 +12,7 @@ import { graph, isDrivable, MAP, wallsNear } from "./map/index.ts"
 import { pointInRing } from "./collide.ts"
 import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkIndex } from "./route.ts"
 import { settle, uprightness } from "./chassis.ts"
-import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, update, Vehicle } from "./index.ts"
+import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
 import { roadLevel } from "./map/ground.ts"
 import { parkedCar, pedestrian, trafficCar } from "./spawning.ts"
 import { PEDESTRIANS, PEOPLED, TRAFFIC } from "./systems/populate.ts"
@@ -372,6 +372,9 @@ test("determinism: the same scripted joyride replays bit for bit", () => {
     if (!made.ok) throw new Error(JSON.stringify(made.error))
     const ready = made.value.tick(setup, stage(...joyrideCast))
     if (!ready.ok) throw new Error(JSON.stringify(ready.error))
+    // A handling off its real values: the knobs are part of what replays.
+    made.value.send(SetHandling, { key: "grip", value: 1.3 })
+    made.value.send(SetHandling, { key: "weightTransfer", value: 0.5 })
     return { runtime: made.value, schedules: { update } }
   }, { schedule: "update", frames: 600, hostClock: HostClock.test() })
   assert.deepEqual(result, { ok: true, frames: 600 })
@@ -379,6 +382,7 @@ test("determinism: the same scripted joyride replays bit for bit", () => {
 
 test("saves: a snapshot taken mid-joyride restores through JSON and plays on identically", () => {
   const a = start(joyride, joyrideCast)
+  a.runtime.send(SetHandling, { key: "power", value: 1.5 })
   const modes: Array<string> = []
   a.run(420, () => {
     const mode = a.view()!.mode
@@ -445,9 +449,11 @@ test("sleep: standing with no pedal the brakes hold a car on a hill and it sleep
   const parked = held.world().vehicles[0]!
   assert.equal(held.view()?.mode, "driving")
   assert.ok(Ops.hypot(parked.x - hill.x, parked.y - hill.y) < 0.05 && parked.vx === 0 && parked.chassis.vz === 0, "held and asleep")
-  // Coasting up a 54% grass bank west of Monzone: it stops, and no grass holds a braked car there, so it slides back down past its start.
+  // Coasting up a 54% grass bank west of Monzone: it stops, and no grass holds a braked car there at its real grip (a new game's
+  // off-road grip loss of 0.5 does), so it slides back down past its start.
   const bank = { x: -596, y: 596, angle: -2.657 + Math.PI }
-  const { run, world } = start([], [FAR_AWAY, { cars: [rolling("panda", bank, 1, 0)] }])
+  const { runtime, run, world } = start([], [FAR_AWAY, { cars: [rolling("panda", bank, 1, 0)] }])
+  runtime.send(SetHandling, { key: "looseGround", value: 1 })
   run(180)
   const slid = world().vehicles[0]!, up = (slid.x - bank.x) * Ops.cos(bank.angle) + (slid.y - bank.y) * Ops.sin(bank.angle)
   assert.ok(up < -1, `${up} m up the bank`)

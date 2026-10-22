@@ -1,12 +1,13 @@
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, moveCar, wallsAlong } from "../body.ts"
-import { type Rig, RIGS } from "../chassis.ts"
+import { type Rig, rigFor, RIGS } from "../chassis.ts"
 import { BRAKING, driveForce, shiftGear } from "../drivetrain.ts"
 import { type BodyState, type Ground, integrate } from "../dynamics.ts"
+import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { groundZ } from "../map/ground.ts"
 import { type Surface, surfaceAt } from "../map/surface.ts"
-import { CarInput, Chassis, type ChassisValue, Game, Impact, Motion, Pose, type PoseValue, Skid, Time, Vehicle } from "../schema.ts"
+import { CarInput, Chassis, type ChassisValue, Game, Handling, Impact, Motion, Pose, type PoseValue, Skid, Time, Vehicle } from "../schema.ts"
 import type { VehicleModel, VehicleSpec } from "../vehicles.ts"
 
 /** Wall hits: share of the impact speed bounced back, and speed lost per m/s of impact. */
@@ -40,9 +41,9 @@ const contact = (spec: VehicleSpec, x: number, y: number, angle: number, into: V
   return { x: x + fx * end + into.x * r, y: y + fy * end + into.y * r }
 }
 
-/** The steering lock at `speed`: full lock while slow, then just enough to turn at the tyres' grip. */
+/** The steering lock at `speed`: full lock while slow, then just enough to turn at the tyres' grip (× the handling's steering at speed). */
 export const steerLimit = (rig: Rig, speed: number): number => {
-  const grip = STEER_GRIP * rig.spec.tyres.grip, lateral = Math.min(grip, TIP_MARGIN * rig.tipping * 9.81)
+  const grip = STEER_GRIP * rig.spec.tyres.grip, lateral = Math.min(grip, TIP_MARGIN * rig.tipping * 9.81) * rig.steering
   return Math.min(rig.lock, Ops.atan((rig.wheelbase * lateral) / Math.max(1, speed * speed)) + 0.6 * rig.spec.tyres.slip * (lateral / grip))
 }
 
@@ -76,13 +77,14 @@ const CREEP = 0.045
  * sliding, and does not sleep at the top of a coast up it.
  */
 export const rests = (
-  model: VehicleModel, at: VehicleState, input: Pedals, step: number, dt: number, ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt
+  model: VehicleModel, at: VehicleState, input: Pedals, step: number, dt: number, ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt,
+  handling: HandlingValue = REAL_HANDLING
 ): boolean => {
   let state: VehicleState = { pose: at.pose, motion: { vx: 0, vy: 0, spin: 0 }, chassis: { ...at.chassis, vz: 0, pitchRate: 0, rollRate: 0 } }
   let half = 0
   for (let k = 0; k < TRIAL; k++) {
     if (k === TRIAL / 2) half = Math.sqrt(state.motion.vx * state.motion.vx + state.motion.vy * state.motion.vy)
-    const { body, steer, gearbox } = advance(model, state, input, step + k, dt, ground, surface)
+    const { body, steer, gearbox } = advance(model, state, input, step + k, dt, ground, surface, handling)
     state = {
       pose: { x: body.x, y: body.y, angle: body.angle }, motion: { vx: body.vx, vy: body.vy, spin: body.spin },
       chassis: { z: body.z, vz: body.vz, pitch: body.pitch, pitchRate: body.pitchRate, roll: body.roll, rollRate: body.rollRate, steer, ...gearbox }
@@ -118,15 +120,15 @@ interface Pedals {
  */
 export const advance = (
   model: VehicleModel, { pose, motion, chassis }: VehicleState, input: Pedals, step: number, dt: number,
-  ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt
+  ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt, handling: HandlingValue = REAL_HANDLING
 ) => {
-  const rig = RIGS[model], spec = rig.spec
+  const rig = rigFor(model, handling), spec = rig.spec
   const speed = forwardSpeed(motion, pose.angle)
   const gearbox = shiftGear(spec, chassis, speed, input.throttle, step)
   // The throttle against the motion is the brake pedal; standing with no pedal, the driver keeps a foot on the brake.
   const braking = (input.throttle < 0 && speed > BRAKING) || (input.throttle > 0 && speed < -BRAKING) || (input.throttle === 0 && Math.abs(speed) < BRAKING)
   const target = input.steer * steerLimit(rig, Math.abs(speed))
-  const steer = toward(chassis.steer, target, (Math.abs(target) < Math.abs(chassis.steer) ? CENTRE_RATE : STEER_RATE) * dt)
+  const steer = toward(chassis.steer, target, (Math.abs(target) < Math.abs(chassis.steer) ? CENTRE_RATE : STEER_RATE) * rig.steeringRate * dt)
   const c = Ops.cos(pose.angle), s = Ops.sin(pose.angle)
   const level = chassis.z - spec.cg
   const surfaces = rig.wheels.map((w) => surface(pose.x + w.at.f * c - w.at.l * s, pose.y + w.at.f * s + w.at.l * c, level))
@@ -156,10 +158,10 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
       }
     })
   },
-  resources: { time: Game.System.thisTick(Game.System.readResource(Time)) },
+  resources: { time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
   events: { impact: Game.System.writeEvent(Impact), skid: Game.System.writeEvent(Skid) }
 }, ({ queries, resources, events }) => {
-  const { dt, step } = resources.time.get()
+  const { dt, step } = resources.time.get(), handling = resources.handling.get()
   if (dt <= 0) return
   for (const { entity, data } of queries.vehicles.each()) {
     const { model } = data.vehicle.get()
@@ -171,7 +173,7 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
     // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing.
     if (input.throttle === 0 && motion.vx === 0 && motion.vy === 0 && motion.spin === 0 && chassis.vz === 0 && chassis.pitchRate === 0 && chassis.rollRate === 0) continue
 
-    const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt)
+    const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt, groundZ, surfaceAt, handling)
 
     // The planar move against the walls. A turn that wedges the body into a wall is undone; if moving at all does, the car stays put.
     let vx = body.vx, vy = body.vy
@@ -221,7 +223,7 @@ export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
 
     data.pose.set({ x: at.x, y: at.y, angle })
     const next = { ...body, steer, ...gearbox }
-    if (input.throttle === 0 && settles(motion, { vx, vy, spin }, next) && rests(model, { pose: { x: at.x, y: at.y, angle }, motion, chassis: next }, input, step, dt)) {
+    if (input.throttle === 0 && settles(motion, { vx, vy, spin }, next) && rests(model, { pose: { x: at.x, y: at.y, angle }, motion, chassis: next }, input, step, dt, groundZ, surfaceAt, handling)) {
       data.motion.set({ vx: 0, vy: 0, spin: 0 })
       data.chassis.set({ z: next.z, vz: 0, pitch: next.pitch, pitchRate: 0, roll: next.roll, rollRate: 0, steer: next.steer, gear: next.gear, shiftUntil: next.shiftUntil })
     } else {

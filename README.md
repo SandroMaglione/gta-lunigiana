@@ -106,7 +106,7 @@ pnpm dev
 
 Then open `http://localhost:5173`. Every load is a new world. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
 
-In dev mode, the backslash key toggles the Ritmo monitor, and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)).
+In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu that tunes the vehicle handling (the knobs it changes stay for the next load), and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)).
 
 ## Controls on foot and driving
 
@@ -121,6 +121,7 @@ The same keys walk and drive; the table shows what each does in both modes:
 | Space | | handbrake |
 | H | | horn while held; in the Carabinieri car, siren on or off |
 | M | full map (pauses the game); M or Esc closes it | same |
+| P (dev builds only) | debug menu: the vehicle handling knobs, for every vehicle at once; P or Esc closes it | same |
 
 The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. M opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
@@ -160,7 +161,7 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
 | `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule |
 | `src/audio/` | Web Audio host code: the audio schedule, the acoustics director, the speaker and mixer, the synths, the audition page |
-| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M) |
+| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), and the dev-only debug menu (P) for the vehicle handling |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
 | `src/main.ts` | browser host: builds the scene, makes the runtime, runs the fixed loop |

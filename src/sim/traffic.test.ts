@@ -3,7 +3,8 @@ import { test } from "node:test"
 
 import { Ops } from "@typeonce/ritmo-math"
 
-import { GRAVITY, RIGS } from "./chassis.ts"
+import { GRAVITY, rigFor, RIGS } from "./chassis.ts"
+import { REAL_HANDLING } from "./handling.ts"
 import { graph } from "./map/index.ts"
 import { roadOf } from "./route.ts"
 import { steerLimit } from "./systems/physics.ts"
@@ -11,11 +12,13 @@ import { comfortSpeed, leans, roomToTurn } from "./systems/traffic.ts"
 import { BATTISTI } from "./testing.ts"
 import { VEHICLE_MODELS } from "./vehicles.ts"
 
-test("AI comfort: the curve a driver steers is taken under 3.5 m/s² sideways, or under 0.45 of what tips its vehicle over", () => {
-  for (const model of VEHICLE_MODELS) for (const steer of [0.3, 0.6, 1]) for (const speed of [3, 8, 14]) {
-    const rig = RIGS[model], v = comfortSpeed(model, steer, speed), wheel = steer * steerLimit(rig, speed)
+// Regression: the AI planned with the real steering lock while the physics turned the wheels by the handling's, so at steering ×2 traffic cornered at twice its comfort.
+test("AI comfort: the curve a driver steers is taken under 3.5 m/s² sideways, or under 0.45 of what tips its vehicle over, whatever the handling", () => {
+  const handlings = [REAL_HANDLING, { ...REAL_HANDLING, steering: 2 }, { ...REAL_HANDLING, steering: 0.5 }, { ...REAL_HANDLING, grip: 1.5 }]
+  for (const handling of handlings) for (const model of VEHICLE_MODELS) for (const steer of [0.3, 0.6, 1]) for (const speed of [3, 8, 14]) {
+    const rig = RIGS[model], v = comfortSpeed(model, steer, speed, handling), wheel = steer * steerLimit(rigFor(model, handling), speed)
     const lateral = (v * v * Ops.tan(wheel)) / rig.wheelbase
-    assert.ok(lateral <= Math.min(3.5, 0.45 * rig.tipping * GRAVITY) + 1e-9, `${model} steer ${steer} at ${speed} m/s: ${lateral.toFixed(2)} m/s²`)
+    assert.ok(lateral <= Math.min(3.5, 0.45 * rig.tipping * GRAVITY) + 1e-9, `${model} steer ${steer} at ${speed} m/s, ${JSON.stringify(handling)}: ${lateral.toFixed(2)} m/s²`)
   }
   assert.ok(comfortSpeed("panda", 0, 10) > 100, "straight ahead: no limit")
 })

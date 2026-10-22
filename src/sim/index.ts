@@ -4,7 +4,8 @@ import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import type * as Lint from "@typeonce/ritmo-devtools/Lint"
 import { InputAxis, Random } from "@typeonce/ritmo-math"
 
-import { bindings, Game, Input, KeyboardInput, Pose, PrevPose, Root, STEP, Time, View } from "./schema.ts"
+import { clampKnob, DEFAULT_HANDLING } from "./handling.ts"
+import { bindings, Game, Handling, Input, KeyboardInput, Pose, PrevPose, Root, SetHandling, STEP, Time, View } from "./schema.ts"
 import { Contacts, Recover } from "./systems/contacts.ts"
 import { PlayerDrive, RideAlong } from "./systems/drive.ts"
 import { EnterExit } from "./systems/enter-exit.ts"
@@ -16,7 +17,7 @@ import { SpawnWorld } from "./systems/spawn.ts"
 import { TrafficAI } from "./systems/traffic.ts"
 
 export * from "./schema.ts"
-export { PlayerView, type PlayerViewModel } from "./views.ts"
+export { HandlingView, PlayerView, type PlayerViewModel } from "./views.ts"
 
 const AdvanceTime = Clock.system(Game, { name: "Lunigiana/AdvanceTime", resource: Time })
 const CaptureInput = InputCapture.system(Game, { name: "Lunigiana/CaptureInput", source: KeyboardInput, resource: Input })
@@ -37,14 +38,29 @@ const TurnView = Game.System("Lunigiana/TurnView", {
   if (turn !== 0) resources.view.update(({ turns }) => ({ turns: turns + turn }))
 })
 
-/** Ticked once after the runtime is made. */
-export const setup = Game.Schedule(SpawnWorld, Game.Schedule.applyDeferred())
+/** Each `SetHandling` request sets its knob, kept inside the knob's range (a switch to 0 or 1); one that is not a number is dropped. */
+const ApplyHandling = Game.System("Lunigiana/ApplyHandling", {
+  resources: { handling: Game.System.writeResource(Handling) },
+  events: { requests: Game.System.readEvent(SetHandling) }
+}, ({ resources, events }) => {
+  for (const { key, value } of events.requests.all()) {
+    const valid = clampKnob(key, value)
+    if (valid !== undefined) resources.handling.update((handling) => ({ ...handling, [key]: valid }))
+  }
+})
+
+/**
+ * Ticked once after the runtime is made. ApplyHandling runs here too so it is listening before the host can send: a request sent
+ * before the first update would otherwise be dropped by whichever schedule ticks first.
+ */
+export const setup = Game.Schedule(SpawnWorld, ApplyHandling, Game.Schedule.applyDeferred())
 /** One fixed step of the game. */
 export const update = Game.Schedule(
   AdvanceTime,
   CaptureInput,
   StorePrevious,
   TurnView,
+  ApplyHandling,
   EnterExit,
   Game.Schedule.applyDeferred(),
   PlayerFoot,
@@ -66,7 +82,7 @@ export const makeRuntime = <const Services extends RuntimeServices<any>>(options
   readonly debug?: { readonly hostClock: HostClock.HostClock }
 }) => Game.Runtime.make({
   services: options.services,
-  resources: { Time: Clock.start(STEP), Rng: Random.seed(options.seed), Score: { stolen: 0, knocked: 0 }, View: { turns: 0 }, Input: Keyboard.idle(bindings) },
+  resources: { Time: Clock.start(STEP), Rng: Random.seed(options.seed), Score: { stolen: 0, knocked: 0 }, View: { turns: 0 }, Handling: DEFAULT_HANDLING, Input: Keyboard.idle(bindings) },
   debug: options.debug
 })
 
@@ -83,5 +99,6 @@ export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, type
   const { render } = await import("../render/index.ts")
   // oxlint-disable-next-line no-restricted-imports -- and the audio schedule, the reader of the sim's events
   const { audio } = await import("../audio/index.ts")
-  return { runtime: made.value, schedules: { setup, update }, describe: { render, audio } }
+  // The dev debug menu sends SetHandling with runtime.send.
+  return { runtime: made.value, schedules: { setup, update }, describe: { render, audio }, hostEvents: [SetHandling] }
 }

@@ -2,14 +2,15 @@ import { Clock } from "@typeonce/ritmo"
 import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 
 import { forwardSpeed, wrapAngle } from "../body.ts"
-import { GRAVITY, RIGS } from "../chassis.ts"
+import { GRAVITY, rigFor, RIGS } from "../chassis.ts"
+import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { graph } from "../map/index.ts"
 import {
   allowsModel, alongLane, cruiseSpeed, distanceToEdge, edgeIndex, endNode, facesForward, type Lane, laneOf, lanePoint, laneSide, leadsToDeadEnd,
   nextTrafficEdge, roadOf, walkSide
 } from "../route.ts"
 import {
-  Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
+  Autopilot, CarInput, Chassis, type ChassisValue, Driving, Game, Handling, Honk, Motion, Person, Pose, Rng, Route, STEP, Time, Traffic, Vehicle
 } from "../schema.ts"
 import { PERSON_RADIUS } from "../tuning.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
@@ -65,9 +66,12 @@ const usable = (model: VehicleModel) => edgeIndex(graph.trafficEdges.filter((e) 
 /** Per model, the traffic edges it may drive, for finding the road again. */
 const usableByModel = { panda: usable("panda"), ape: usable("ape"), truck: usable("truck"), carabinieri: usable("carabinieri") } satisfies Record<VehicleModel, ReturnType<typeof edgeIndex>>
 
-/** The fastest an AI driver takes the curve it steers with `steer` at `speed` (m/s): its sideways acceleration within comfort. */
-export const comfortSpeed = (model: VehicleModel, steer: number, speed: number): number => {
-  const rig = RIGS[model], wheel = Math.abs(steer) * steerLimit(rig, Math.abs(speed))
+/**
+ * The fastest an AI driver takes the curve it steers with `steer` at `speed` (m/s): its sideways acceleration within comfort. The
+ * wheels turn as far as the physics turns them under `handling`; the comfort is the vehicle's real one.
+ */
+export const comfortSpeed = (model: VehicleModel, steer: number, speed: number, handling: HandlingValue = REAL_HANDLING): number => {
+  const rig = RIGS[model], wheel = Math.abs(steer) * steerLimit(rigFor(model, handling), Math.abs(speed))
   return wheel < 1e-3 ? Number.MAX_VALUE : Math.sqrt((Math.min(COMFORT, COMFORT_TIP * rig.tipping * GRAVITY) * rig.wheelbase) / Ops.tan(wheel))
 }
 
@@ -120,10 +124,10 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     vehicles: Game.Query({ selection: { pose: Game.Query.read(Pose), vehicle: Game.Query.read(Vehicle) } }),
     people: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Person], without: [Driving] })
   },
-  resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)) },
+  resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
   events: { honk: Game.System.writeEvent(Honk) }
 }, ({ queries, resources, events }) => {
-  const { step } = resources.time.get()
+  const { step } = resources.time.get(), handling = resources.handling.get()
   const random = Random.draw(resources.rng)
   const obstacles = [
     ...queries.vehicles.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), half: VEHICLES[data.vehicle.get().model].length / 2, person: false })),
@@ -175,7 +179,7 @@ export const TrafficAI = Game.System("Lunigiana/TrafficAI", {
     let want = Math.min(cruise, Math.max(CORNER_MIN, cruise * (1 - 1.2 * sharp)) + CORNER_RAMP * Math.max(0, lane.length - along))
     // Pointing away from the target (turning round, a corner gone wide): corner speed, for the tightest circle.
     want = Math.min(want, CORNER_MIN + (cruise - CORNER_MIN) * Math.max(0, Ops.cos(error)))
-    want = Math.min(want, comfortSpeed(model, steer, speed))
+    want = Math.min(want, comfortSpeed(model, steer, speed, handling))
     const fx = Ops.cos(pose.angle), fy = Ops.sin(pose.angle)
     const range = CONE_BASE + Math.max(0, speed) * CONE_TIME
     // The carriageway or its verge, where walkers keep (`walkSide`).

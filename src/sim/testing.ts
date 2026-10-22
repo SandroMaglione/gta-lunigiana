@@ -12,13 +12,19 @@ import { Keyboard } from "@typeonce/ritmo-browser"
 import { Ops, Random } from "@typeonce/ritmo-math"
 
 import { clearOf, wallsAlong } from "./body.ts"
+import { settle } from "./chassis.ts"
+import { gearFor } from "./drivetrain.ts"
+import type { Ground, StepResult } from "./dynamics.ts"
+import type { HandlingValue } from "./handling.ts"
+import type { Surface } from "./map/surface.ts"
 import {
-  Autopilot, bindings, CarInput, Chassis, Down, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
+  Autopilot, bindings, CarInput, Chassis, type ChassisValue, Down, Game, Handling, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
   type PoseValue, PrevPose, Route, Score, setup, Stolen, Traffic, update, Vehicle
 } from "./index.ts"
 import { graph } from "./map/index.ts"
 import { edgeIndex, endNode, facesForward, laneOf, lanePoint, laneSide, nextTrafficEdge, roadOf, type Step } from "./route.ts"
 import { type parkedCar, type pedestrian, rollingChassis, trafficCar } from "./spawning.ts"
+import { advance } from "./systems/physics.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
 
@@ -43,14 +49,15 @@ export const World = Game.Inspector("Test/World", {
     }),
     peds: Game.Query({ selection: { pose: Game.Query.read(Pose), ped: Game.Query.read(Pedestrian), down: Game.Query.optional(Down) } })
   },
-  resources: { score: Game.System.readResource(Score) }
+  resources: { score: Game.System.readResource(Score), handling: Game.System.readResource(Handling) }
 }, ({ queries, resources }) => ({
   vehicles: queries.vehicles.each().map(({ entity, data }) => ({
     id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.vehicle.get(), input: data.input.get(), chassis: data.chassis.get(), traffic: data.traffic.present,
     stolen: data.stolen.present, route: data.route.value(), pilot: data.pilot.value()
   })),
   peds: queries.peds.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), ...data.ped.get(), down: data.down.present })),
-  score: resources.score.get()
+  score: resources.score.get(),
+  handling: resources.handling.get()
 }))
 
 /** What a test puts on the cleared map. */
@@ -173,3 +180,44 @@ export const rolling = (model: VehicleModel, pose: PoseValue, speed: number, thr
 export const battistiTraffic = (color: number) => trafficCar("panda", color, ON_BATTISTI, 0,
   { ...BATTISTI, side: laneSide(BATTISTI, "panda") },
   nextTrafficEdge(endNode(BATTISTI.edge, BATTISTI.forward), BATTISTI.edge, "panda", Random.make(1)))
+
+/** Step length of the headless drives, s. */
+export const DT = 1 / 60
+/** Level test ground at 100 m. */
+export const flat: Ground = () => 100
+
+/** A vehicle's pose, motion and chassis as `drive` steps them. */
+export interface DriveState {
+  readonly pose: PoseValue
+  readonly motion: { readonly vx: number; readonly vy: number; readonly spin: number }
+  readonly chassis: ChassisValue
+}
+/** A driver's controls: throttle and steer in [-1, 1], the handbrake. */
+export type Pedals = { readonly throttle: number; readonly steer: number; readonly handbrake: boolean }
+
+/**
+ * A vehicle driven by `input` for `frames` steps on `ground` (no walls, `advance` alone), starting at the origin heading east at
+ * `speed`, under `handling`.
+ */
+export const drive = (
+  model: VehicleModel, frames: number, input: (frame: number, state: DriveState) => Pedals,
+  options: {
+    readonly speed?: number; readonly ground?: Ground; readonly surface?: Surface; readonly chassis?: Partial<ChassisValue>; readonly handling?: HandlingValue
+    readonly each?: (frame: number, state: DriveState, result: StepResult) => void
+  } = {}
+): DriveState => {
+  const ground = options.ground ?? flat, pose = { x: 0, y: 0, angle: 0 }, speed = options.speed ?? 0
+  let state: DriveState = { pose, motion: { vx: speed, vy: 0, spin: 0 }, chassis: { ...settle(model, pose, ground), gear: gearFor(VEHICLES[model], speed), ...options.chassis } }
+  for (let frame = 0; frame < frames; frame++) {
+    const { body, steer, gearbox, result } = advance(model, state, input(frame, state), frame, DT, ground, () => options.surface ?? "asphalt", options.handling)
+    state = {
+      pose: { x: body.x, y: body.y, angle: body.angle },
+      motion: { vx: body.vx, vy: body.vy, spin: body.spin },
+      chassis: { z: body.z, vz: body.vz, pitch: body.pitch, pitchRate: body.pitchRate, roll: body.roll, rollRate: body.rollRate, steer, ...gearbox }
+    }
+    options.each?.(frame, state, result)
+  }
+  return state
+}
+/** Speed along the heading, m/s. */
+export const forward = (s: DriveState) => s.motion.vx * Ops.cos(s.pose.angle) + s.motion.vy * Ops.sin(s.pose.angle)

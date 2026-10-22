@@ -30,7 +30,7 @@ import { followSun, PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from 
 import { World } from "./render/world.ts"
 import { mapCover } from "./sim/map/cover.ts"
 import { heightAt } from "./sim/map/index.ts"
-import { bindings, Game, KeyboardInput, makeRuntime, PlayerView, setup, STEP, update } from "./sim/index.ts"
+import { bindings, Game, HandlingView, KeyboardInput, makeRuntime, PlayerView, SetHandling, setup, STEP, update } from "./sim/index.ts"
 import { LOOK_AHEAD } from "./sim/view.ts"
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")
@@ -167,14 +167,22 @@ if (!loop.ok) throw new Error(`loop: ${JSON.stringify(loop.error)}`)
 toggleMapOnKey(window, hud)
 titleReady(window)
 
-// Dev only: the Ritmo monitor (backslash toggles it) and a handle for measuring from the console.
-// No HMR hooks: nothing accepts updates, so Vite reloads the page on every edit.
+// Dev only: the Ritmo monitor (backslash toggles it), the handling debug menu (P) and a handle for
+// measuring from the console. No HMR hooks: nothing accepts updates, so Vite reloads the page on every edit.
 if (import.meta.env.DEV) {
   Object.assign(window, {
     gta: { renderer, view, scene, world, effects, heightAt, player: () => runtime.inspect(PlayerView), audio: { speaker, level: speaker.level, context: speaker.context } }
   })
   const debug = runtime.debug
-  if (debug !== undefined) {
-    void import("@typeonce/ritmo-devtools").then(({ Monitor }) => Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }))
-  }
+  const monitor = debug === undefined
+    ? Promise.resolve()
+    : import("@typeonce/ritmo-devtools").then(({ Monitor }) => void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }))
+  // After the monitor: the menu's button is anchored beside the monitor's, which must come first in the page.
+  // UI events run between frames, never inside a tick, so `send` is safe there.
+  void monitor.then(() => import("./hud/debug.ts")).then(({ mountDebugMenu }) => mountDebugMenu({
+    window,
+    storage: localStorage,
+    read: () => runtime.inspect(HandlingView),
+    set: (key, value) => runtime.send(SetHandling, { key, value })
+  }))
 }

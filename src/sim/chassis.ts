@@ -8,9 +8,12 @@
  */
 import { Ops } from "@typeonce/ritmo-math"
 
+import { HANDLING_KEYS, type HandlingValue, REAL_HANDLING, tuned } from "./handling.ts"
 import { atGrade, groundZ } from "./map/ground.ts"
+import type { Surface } from "./map/surface.ts"
 import type { ChassisValue, PoseValue } from "./schema.ts"
-import { VEHICLES, type VehicleModel, type VehicleSpec } from "./vehicles.ts"
+import { type Grip, gripsFor } from "./tyres.ts"
+import { VEHICLE_MODELS, VEHICLES, type VehicleModel, type VehicleSpec } from "./vehicles.ts"
 
 /** Gravity, m/s². */
 export const GRAVITY = 9.81
@@ -36,8 +39,9 @@ interface RigWheel {
   readonly antiRoll: number
 }
 
-/** What the physics needs of a model, derived once from its spec. */
+/** What the physics needs of a model, derived from its spec under a handling. */
 export interface Rig {
+  /** The model's spec with the handling applied (`tuned`). */
   readonly spec: VehicleSpec
   readonly wheels: ReadonlyArray<RigWheel>
   /** Static spring compression, m (the same at every wheel: one ride frequency). */
@@ -57,10 +61,17 @@ export interface Rig {
   readonly partner: ReadonlyArray<number>
   /** The body box's eight corners (body frame): the underbody's four, then the roof's four. */
   readonly corners: ReadonlyArray<Offset>
+  /** Each surface's grip, loose ground's loss scaled by the handling. */
+  readonly grips: Readonly<Record<Surface, Grip>>
+  /** Share of a tyre force's lever about the centre of mass that tilts the body (1 real: the weight transfer). */
+  readonly transfer: number
+  /** Multipliers of the steering lock at speed and of the steering's speed. */
+  readonly steering: number
+  readonly steeringRate: number
 }
 
-const rig = (model: VehicleModel): Rig => {
-  const spec: VehicleSpec = VEHICLES[model]
+const rig = (model: VehicleModel, handling: HandlingValue): Rig => {
+  const spec = tuned(VEHICLES[model], handling)
   const xs = spec.wheels.map((w) => w.x), front = Math.max(...xs), back = Math.min(...xs), wheelbase = front - back
   const onFront = spec.wheels.filter((w) => w.x === front).length, onRear = spec.wheels.length - onFront
   const omega = 2 * Math.PI * spec.ride.hz
@@ -93,12 +104,31 @@ const rig = (model: VehicleModel): Rig => {
     ix: (m * (w * w + h * h)) / 12, iy: (m * (l * l + h * h)) / 12, iz: (m * (l * l + w * w)) / 12,
     wheelbase, rear,
     lock: Ops.atan(wheelbase / Math.sqrt(Math.max(0.25, spec.turnRadius * spec.turnRadius - rear * rear))),
-    corners
+    corners, grips: gripsFor(handling.looseGround), transfer: handling.weightTransfer, steering: handling.steering, steeringRate: handling.steeringRate
   }
 }
 
-/** Every model's rig. */
-export const RIGS = { panda: rig("panda"), ape: rig("ape"), truck: rig("truck"), carabinieri: rig("carabinieri") } satisfies Record<VehicleModel, Rig>
+/** Every model's rig as its data says (`REAL_HANDLING`). */
+export const RIGS = { panda: rig("panda", REAL_HANDLING), ape: rig("ape", REAL_HANDLING), truck: rig("truck", REAL_HANDLING), carabinieri: rig("carabinieri", REAL_HANDLING) } satisfies Record<VehicleModel, Rig>
+
+/** The last tuned rigs, by model and handling: the handling changes rarely, and a rig is cheap but not free to derive every step. */
+const tunedRigs = new Map<string, Rig>()
+const TUNED_KEPT = 16
+/** A handling as a cache key, its knobs in menu order. */
+const keyOf = (handling: HandlingValue): string => HANDLING_KEYS.map((key) => handling[key]).join(" ")
+const REAL_KEY = keyOf(REAL_HANDLING)
+
+/** Model `model`'s rig under `handling`: `RIGS` while every knob is real. */
+export const rigFor = (model: VehicleModel, handling: HandlingValue): Rig => {
+  const knobs = keyOf(handling)
+  if (knobs === REAL_KEY) return RIGS[model]
+  const key = `${model} ${knobs}`, found = tunedRigs.get(key)
+  if (found !== undefined) return found
+  if (tunedRigs.size >= TUNED_KEPT * VEHICLE_MODELS.length) tunedRigs.clear()
+  const made = rig(model, handling)
+  tunedRigs.set(key, made)
+  return made
+}
 
 /** The trig of a body's pitch and roll, computed once per use. */
 interface Tilt {

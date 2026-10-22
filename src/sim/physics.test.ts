@@ -5,41 +5,12 @@ import { Ops } from "@typeonce/ritmo-math"
 
 import { hullDown, overturned, RIGS, settle, uprightness } from "./chassis.ts"
 import { gearFor } from "./drivetrain.ts"
-import type { Ground, StepResult } from "./dynamics.ts"
+import type { Ground } from "./dynamics.ts"
 import type { Surface } from "./map/surface.ts"
-import type { ChassisValue, PoseValue } from "./schema.ts"
 import { advance, rests, settles } from "./systems/physics.ts"
+import { drive, DT, flat, forward, type DriveState as State, type Pedals } from "./testing.ts"
 import { VEHICLE_MODELS, VEHICLES, type VehicleModel } from "./vehicles.ts"
 
-const DT = 1 / 60
-const flat: Ground = () => 100
-
-interface State {
-  readonly pose: PoseValue
-  readonly motion: { readonly vx: number; readonly vy: number; readonly spin: number }
-  readonly chassis: ChassisValue
-}
-type Pedals = { readonly throttle: number; readonly steer: number; readonly handbrake: boolean }
-
-/** A vehicle driven by `input` for `frames` steps on `ground` (no walls), starting at the origin heading east at `speed`. */
-const drive = (
-  model: VehicleModel, frames: number, input: (frame: number, state: State) => Pedals,
-  options: { readonly speed?: number; readonly ground?: Ground; readonly surface?: Surface; readonly chassis?: Partial<ChassisValue>; readonly each?: (frame: number, state: State, result: StepResult) => void } = {}
-): State => {
-  const ground = options.ground ?? flat, pose = { x: 0, y: 0, angle: 0 }, speed = options.speed ?? 0
-  let state: State = { pose, motion: { vx: speed, vy: 0, spin: 0 }, chassis: { ...settle(model, pose, ground), gear: gearFor(VEHICLES[model], speed), ...options.chassis } }
-  for (let frame = 0; frame < frames; frame++) {
-    const { body, steer, gearbox, result } = advance(model, state, input(frame, state), frame, DT, ground, () => options.surface ?? "asphalt")
-    state = {
-      pose: { x: body.x, y: body.y, angle: body.angle },
-      motion: { vx: body.vx, vy: body.vy, spin: body.spin },
-      chassis: { z: body.z, vz: body.vz, pitch: body.pitch, pitchRate: body.pitchRate, roll: body.roll, rollRate: body.rollRate, steer, ...gearbox }
-    }
-    options.each?.(frame, state, result)
-  }
-  return state
-}
-const forward = (s: State) => s.motion.vx * Ops.cos(s.pose.angle) + s.motion.vy * Ops.sin(s.pose.angle)
 const kmh = (s: State) => forward(s) * 3.6
 const full = (): Pedals => ({ throttle: 1, steer: 0, handbrake: false })
 /** Holds `speed` with the throttle, steering `steer` from frame 30. */

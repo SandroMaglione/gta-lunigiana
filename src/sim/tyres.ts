@@ -13,7 +13,7 @@ import { Ops } from "@typeonce/ritmo-math"
 import type { Surface } from "./map/surface.ts"
 
 /** Grip of one surface: peak friction coefficient, sliding friction as a share of it, rolling resistance coefficient. */
-interface Grip {
+export interface Grip {
   readonly mu: number
   readonly slide: number
   readonly roll: number
@@ -25,7 +25,7 @@ interface Grip {
  * forest floor. Loose ground slides almost as well as it grips (a flat peak); rolling resistance
  * from 0.013 on asphalt to 0.07 in a field.
  */
-export const GRIP = {
+const GRIP = {
   asphalt: { mu: 1.1, slide: 0.7, roll: 0.013 },
   stone: { mu: 0.9, slide: 0.75, roll: 0.016 },
   gravel: { mu: 0.62, slide: 0.9, roll: 0.03 },
@@ -33,6 +33,15 @@ export const GRIP = {
   grass: { mu: 0.45, slide: 0.8, roll: 0.07 },
   leaves: { mu: 0.5, slide: 0.8, roll: 0.06 }
 } as const satisfies Record<Surface, Grip>
+
+/** Every surface's grip with loose ground's difference from asphalt scaled by `loose`: 1 is `GRIP`, 0 grips and rolls like asphalt everywhere. */
+export const gripsFor = (loose: number): Readonly<Record<Surface, Grip>> => {
+  const { asphalt } = GRIP
+  const blend = (g: Grip): Grip => ({
+    mu: asphalt.mu + (g.mu - asphalt.mu) * loose, slide: asphalt.slide + (g.slide - asphalt.slide) * loose, roll: asphalt.roll + (g.roll - asphalt.roll) * loose
+  })
+  return { asphalt, stone: blend(GRIP.stone), gravel: blend(GRIP.gravel), dirt: blend(GRIP.dirt), grass: blend(GRIP.grass), leaves: blend(GRIP.leaves) } satisfies Record<Surface, Grip>
+}
 
 /** A tyre grips this much less per unit of load over its static load (and more under less): a loaded tyre's friction coefficient falls. */
 const LOAD_SENSITIVITY = 0.12

@@ -3,7 +3,9 @@
 The game is a Ritmo ECS simulation plus a browser host. The simulation (`src/sim`) owns every rule
 that changes the world. It is headless and deterministic: no DOM, no Three.js, no wall clock, no
 `Math.random`. The host (`src/main.ts`, `src/render`, `src/audio`, `src/hud`) captures input,
-draws, plays the sound, and shows the HUD. It reads the world and never writes saved state.
+draws, plays the sound, and shows the HUD. It reads the world and never writes saved state: its
+one request, the dev debug menu's handling, goes in as a `SetHandling` event that a system
+applies.
 
 ```
 keyboard ──► KeyboardInput service ──► CaptureInput ──► Input resource ──► systems
@@ -17,7 +19,8 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 
 `src/sim/index.ts` is the entry. It re-exports the schema, defines the schedules, and exports
 `makeRuntime({ seed, services, debug? })`, which makes a runtime with the starting resources:
-`Time` (60 Hz clock), `Rng` (seeded from `seed`), `Score` (zeroed), `View` (home view) and
+`Time` (60 Hz clock), `Rng` (seeded from `seed`), `Score` (zeroed), `View` (home view),
+`Handling` (a new game's knobs, `DEFAULT_HANDLING`: real but off-road grip loss at 0.5) and
 `Input` (idle keys).
 
 ### Schedules and system order
@@ -26,7 +29,11 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 
 1. `SpawnWorld` (`systems/spawn.ts`): the player and the parked cars on 200 of the map's parked
    spots (`PARKED`), the two Carabinieri cars included.
-2. `applyDeferred`
+2. `ApplyHandling` (`index.ts`): runs here once, before any request exists, so it is listening
+   when the host first sends: a `SetHandling` sent before the first `update` (the debug menu
+   re-sending its stored knobs at load) would otherwise be dropped by whichever schedule ticked
+   first.
+3. `applyDeferred`
 
 `update` is one fixed step (`STEP = Clock.hz(60)`):
 
@@ -36,21 +43,22 @@ keyboard ──► KeyboardInput service ──► CaptureInput ──► Input 
 | 2 | `CaptureInput` | `index.ts` | copies the `KeyboardInput` snapshot into `Input` |
 | 3 | `StorePrevious` | `index.ts` | copies every `Pose` into `PrevPose` (for interpolation) |
 | 4 | `TurnView` | `index.ts` | turn keys: the view's quarter turns (`View`) |
-| 5 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
-| 6 | `applyDeferred` | | applies the enter/exit commands before anything moves |
-| 7 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
-| 8 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
-| 9 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
-| 10 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
-| 11 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
-| 12 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
-| 13 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
-| 14 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
-| 15 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians |
-| 16 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
+| 5 | `ApplyHandling` | `index.ts` | each `SetHandling` request sets its knob in `Handling`, kept in the knob's range |
+| 6 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
+| 7 | `applyDeferred` | | applies the enter/exit commands before anything moves |
+| 8 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
+| 9 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
+| 10 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`; a driver held up honks (`Honk`) |
+| 11 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
+| 12 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
+| 13 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
+| 14 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
+| 15 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
+| 16 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians |
+| 17 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
 
-Controls are read before movement, all movement happens before contacts, and contacts happen
-before the player's pose follows the car. Gameplay is in [gameplay.md](gameplay.md).
+Controls and the handling are read before movement, all movement happens before contacts, and
+contacts happen before the player's pose follows the car. Gameplay is in [gameplay.md](gameplay.md).
 
 ### Where state lives
 
@@ -77,11 +85,11 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 `Vehicle` has a pose, previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs
 `Route` and `Autopilot`. Spawns put a vehicle on its springs at rest on the ground (`settle` in
 `src/sim/chassis.ts`), in the gear for its speed. No save is ever persisted, so the new
-`Chassis` needs no snapshot migration.
+`Chassis` and `Handling` need no snapshot migration.
 
-Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`) and `View` (`turns`, the net quarter turns
-of the camera) are saved. `Input` is transient: it is
-rebuilt every step and never saved.
+Resources: `Time`, `Rng`, `Score` (`stolen`, `knocked`), `View` (`turns`, the net quarter turns
+of the camera) and `Handling` (the 13 handling knobs, [gameplay.md](gameplay.md#handling)) are
+saved. `Input` is transient: it is rebuilt every step and never saved.
 
 Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a person or the ground:
 where, which is the contact point for a wall, a vehicle or the ground, how hard, with how much mass
@@ -89,13 +97,18 @@ in tonnes, and for the ground which face of the body struck), `Skid` (a tyre sli
 how fast, how far past its grip, on what surface) and `Honk` (an AI driver held up sounds the horn)
 carry moments that leave no trace in the components. `VehiclePhysics`, `Contacts` and `TrafficAI`
 emit them; the audio schedule reads all three ([audio.md](audio.md#data-flow)) and the render
-schedule reads `Skid` (tyre marks and smoke). Snapshots hold no events, and emitting them changes
-neither the determinism nor the saves test.
+schedule reads `Skid` (tyre marks and smoke). `SetHandling` (set one handling knob to a value) is
+a host intent: no system emits it, the dev debug menu sends it with `runtime.send`, and
+`ApplyHandling` reads it. Snapshots hold no events, and emitting them changes neither the
+determinism nor the saves test.
 
 Static data is module content, not state. `MAP` and `graph` (`src/sim/map/index.ts`), the wall,
 tree, building and edge lookups, the per-model lane tables in `src/sim/route.ts` and the per-model
-rigs in `src/sim/chassis.ts` (static wheel loads, springs, inertias, steering lock, tipping
+rigs in `src/sim/chassis.ts` (`RIGS`: static wheel loads, springs, inertias, steering lock, tipping
 threshold) are built once at load and never change, so they are safe to share between runtimes.
+A rig under a handling off its real values (`rigFor`) is a pure function of the model and the
+`Handling`, derived on first use and cached (the whole cache empties once it holds 64 rigs, 16
+for each of the four models), so it is safe to share too.
 The land-cover raster (`mapCover` in `src/sim/map/cover.ts`, ≈ 105 ms and 4.9 MB) and the road
 index of `surfaceAt` (`src/sim/map/surface.ts`) are built on first use: pure functions of `MAP`,
 never written after; `main.ts` builds the raster in its "Painting land cover" loading step, so
@@ -120,9 +133,9 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   cells at load. The renderer converts it to render y (`src/render/ground.ts`).
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
-streamed world's chunks, the tyre marks and smoke, the HUD's DOM, and the audio context, live
-voices and the director's memory of each sound source (pruned as sources go; see
-[audio.md](audio.md#where-state-lives)).
+streamed world's chunks, the tyre marks and smoke, the HUD's DOM, the knobs the debug menu keeps
+in `localStorage`, and the audio context, live voices and the director's memory of each sound
+source (pruned as sources go; see [audio.md](audio.md#where-state-lives)).
 
 ## Input
 
@@ -331,7 +344,8 @@ speaker, its output level and the context. Everything else is in [audio.md](audi
 ## HUD
 
 The HUD (`src/hud`) is plain DOM over the canvas, with its markup in `index.html`. It reads only
-the `PlayerView` inspector (`src/sim/views.ts`) and the map:
+the `PlayerView` inspector (`src/sim/views.ts`) and the map; the dev debug menu also reads the
+`HandlingView` inspector:
 
 - `PlayerView` returns a `PlayerViewModel`: previous and current pose, velocity, mode (`foot`,
   `driving`, `down`), the driven vehicle's label and speed, the vehicle in reach (label,
@@ -363,6 +377,14 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map:
   the AudioContext (`speaker.pause`). Each skipped update drains the
   keyboard's press edges, so a key tapped on the map (F, Enter) does nothing on resume, while a
   key held through the pause is still held.
+- The debug menu (`src/hud/debug.ts`) sets the handling knobs ([gameplay.md](gameplay.md#handling))
+  in dev builds only: `main.ts` loads it inside its `import.meta.env.DEV` block, beside the Ritmo
+  monitor, so production builds leave it out. P or the Debug button beside the Ritmo monitor
+  opens and closes it. It reads the knobs from `HandlingView` once, when it mounts, then keeps
+  its own values: the game applies a `SetHandling` event only on its next step, and not while
+  the full map pauses it, so reading again could show and store a stale value. Keys pressed
+  inside it do not reach the game. The knobs it
+  changed persist in `localStorage`, so a reload keeps them.
 
 ## Checks
 
@@ -378,13 +400,18 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map:
     reverse).
 - `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
   (described, not run) `render` and `audio` schedules. Any warning fails: without the audio
-  schedule described, `Impact` and `Honk` would be `event-never-read`. It also fails if a module
-  the sim loads is not covered by the oxlint simulation override.
+  schedule described, `Impact` and `Honk` would be `event-never-read`. `lintTarget` declares
+  `SetHandling` a host event (`hostEvents`), since only the host sends it; undeclared it would be
+  `event-never-written`. It also fails if a module the sim loads is not covered by the oxlint
+  simulation override.
 - `node --test`. Beside the unit tests, these guard the architecture:
   - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
-    twice and requires identical state, transient components included.
-  - `saves`: a snapshot taken mid-joyride goes through JSON, restores into a fresh runtime, and
-    plays on identically.
+    twice, with the handling off its real values (`SetHandling`), and requires identical state,
+    transient components included.
+  - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
+    into a fresh runtime, and plays on identically.
+  - `src/sim/handling.test.ts`: each handling knob's effect, and `SetHandling` kept in range and
+    through a save.
   - `src/render/index.test.ts`: every system of every described schedule (`render` and `audio`)
     declares no writes.
   - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
@@ -392,4 +419,6 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map:
 
 `src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with
 scripted keys and collects every `Impact` and `Honk` emitted (`heard`), `stage` clears the map and
-places exactly the cars and pedestrians a test needs, and `World` inspects everything as plain data.
+places exactly the cars and pedestrians a test needs, `World` inspects everything as plain data,
+the handling included, and `drive` steps one vehicle with `advance` alone (test ground, no walls)
+under a given handling.

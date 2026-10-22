@@ -65,7 +65,9 @@ the car's `CarInput`: throttle = up − down, steer = left − right (left turns
 and Space for the handbrake. `VehiclePhysics` (`systems/physics.ts`) moves every vehicle, player or
 AI, from its `CarInput` and its model's data in `src/sim/vehicles.ts`. Nothing about the handling
 is tuned per model: top speed, acceleration, braking, grip and tipping follow from the masses,
-dimensions, engines, gears and tyres.
+dimensions, engines, gears and tyres. The handling knobs ([Handling](#handling)) scale that data
+for every vehicle alike; outside that subsection every figure here is at their real values. A new
+game starts at those but for off-road grip loss, at 0.5.
 
 ### Controls to forces
 
@@ -168,12 +170,76 @@ What follows from them, measured on flat ground with `advance` (the physics test
 
 On gravel a Panda stops from 100 km/h in 68.4 m and on grass in 84.9 m; full throttle from rest
 spins its front wheels on gravel but not on asphalt, and after 10 s up a 15% grade it does 16 m/s
-on asphalt and 1.5 m/s on grass. The Ape climbs 15% at 2.6 m/s. Adding a model to `VEHICLE_MODELS`
+on asphalt and 1.5 m/s on grass. At a new game's off-road grip loss of 0.5 it stops in 51.6 m on
+gravel and 55.2 m on grass, and does 12.3 m/s up the 15% grass. The Ape climbs 15% at 2.6 m/s. Adding a model to `VEHICLE_MODELS`
 fails to compile until it has data here, a mesh in `src/render/actors.ts` and a trim in the
 audio.
 
 The camera zooms out with speed (6 texels/m in a car, 5 above 16 m/s). The HUD speedometer shows
 km/h.
+
+### Handling
+
+The handling is 13 knobs over the vehicles' real data that make driving easier or harder: each is
+a multiplier (×) of the real value, a share from 0 (none) to 1 (real), or an on/off switch
+(`HANDLING` in `src/sim/handling.ts`). At every knob's real value (`REAL_HANDLING`) each vehicle
+drives as its data says. A new game starts at `DEFAULT_HANDLING`: every knob real but off-road
+grip loss, at 0.5, so stone, gravel, dirt, grass and leaves cost half their real grip, sliding and
+rolling drag against asphalt (a Panda's stop from 100 km/h on gravel: 51.6 m, 68.4 m real).
+
+- **Every vehicle**: one handling applies to every vehicle on the map, the player's, parked and
+  traffic alike. `tuned` applies the knobs that are part of a vehicle's data to its spec, and
+  `rigFor` (`src/sim/chassis.ts`) adds the surface grips, the weight transfer and the steering.
+- **Traffic keeps its real comfort**: the traffic AI keeps the sideways acceleration it takes a
+  curve at and the lean at which it stops ([Traffic AI](#traffic-ai)) from the real rigs
+  (`RIGS`), so it drives no faster where a knob adds grip and no slower where one takes it away;
+  it reads only how far the physics will turn its wheels (`comfortSpeed` steers with `rigFor`),
+  so at steering at speed ×2 it slows to the same comfort rather than corner twice as hard.
+- **Saved**: the `Handling` resource is part of the saved world, so a restored snapshot or a
+  replay drives with the handling it was played with.
+- **Set from the debug menu**: in the game only the dev-only debug menu changes it (P, or the
+  Debug button beside the Ritmo monitor; see [architecture.md](architecture.md#hud)). Each change
+  is a `SetHandling` request, which `ApplyHandling` keeps inside the knob's range (a switch to 0
+  or 1) and drops when it is not a number. A production build has no menu, so its handling stays
+  real.
+
+The knobs, in the menu's order and groups (Tyres; Engine and brakes; Driving aids; Steering;
+Body and suspension). Multipliers and shares move in steps of 0.05.
+
+| Knob | Key | Range | Real | New game | Changing it |
+|---|---|---|---|---|---|
+| Tyre grip | `grip` | 0.5–2 × | 1 | 1 | every tyre's grip on every surface: higher corners faster, stops shorter and slides less, but lets a tall vehicle corner hard enough to roll over (a Panda held at full lock tips from 36 km/h at ×1.1 once held for 30 s, 41 km/h within 5 s, and from 24 km/h at ×1.5), so lower the weight transfer with it (at 0.5 none of the four tips at full lock at ×1.5); lower slides and spins sooner |
+| Off-road grip loss | `looseGround` | 0–1 | 1 | 0.5 | how far every surface but asphalt (stone, gravel, dirt, grass, leaves) differs from it in grip, sliding friction and rolling resistance; at 0 every surface drives like asphalt |
+| Engine power | `power` | 0.5–3 × | 1 | 1 | every engine's torque and power: harder acceleration where the tyres can take it (else the driven wheels spin), steeper climbs and a higher top speed; the truck's limiter still holds it to 90 km/h |
+| Brake power | `brakes` | 0.5–3 × | 1 | 1 | the brakes' force: higher stops shorter until the tyres' grip runs out, lower stops longer |
+| Air drag | `drag` | 0–2 × | 1 | 1 | air resistance: lower raises the top speed and coasts further, higher holds a vehicle back at speed |
+| ABS on every vehicle | `abs` | off, on | off (each vehicle's own) | off (each vehicle's own) | on: no vehicle's brakes lock its wheels, so it still steers braking hard (the Ape has no ABS of its own); the handbrake still locks the rear wheels |
+| Traction control on every vehicle | `traction` | off, on | off (each vehicle's own) | off (each vehicle's own) | on: no vehicle spins its driven wheels; the engine gives only what the tyres can take and leaves them grip to corner (only the truck and the Giulia have it of their own) |
+| Steering at speed | `steering` | 0.5–2 × | 1 | 1 | how far the wheels turn at speed, where the lock shrinks to what the grip and the tipping point allow (full lock at walking pace stays): higher turns tighter but slides or tips sooner, lower is steadier |
+| Steering speed | `steeringRate` | 0.5–3 × | 1 | 1 | how fast the wheels turn toward the keys (2.5 rad/s) and back to straight (4 rad/s): higher reacts at once but is twitchy, lower is smoother but slower |
+| Weight transfer | `weightTransfer` | 0–1 | 1 | 1 | how much cornering, braking, accelerating and a crash's sideways shove tilt the body onto its outer, front or rear wheels (the lever of the tyres' forces about the centre of mass): lower keeps the body flatter and the grip even; at 0 none of them tips a vehicle over, though a jump or a side slope still can, and a side slope leans it further (with no lever the tyres no longer hold the body up against it: an Ape parked across a 40% slope leans about 38° at 0 against 23.5° at 1) |
+| Anti-roll bars | `antiRoll` | 0–3 × | 1 | 1 | the bars that share the load between an axle's left and right wheels: stiffer leans less and, on four wheels, resists tipping (the Ape's only bar is at the rear, and stiffer tips it a little sooner), softer leans more and keeps the wheels on the ground over bumps |
+| Suspension stiffness | `stiffness` | 0.5–2 × | 1 | 1 | the springs' stiffness (the ride frequency goes as its square root): stiffer leans, dives and bottoms out less, softer soaks up bumps but wallows and dives |
+| Suspension damping | `damping` | 0.3–2 × | 1 | 1 | the dampers: higher settles the body at once after a bump or a landing, lower lets it bounce |
+
+What one knob changes, measured with `drive` (`src/sim/testing.ts`: `advance` alone, flat test
+ground and asphalt unless named, no walls), the scenarios of `src/sim/handling.test.ts`:
+
+| Knob | Case | Real | Changed |
+|---|---|---|---|
+| Tyre grip 1.5 | a Panda's stop from 100 km/h on gravel | 68.4 m | 47.7 m |
+| Off-road grip loss 0 | a Panda floored for 10 s up a 15% grass bank | 1.5 m/s | 16.2 m/s |
+| Engine power 2 | a Panda floored from 20 m/s, 5 s on | 25.4 m/s | 32.1 m/s |
+| Brake power 0.5 | a Panda's stop from 100 km/h | 42.4 m | 72.0 m |
+| Air drag 0 | a Panda coasting from 30 m/s, 5 s on | 27.2 m/s | 28.8 m/s |
+| ABS on | an Ape braking from 11 m/s: steps of the first 2 s (120) with a locked wheel | 17 | 0 |
+| Traction control on | a Panda floored from rest on gravel: steps of the first 2 s (120) with a wheel spinning | 120 | 0 |
+| Steering at speed 2 | a Panda's road-wheel angle after 1 s of full left at 20 m/s | 7.1° | 14.4° |
+| Steering speed 2 | a standing Panda's road wheels after 5 steps (1/12 s) of full left from straight | 11.9° | 23.9° |
+| Weight transfer 0 | an Ape's handbrake turn at 11.5 m/s | tips over | stays upright |
+| Anti-roll bars 3 | a Panda's lean 2.5 s into a corner at 14 m/s, steering 0.6 | 3.0° | 1.5° |
+| Suspension stiffness 2 | a Panda's deepest dive braking hard from 20 m/s | 3.5° | 1.7° |
+| Suspension damping 2 | a Panda dropped 0.3 m onto its wheels: still (under 1 cm/s) after | 1.7 s | 0.8 s |
 
 ### Horn and siren
 
@@ -223,14 +289,15 @@ the lane helpers in `src/sim/route.ts`.
   person) the driver honks once, a `Honk` event the audio host plays. It honks again only in a new
   stuck episode: after backing up, or after getting going above 2.5 m/s.
 - **Lost.** A car more than 12 m from its edge joins the nearest usable road.
-- **How it flows.** With the player standing 3 minutes while traffic fills the roads (two
-  passes over builds that differ only in sleep and hull-contact details, which reshuffle the
-  traffic), the share of the traffic's time under 1 m/s and the honks were 0.06–0.16 and 13–57
-  in Monzone's street (0.10 and 28 before the drive physics), 0.06–0.09 and 35–47 at Equi Terme
-  (0.03 and 7), and 0.17–0.38 and 78–179 at four spots 15 m apart in Gragnola's walled centre
-  (0.18–0.25 and 77–95): cars that launch and stop as their vehicles can queue longer in tight
-  streets. Now and then one overturns: in 2 of the last 6 runs, an Ape cornering at 6.7 m/s and
-  a Panda shoved onto a steep bank at 1.1 m/s.
+- **How it flows.** With the player standing 3 minutes while traffic fills the roads, at a new
+  game's handling, the share of the traffic's time under 1 m/s and the honks were 0.07 and 26 in
+  Monzone's street (0.10 and 28 before the drive physics), 0.10 and 42 at Equi Terme (0.03 and
+  7), and 0.17–0.35 and 77–151 at four spots 15 m apart in Gragnola's walled centre (0.18–0.25
+  and 77–95): cars that launch and stop as their vehicles can queue longer in tight streets.
+  Traffic is chaotic (two earlier passes at every knob real gave 0.06–0.16, 0.06–0.09 and
+  0.17–0.38). Now and then one overturns, nearly always slowly on a steep bank: 4 cars in these 6
+  runs, three of them Pandas at one spot near Equi Terme, (1678, 705) on traffic edge 17227, at
+  0.7–1.8 m/s, where a Panda overturned at every knob real too.
 
 ## Pedestrians
 
@@ -293,6 +360,7 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | Where | What |
 |---|---|
 | `src/sim/tuning.ts` | `ENTER_GAP`, `PERSON_RADIUS`, `WALK_SPEED`, `SPRINT_SPEED`, `KNOCK_SPEED` |
+| `src/sim/handling.ts` | `HANDLING`: each handling knob's group, name, description, kind, range and step; `REAL_HANDLING`, `DEFAULT_HANDLING` (a new game's) |
 | `src/sim/vehicles.ts` | `VEHICLES`: each model's body, mass, wheels, tyres, brakes, engine, gearbox, drag and suspension; `CAR_COLORS` |
 | `src/sim/tyres.ts` | `GRIP` per surface, the slip curve, ABS and traction-control shares, load sensitivity, the static-friction speed |
 | `src/sim/dynamics.ts` | substeps, bump-stop travel, damper limit, the body's ground contacts, in-air tumbling damping, the ground-hit speed |
@@ -307,9 +375,10 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | `src/audio/director/levels.ts` | how loud each sound is and how far it carries (see [audio.md](audio.md#known-limits-and-tuning)) |
 
 Gameplay changes need a test: the scenario tests in `src/sim/index.test.ts` and
-`src/sim/walls.test.ts` stage exact situations with `src/sim/testing.ts`, and
+`src/sim/walls.test.ts` stage exact situations with `src/sim/testing.ts`,
 `src/sim/physics.test.ts` drives each model on flat, sloping and ramped test ground with
-`advance` (no walls). Fixtures find map
+`advance` (no walls), and `src/sim/handling.test.ts` proves each handling knob's effect the same
+way. Fixtures find map
 features by geometry, never by index (`BATTISTI` is the Via Cesare Battisti traffic edge nearest
 (-412, 438), eastbound), so they survive map rebuilds. Re-run `pnpm check`
 after any change.

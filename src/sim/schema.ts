@@ -2,6 +2,7 @@ import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
 import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
 
+import type { HandlingKey } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
 import { VEHICLE_MODELS, type VehicleModel } from "./vehicles.ts"
 
@@ -107,6 +108,18 @@ export const Score = Descriptor.ConstructedResource(
  * see `screenAxes`). Saved: the on-foot keys depend on it.
  */
 export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))("Lunigiana/View")
+/**
+ * Every vehicle's handling knobs (`HANDLING` in handling.ts): multipliers, shares and switches over the
+ * vehicles' real data, at `DEFAULT_HANDLING` in a new game. Saved, so a run replays with the handling
+ * it was played with; set only through `SetHandling`.
+ */
+export const Handling = Descriptor.ConstructedResource(Decode.struct({
+  grip: Decode.number, looseGround: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
+  traction: Decode.number, steering: Decode.number, steeringRate: Decode.number, weightTransfer: Decode.number, antiRoll: Decode.number,
+  stiffness: Decode.number, damping: Decode.number
+} satisfies Record<HandlingKey, typeof Decode.number>))("Lunigiana/Handling")
+/** A request to set one handling knob, sent by the host (the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
+export const SetHandling = Descriptor.Event<{ readonly key: HandlingKey; readonly value: number }>()("Lunigiana/SetHandling")
 
 /**
  * A vehicle hit something this step: a wall, another vehicle, a person (`other`, their entity ids)
@@ -170,8 +183,8 @@ export const KeyboardInput = Descriptor.Service<InputCapture.Source<Controls>>()
 export const Game = Schema.bind(
   Schema.fragment({
     components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Chassis, Traffic, Route, Driving, Autopilot, Stolen },
-    resources: { Time, Rng, Score, View, Input },
-    events: { Impact, Honk, Skid },
+    resources: { Time, Rng, Score, View, Handling, Input },
+    events: { Impact, Honk, Skid, SetHandling },
     requires: [
       Schema.requires(Player, Pose, PrevPose, Motion, Person),
       Schema.requires(Pedestrian, Pose, PrevPose, Motion, Person, Route),
