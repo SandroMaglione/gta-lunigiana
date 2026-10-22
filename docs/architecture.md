@@ -145,7 +145,8 @@ see [audio.md](audio.md#where-state-lives)).
    keyboard's snapshot with the touch controls' added. The stick holds the direction keys it leans
    more than 22.5° toward, so it has the keys' eight directions, and each button holds its key;
    every key has a button. A key is held while any of them holds it, so the sim cannot tell a tap
-   from a key.
+   from a key. Only the controls shown in the player's mode count: one the mode hides under a
+   thumb that stays down (the stick on getting in, ◀ on getting out) lets go of its keys.
 2. `CaptureInput` (Ritmo's `InputCapture.system`) copies its snapshot into the `Input` resource
    at the start of each step.
 3. Systems read `Input`: `held` for movement, steering and handbrake, `pressed` (once per press)
@@ -421,7 +422,8 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   keyboard: ◀ and ▶ on the left steer, Gas and Brake take the bottom right, and Hand brake, the
   action button and Horn a row above them. The action button shows only when it would act; ↺ and
   ↻ always. The zones are read from the drawn buttons on every new touch, so they follow
-  hud.css and the mode. `withTouch` turns them into keys ([Input](#input)).
+  hud.css and the mode, and a control the mode hides lets go of its key. `withTouch` turns them
+  into keys ([Input](#input)).
 - Landscape only: a phone held upright lays the page out sideways (`width: 100dvh`, the height
   Safari's toolbars leave) and turns it a quarter clockwise, to be held sideways (hud.css). The
   renderer and the full map size to the page's box, not the window, and each touch is turned back

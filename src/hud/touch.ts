@@ -32,19 +32,28 @@ const directions = ({ x, y }: Touch.Vector): Partial<Record<Key, boolean>> => {
 /**
  * The keyboard's controls with the touch screen's added: the stick holds the direction keys, each
  * button its own key. A key is held while any of them holds it, and a press on any is a press.
+ * Only the controls `shown` count: one the mode hides under a thumb that stays down (the stick on
+ * getting in, ◀ on getting out) lets go of its keys, as the thumb is lifted only later.
  */
-export const withTouch = (keyboard: InputCapture.Source<Controls>, touch: InputCapture.Source<Touch.Snapshot<Key>>): InputCapture.Source<Controls> => {
-  let was = directions({ x: 0, y: 0 })
+export const withTouch = (
+  keyboard: InputCapture.Source<Controls>,
+  touch: InputCapture.Source<Touch.Snapshot<Key>>,
+  shown: (control: Key | "stick") => boolean = () => true
+): InputCapture.Source<Controls> => {
+  let was = directions({ x: 0, y: 0 }), pads: Partial<Record<Key, boolean>> = {}
   return {
     snapshot: () => {
-      const keys = keyboard.snapshot(), { stick, buttons } = touch.snapshot(), now = directions(stick.vector)
-      const merged = {} as Record<Key, Keyboard.ActionState>
+      const keys = keyboard.snapshot(), { stick, buttons } = touch.snapshot(), now = directions(shown("stick") ? stick.vector : { x: 0, y: 0 })
+      const merged = {} as Record<Key, Keyboard.ActionState>, held: Partial<Record<Key, boolean>> = {}
       for (const key of BUTTONS) {
+        const pad = shown(key) ? buttons[key] : { held: false, pressed: false, released: pads[key] === true }
         const leans = now[key] === true, leant = was[key] === true
-        const all = [keys[key], buttons[key], { held: leans, pressed: leans && !leant, released: leant && !leans }], held = all.some((state) => state.held)
-        merged[key] = { held, pressed: all.some((state) => state.pressed), released: all.some((state) => state.released) && !held }
+        const all = [keys[key], pad, { held: leans, pressed: leans && !leant, released: leant && !leans }], down = all.some((state) => state.held)
+        merged[key] = { held: down, pressed: all.some((state) => state.pressed), released: all.some((state) => state.released) && !down }
+        held[key] = pad.held
       }
       was = now
+      pads = held
       return merged
     }
   }
@@ -97,7 +106,7 @@ const zone = (node: HTMLElement): Touch.ButtonZone =>
     ? { center: { x: -1e4, y: -1e4 }, radius: 0 }
     : { center: { x: node.offsetLeft + node.offsetWidth / 2, y: node.offsetTop + node.offsetHeight / 2 }, radius: node.offsetWidth / 2 }
 
-/** Binds the touch controls to their markup over `canvas`: `touch` feeds `withTouch`, `draw` runs once per frame. */
+/** Binds the touch controls to their markup over `canvas`: `touch` and `shown` feed `withTouch`, `draw` runs once per frame. */
 export const makeTouchControls = (document: Document, canvas: HTMLCanvasElement) => {
   const root = element(document, "hud-touch"), stick = element(document, "hud-stick"), knob = stick.firstElementChild as HTMLElement
   const pads = Object.fromEntries(BUTTONS.map((key) => [key, element(document, `hud-touch-${key}`)])) as Record<Key, HTMLElement>
@@ -109,6 +118,8 @@ export const makeTouchControls = (document: Document, canvas: HTMLCanvasElement)
   let moved = "", leaned = ""
   return {
     touch,
+    /** Whether hud.css shows the stick or a key's button in the current mode. */
+    shown: (control: Key | "stick"): boolean => !hidden(control === "stick" ? stick : pads[control]),
     /** Shows the buttons of the player's mode, the action button's verb, the held controls lit and the stick under the thumb. */
     draw: (view: PlayerViewModel): void => {
       if (root.dataset.mode !== view.mode) root.dataset.mode = view.mode

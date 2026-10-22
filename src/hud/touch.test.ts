@@ -44,6 +44,31 @@ test("the stick holds the arrow keys it leans to, eight ways, and the buttons pr
   assert.equal(both.left.released, false)
 })
 
+test("a control the mode hides under a thumb that stays down lets go of its keys", () => {
+  const keyboard = Keyboard.scripted(bindings, [])
+  const touch = Touch.scripted(BUTTONS, [
+    { frame: 0, stick: { x: 0, y: -1 }, press: ["action"] }, // leaning toward a car, Steal tapped and held
+    { frame: 3, stick: null, release: ["action"], press: ["left"] }, // driving: ◀ held, Exit tapped
+    { frame: 4, press: ["action"] }
+  ])
+  let mode: "foot" | "driving" = "foot"
+  const driving = new Set<string>(["left", "right", "up", "down", "handbrake", "horn"]), onFoot = new Set<string>(["stick", "sprint"])
+  const controls = withTouch(keyboard, touch, (control) => !(mode === "driving" ? onFoot : driving).has(control))
+
+  assert.deepEqual(held(controls.snapshot()), ["action", "up"])
+  mode = "driving" // the stick hides under the thumb: no throttle from it
+  const gotIn = controls.snapshot()
+  assert.deepEqual(held(gotIn), ["action"])
+  assert.equal(gotIn.up.released, true)
+  assert.deepEqual(held(controls.snapshot()), ["action"])
+  assert.deepEqual(held(controls.snapshot()), ["left"])
+  mode = "foot" // ◀ hides under the thumb: the player does not walk off
+  const gotOut = controls.snapshot()
+  assert.deepEqual(held(gotOut), ["action"])
+  assert.equal(gotOut.left.released, true)
+  assert.equal(controls.snapshot().left.released, false, "released once")
+})
+
 // Only mobile mode looks the controls up, so a desktop start-up never notices a missing one.
 test("index.html draws the stick and every button the touch screen presses", () => {
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8")

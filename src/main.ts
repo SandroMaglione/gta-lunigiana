@@ -93,7 +93,7 @@ dpr.addEventListener("change", onDpr, { once: true })
 
 const keyboard = Keyboard.actions(window, bindings)
 const pad = document.documentElement.classList.contains("touch") ? makeTouchControls(document, canvas) : undefined
-const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch)
+const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch, pad.shown)
 const renderClock = { alpha: 0 }
 const { people, vehicles } = makeRegistries(scene)
 const effects = makeEffects(scene)
