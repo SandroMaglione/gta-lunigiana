@@ -1,0 +1,42 @@
+/**
+ * Stand-ins for the shader warm-up: one tiny mesh per material the streamed world and the actors
+ * draw, built the way the real meshes are (vertex colours; trees instanced with instance colours; a
+ * car with its x-ray box and its lamps on and off), so `PixelView.compile` builds every program before
+ * the first frame. The first view need not hold a river, a tree or a lit car: wherever the player
+ * goes later, nothing compiles mid-game. The effects (marks, smoke, rain, snow, bolts) are in the
+ * scene from the start and compile with it.
+ *
+ * @module render/stand-ins
+ */
+import { BufferGeometry, Float32BufferAttribute, Group, InstancedMesh, Mesh } from "three"
+
+import { VehicleNode } from "./actors.ts"
+import { actorMaterial, decalMaterial, solidMaterial, treeMaterial, waterMaterial } from "./geometry.ts"
+import { glowMaterial, vehicleLampMaterials } from "./sky/glow.ts"
+import { treeMeshes } from "./trees.ts"
+
+/** One triangle with the attributes every world mesh has: position, normal and colour (linear, three channels). */
+const triangle = (): BufferGeometry => new BufferGeometry()
+  .setAttribute("position", new Float32BufferAttribute([0, 0, 0, 0.1, 0, 0, 0, 0, -0.1], 3))
+  .setAttribute("normal", new Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3))
+  .setAttribute("color", new Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3))
+
+/** The stand-ins, under one group to compile (never drawn: the group is not added to the scene), and how to free them. */
+export const standIns = (): { readonly group: Group; dispose(): void } => {
+  const shape = triangle(), group = new Group()
+  const car = new VehicleNode("panda", shape, actorMaterial)
+  // One broadleaf at the origin: an InstancedMesh with instance colours, as every chunk's trees are.
+  const trees: Array<InstancedMesh> = treeMeshes({ broadleaf: [0, 0, 1, 1], conifer: [] }, treeMaterial)
+  group.add(
+    ...[solidMaterial, decalMaterial, waterMaterial, glowMaterial, vehicleLampMaterials.on].map((material) => new Mesh(shape, material)),
+    car, ...trees
+  )
+  return {
+    group,
+    dispose: () => {
+      shape.dispose()
+      car.dispose()
+      for (const tree of trees) tree.dispose()
+    }
+  }
+}

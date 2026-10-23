@@ -1,8 +1,9 @@
 /**
  * Footsteps (Farnell, Designing Sound ch. 26): each step is a heel strike then the ball of the
  * foot, every strike a low thump, a band-passed noise burst coloured by the surface, and its
- * grains: gravel crunch, leaf crackle, the stone "tock" of a lastricato. Four variants per surface
- * and gait are baked once per context and played with ±8 % rate and ±2 dB, so no two steps match.
+ * grains: gravel crunch, leaf crackle, the stone "tock" of a lastricato, the soft crunch of snow
+ * lying on any of them. Four variants per surface (and snow) and gait are baked once per context and
+ * played with ±8 % rate and ±2 dB, so no two steps match.
  *
  * @module audio/synth/steps
  */
@@ -37,8 +38,18 @@ const TREADS = {
   // The autumn forest floor: like grass, under a crackle of dry leaves.
   leaves: { thump: 0.1, hz: 1500, q: 0.5, attack: 0.01, decay: 0.05, grains: 40, grainHz: 5500, grit: 0.35, tocks: 0 }
 } as const satisfies Record<Surface, Tread>
+/**
+ * Fresh snow over whatever lies under it: a soft, slow crunch, the thump muffled, the burst low, its grains many and dense over half
+ * a second (wet snow near 0 °C does not squeak; that needs −10 °C). TUNED by rendering: a walking step peaks near a grass step's and
+ * lasts half again as long (estimated, no recording measured).
+ */
+const SNOW: Tread = { thump: 0.1, hz: 800, q: 0.7, attack: 0.03, decay: 0.07, grains: 60, grainHz: 1500, grit: 0.5, tocks: 0 }
 
-const SURFACES = Object.keys(TREADS) as ReadonlyArray<Surface>
+/** What a step lands on: a surface, or the snow on it. */
+type Ground = Surface | "snow"
+const GROUNDS: ReadonlyArray<Ground> = [...(Object.keys(TREADS) as ReadonlyArray<Surface>), "snow"]
+const treadOf = (ground: Ground): Tread => (ground === "snow" ? SNOW : TREADS[ground])
+
 const VARIANTS = 4
 /** Seconds baked per step: long enough for the slowest tail to die out. */
 const SLOT = 0.7
@@ -65,28 +76,28 @@ const footfall = (oc: OfflineAudioContext, kit: Kit, tread: Tread, run: boolean)
   }
 }
 
-const keyOf = (surface: Surface, run: boolean): string => `${surface} ${run ? "run" : "walk"}`
+const keyOf = (ground: Ground, run: boolean): string => `${ground} ${run ? "run" : "walk"}`
 
 const baked = perContext(async (ctx, kit) => {
-  const sets = SURFACES.flatMap((surface) => [false, true].map((run) => ({ surface, run })))
-  // One bake at a time: a bake builds its whole graph before its first await, so starting all 48
-  // at once built every graph (some 1,200 bursts) in one long task, a stall on the first key press.
+  const sets = GROUNDS.flatMap((ground) => [false, true].map((run) => ({ ground, run })))
+  // One bake at a time: a bake builds its whole graph before its first await, so starting all 56
+  // at once built every graph (some 1,600 bursts) in one long task, a stall on the first key press.
   const sounds: Array<Array<Float32Array<ArrayBuffer>>> = []
-  for (const { surface, run } of sets) {
+  for (const { ground, run } of sets) {
     const variants: Array<Float32Array<ArrayBuffer>> = []
-    for (let v = 0; v < VARIANTS; v++) variants.push(trimmed(await bake(ctx.sampleRate, SLOT, (oc) => footfall(oc, kit, TREADS[surface], run))))
+    for (let v = 0; v < VARIANTS; v++) variants.push(trimmed(await bake(ctx.sampleRate, SLOT, (oc) => footfall(oc, kit, treadOf(ground), run))))
     sounds.push(variants)
   }
   // One factor for all, so the surfaces keep their relative levels: a running step on stone peaks at 0.5.
-  normalise(sounds.flat(), 0.5, sounds[sets.findIndex((set) => set.surface === "stone" && set.run)])
-  return new Map(sets.map(({ surface, run }, i) => [keyOf(surface, run), sounds[i]!.map((samples) => bufferOf(ctx, samples))]))
+  normalise(sounds.flat(), 0.5, sounds[sets.findIndex((set) => set.ground === "stone" && set.run)])
+  return new Map(sets.map(({ ground, run }, i) => [keyOf(ground, run), sounds[i]!.map((samples) => bufferOf(ctx, samples))]))
 })
 
-/** One footstep on `surface`, walking or running. */
+/** One footstep on `surface`, or in the snow on it, walking or running. */
 export const step: Shot<Extract<OneShot, { readonly kind: "step" }>> = {
   prepare: baked.prepare,
-  play: (io, { surface, run }, when) => {
-    const variants = baked.get(io.ctx)?.get(keyOf(surface, run))
+  play: (io, { surface, run, snow }, when) => {
+    const variants = baked.get(io.ctx)?.get(keyOf(snow ? "snow" : surface, run))
     return variants === undefined ? when : playBuffer(io, pick(variants), when, jitter(0.08), jitterDb(2))
   }
 }

@@ -1,13 +1,15 @@
 /**
- * The HUD: plain DOM over the canvas (markup in index.html). It reads only the PlayerView model
- * and the map, and touches the DOM only when a text changes.
+ * The HUD: plain DOM over the canvas (markup in index.html). It reads only the PlayerView and
+ * SkyView models and the map, and touches the DOM only when a text changes.
  *
  * @module hud
  */
-import type { PlayerViewModel } from "../sim/index.ts"
+import type { PlayerViewModel, SkyViewModel } from "../sim/index.ts"
+import { heightAt } from "../sim/map/index.ts"
+import { clockText, weatherText } from "./clock.ts"
 import { locationAt } from "./location.ts"
 import { makeMinimap } from "./minimap.ts"
-import { element } from "./title.ts"
+import { element, set } from "./title.ts"
 import { makeWorldMap } from "./worldmap.ts"
 
 /** What the action key would do now, and to which vehicle (none when getting out); undefined when nothing. */
@@ -27,9 +29,10 @@ export const promptText = (view: PlayerViewModel): string => {
 /** Speedometer reading in km/h (always positive, rounded). */
 export const kmh = (metresPerSecond: number): number => Math.round(Math.abs(metresPerSecond) * 3.6)
 
-/** Binds the HUD to its markup; `update` once per frame with the interpolated player position and the view's yaw. */
+/** Binds the HUD to its markup; `update` once per frame with the interpolated player position, the view's yaw and the sky. */
 export const makeHud = (document: Document) => {
   const road = element(document, "hud-road"), district = element(document, "hud-district")
+  const clock = element(document, "hud-clock"), weather = element(document, "hud-weather")
   const stolen = element(document, "hud-stolen"), knocked = element(document, "hud-knocked")
   const speedo = element(document, "hud-speedo"), speed = element(document, "hud-speed"), vehicle = element(document, "hud-vehicle")
   const prompt = element(document, "hud-prompt")
@@ -42,13 +45,10 @@ export const makeHud = (document: Document) => {
   // A touch screen has no M key: a tap on the minimap opens the map, and one on the map closes it.
   corner.addEventListener("click", toggleMap)
   element(document, "hud-map").addEventListener("click", () => worldMap.hide())
-  const set = (node: HTMLElement, text: string) => {
-    if (node.textContent !== text) node.textContent = text
-  }
   const show = (node: HTMLElement, visible: boolean) => {
     if (node.hidden === visible) node.hidden = !visible
   }
-  let located = { x: Number.NaN, y: Number.NaN }
+  let located = { x: Number.NaN, y: Number.NaN, z: 0 }
   return {
     /** Whether the full map is open (the host pauses the game while it is). */
     mapOpen: (): boolean => worldMap.open,
@@ -59,15 +59,21 @@ export const makeHud = (document: Document) => {
     repaintMap: (): void => {
       if (worldMap.open) worldMap.show(last.x, last.y, last.angle)
     },
-    update: (view: PlayerViewModel, x: number, y: number, angle: number, yaw: number): void => {
+    update: (view: PlayerViewModel, x: number, y: number, angle: number, yaw: number, sky: SkyViewModel): void => {
       last = { x, y, angle }
-      // Names change slowly: look them up again only after moving a couple of metres.
+      // Names and heights change slowly: look them up again only after moving a couple of metres.
       if (!(Math.hypot(x - located.x, y - located.y) < 2)) {
-        located = { x, y }
+        located = { x, y, z: heightAt(x, y) }
         const here = locationAt(x, y)
         set(road, here.road ?? "")
         set(district, here.district)
       }
+      const time = clockText(sky.local.hour * 3600 + sky.local.minute * 60)
+      if (clock.textContent !== time) {
+        clock.textContent = time
+        clock.setAttribute("datetime", time)
+      }
+      set(weather, weatherText(sky, located.x, located.y, located.z))
       set(stolen, String(view.score.stolen))
       set(knocked, String(view.score.knocked))
       show(speedo, view.vehicle !== undefined)

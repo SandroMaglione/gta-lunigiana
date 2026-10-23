@@ -6,10 +6,11 @@ Checks for a change in `src/render`, the camera, the view or the keys, on top of
 - **Settled design**: the user chose the look and the controls, so keep them unless the user asks
   for a change: real low-poly 3D rendered at low resolution and upscaled nearest-neighbour, with
   no sprites; an orthographic camera at 30°, for exact 2:1 pixel lines; the home view north-west of
-  the player; quarter turns on Q/E, eased over about 1/3 s; the sun turning with the view; F or
-  Enter as the action key; on a touch screen, every control on the screen (a stick to walk; in a
-  vehicle ◀ ▶ buttons on the left and Gas and Brake on the right, pressing the keys as the
-  keyboard does) and the game landscape only, turned a quarter when the phone is held upright.
+  the player; quarter turns on Q/E, eased over about 1/3 s; the sun on its real arc for the game
+  time, turning with the view (in the home view it stands where it really is); F or Enter as the
+  action key; on a touch screen, every control on the screen (a stick to walk; in a vehicle ◀ ▶
+  buttons on the left and Gas and Brake on the right, pressing the keys as the keyboard does) and
+  the game landscape only, turned a quarter when the phone is held upright.
 - **Axes**: Three.js world axes are (east, up, −north), so the map point (x, y) at height h is
   (x, h, −y).
 - **Streaming**: a chunk build keeps giving the same result as cutting the same area from a
@@ -18,6 +19,19 @@ Checks for a change in `src/render`, the camera, the view or the keys, on top of
   GPU memory.
 - **Terrain fits**: anything fitted to the terrain samples the whole view, interior included: a
   valley deep inside the frame escapes a fit built on the view's edges (PR #2's shadow box).
+- **Lit materials**: a new lit material takes a weather variant (`weatherMaterial` in
+  `src/render/sky/surface.ts`, with its own `customProgramCacheKey`) and gets a mesh in
+  `src/render/stand-ins.ts`, or `stand-ins.test.ts` fails: a program the warm-up misses compiles
+  when the player first meets it, a frame hitch, and an unpatched one is never wet, snowy or
+  cloud-shaded. Weather is driven through the shared `SKY_UNIFORMS` cells, never a `#define`
+  flipped at run time, which recompiles the program.
+- **Lights**: every light is made before the first frame (the sky host's constructor) and driven
+  only by colour and intensity, never added, removed or hidden, nor its `castShadow` toggled: the
+  light counts are part of every lit program's key, so a change recompiles every program at once.
+- **Draw order**: a transparent object takes an explicit `renderOrder` (tyre marks 0, smoke and the
+  x-ray 1, bolts 2, rain and snow 3; [architecture.md](../architecture.md), "Shader warm-up and
+  draw order"): three otherwise sorts transparents by distance, and their order flips as the
+  camera moves.
 - **Performance**: measure in the browser ([playtest.md](playtest.md)) and update
   architecture.md's numbers: first frame, JS heap after GC, chunk build times, and 60 fps with no
   frame over 30 ms.

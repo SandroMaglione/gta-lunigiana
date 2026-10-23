@@ -13,6 +13,8 @@ import type { VehicleModel } from "../sim/vehicles.ts"
 export const SPEED_OF_SOUND = 340.4
 /** Rural daytime background, dB(A) (§8: 30–40). */
 export const AMBIENT_DB = 35
+/** Rural night background, dB(A) (§8: 25–30): the stillest the masking floor gets. */
+export const NIGHT_DB = 28
 /** Ear height above the ground, m (§0). */
 export const EAR_HEIGHT = 1.6
 
@@ -77,6 +79,12 @@ export const airCutoff = (r: number): number => {
 /** Ground effect over soft ground, dB (ISO 9613-2 §7.3.2, §3): max(0, 4.8 − (2h/r)(17 + 300/r)), h the mean path height. */
 export const groundLoss = (r: number, meanHeight: number): number =>
   r <= 0 ? 0 : Math.max(0, 4.8 - ((2 * meanHeight) / r) * (17 + 300 / r))
+
+/**
+ * The extra loss over a fresh snow cover, dB, `cover` 0…1 of it: snow is soft porous ground (flow resistivity 10–35 kPa·s/m²),
+ * under which pulses fall as r^−1.6 against r^−1.2 over summer ground (Albert, CRREL), so 8·log10 r more, up to 12 dB.
+ */
+export const snowLoss = (r: number, cover: number): number => cover * Math.min(12, 8 * Math.log10(Math.max(1, r)))
 
 /** Loss through `metres` of foliage at 1 kHz, dB (ISO 9613-2 Annex A, §3): 1 dB for 10–20 m, then 0.06 dB/m up to 200 m. */
 export const foliageLoss = (metres: number): number => (metres < 10 ? 0 : metres < 20 ? 1 : Math.min(12, 0.06 * metres))

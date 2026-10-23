@@ -3,13 +3,13 @@ import { test } from "node:test"
 
 import { SPRINT_SPEED, WALK_SPEED } from "../../sim/tuning.ts"
 import { unit } from "./graph.ts"
-import { cricketsQuiet, echemeRate } from "./nature.ts"
+import { chirpRate, cricketsQuiet, echemeRate } from "./nature.ts"
 import { stepRate } from "./steps.ts"
 import { WORLD_SHOTS, WORLD_VOICES } from "./world.ts"
 
 test("the world synths load in Node: no Web Audio at module top level", () => {
-  assert.deepEqual(Object.keys(WORLD_VOICES).sort(), ["crickets", "water", "wind"])
-  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), ["bark", "bell", "bird", "groan", "scream", "shout", "step"])
+  assert.deepEqual(Object.keys(WORLD_VOICES).sort(), ["crickets", "rain", "roof", "water", "wind"])
+  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), ["bark", "bell", "bird", "groan", "scream", "shout", "step", "thunder"])
 })
 
 test("footsteps fall twice a second at a walk and three times at a sprint", () => {
@@ -29,8 +29,15 @@ test("the crickets' masking law follows the voice: 0 dB under at full density, a
   assert.ok(cricketsQuiet(0.01) < 12.2)
 })
 
-test("tree crickets chirp once a second at 22 °C, slower in the October afternoon, not at all in the cold", () => {
+test("tree crickets chirp once a second at 22 °C, slower in a 15 °C afternoon, not at all in the cold", () => {
   assert.ok(Math.abs(echemeRate(22) - 1) < 1e-9)
   assert.ok(echemeRate(15) > 0 && echemeRate(15) < 1)
   assert.equal(echemeRate(9), 0)
+})
+
+test("a cricket voice held in the cold still chirps at the 10 °C rate: its next chirp is never Infinity s away", () => {
+  // Regression: at a rate of 0 the singers scheduled their next echeme at now + x / 0 and never sang again once the air warmed.
+  for (const celsius of [-5, 0, 9.9, Number.NaN]) assert.equal(chirpRate(celsius), echemeRate(10))
+  assert.equal(chirpRate(22), echemeRate(22))
+  assert.ok(chirpRate(25) > chirpRate(15) && Number.isFinite(1 / chirpRate(-40)))
 })

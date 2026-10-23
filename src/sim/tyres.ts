@@ -4,13 +4,15 @@
  * peak and falls toward sliding friction past it; along the tyre it is the drive, the brakes and the
  * rolling resistance, all inside one friction ellipse. A wheel asked for more than its grip spins
  * (drive) or locks (brakes, the handbrake) and slides; ABS and traction control hold it at the peak
- * instead. Nearly standing, the patch grips like static friction: it holds the car on a slope.
+ * instead. Nearly standing, the patch grips like static friction: it holds the car on a slope. Wet
+ * ground and snow cover take grip away (`weathered`).
  *
  * @module tyres
  */
 import { Ops } from "@typeonce/ritmo-math"
 
 import type { Surface } from "./map/surface.ts"
+import type { GroundWeather } from "./sky/local.ts"
 
 /** Grip of one surface: peak friction coefficient, sliding friction as a share of it, rolling resistance coefficient. */
 export interface Grip {
@@ -34,14 +36,50 @@ const GRIP = {
   leaves: { mu: 0.5, slide: 0.8, roll: 0.06 }
 } as const satisfies Record<Surface, Grip>
 
-/** Every surface's grip with loose ground's difference from asphalt scaled by `loose`: 1 is `GRIP`, 0 grips and rolls like asphalt everywhere. */
-export const gripsFor = (loose: number): Readonly<Record<Surface, Grip>> => {
-  const { asphalt } = GRIP
-  const blend = (g: Grip): Grip => ({
-    mu: asphalt.mu + (g.mu - asphalt.mu) * loose, slide: asphalt.slide + (g.slide - asphalt.slide) * loose, roll: asphalt.roll + (g.roll - asphalt.roll) * loose
-  })
-  return { asphalt, stone: blend(GRIP.stone), gravel: blend(GRIP.gravel), dirt: blend(GRIP.dirt), grass: blend(GRIP.grass), leaves: blend(GRIP.leaves) } satisfies Record<Surface, Grip>
+/**
+ * Per surface, wet: asphalt keeps about 0.72 of its dry peak (a wet road's 0.7–0.8 against about 1.1
+ * dry) and a locked wheel slides on less of it; wet setts and paving keep 0.65, gravel 0.9 (it drains),
+ * a dirt track turned to mud 0.65, wet grass 0.7 and wet leaves 0.65, rolling a little harder.
+ */
+const WET = {
+  asphalt: { mu: GRIP.asphalt.mu * 0.72, slide: 0.65, roll: 0.015 },
+  stone: { mu: GRIP.stone.mu * 0.65, slide: 0.7, roll: 0.018 },
+  gravel: { mu: GRIP.gravel.mu * 0.9, slide: 0.9, roll: 0.033 },
+  dirt: { mu: GRIP.dirt.mu * 0.65, slide: 0.85, roll: 0.06 },
+  grass: { mu: GRIP.grass.mu * 0.7, slide: 0.75, roll: 0.075 },
+  leaves: { mu: GRIP.leaves.mu * 0.65, slide: 0.75, roll: 0.065 }
+} as const satisfies Record<Surface, Grip>
+
+/** Packed snow over any surface: a peak of about 0.3, sliding almost as well, rolling through it harder. */
+const SNOW: Grip = { mu: 0.3, slide: 0.85, roll: 0.03 }
+
+/** One surface's grip dry and wet. */
+export interface SurfaceGrip {
+  readonly dry: Grip
+  readonly wet: Grip
 }
+
+/** `a` toward `b` by `share`. */
+const mix = (a: Grip, b: Grip, share: number): Grip =>
+  ({ mu: a.mu + (b.mu - a.mu) * share, slide: a.slide + (b.slide - a.slide) * share, roll: a.roll + (b.roll - a.roll) * share })
+
+/** Every surface's grip, dry and wet, with loose ground's difference from asphalt scaled by `loose`: 1 is real, 0 grips and rolls like asphalt everywhere. */
+export const gripsFor = (loose: number): Readonly<Record<Surface, SurfaceGrip>> => {
+  const blend = (surface: Surface): SurfaceGrip => ({ dry: mix(GRIP.asphalt, GRIP[surface], loose), wet: mix(WET.asphalt, WET[surface], loose) })
+  return { asphalt: blend("asphalt"), stone: blend("stone"), gravel: blend("gravel"), dirt: blend("dirt"), grass: blend("grass"), leaves: blend("leaves") }
+}
+
+/**
+ * A surface's grip on `ground`: dry toward wet by its wetness, then toward packed snow by its snow cover,
+ * the weather's difference from dry scaled by `share` (the handling's weather grip loss: 1 real, 0 dry
+ * whatever the weather).
+ */
+export const weathered = (grip: SurfaceGrip, ground: GroundWeather, share: number): Grip =>
+  ground.wet === 0 && ground.snow === 0 ? grip.dry : mix(grip.dry, mix(mix(grip.dry, grip.wet, ground.wet), SNOW, ground.snow), share)
+
+/** How much of a road's dry grip `ground` leaves under weather grip loss `share`: 1 dry, about 0.72 wet, 0.27 on snow (real). */
+export const weatherFactor = (ground: GroundWeather, share: number): number =>
+  weathered({ dry: GRIP.asphalt, wet: WET.asphalt }, ground, share).mu / GRIP.asphalt.mu
 
 /** A tyre grips this much less per unit of load over its static load (and more under less): a loaded tyre's friction coefficient falls. */
 const LOAD_SENSITIVITY = 0.12

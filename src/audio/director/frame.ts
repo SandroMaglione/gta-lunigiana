@@ -1,20 +1,22 @@
 /**
- * One frame of the director, shared by its vehicle, people and world parts: the listener's ears
- * and surroundings, where things stand (`groundAt`), the way from any source to them (`path`, with
- * the ground under it and its obstacles, cached per key), and the frame's requests. One-shots play
- * at once (a crash no louder than `CRASH_MOST_DB`), loud ones with their echoes off rock faces;
- * continuous voices are offered (`hold`) and `commit` keeps the loudest of each kind up to its cap.
+ * One frame of the director, shared by its vehicle, people, world and thunder parts: the listener's
+ * ears and surroundings (the weather there too), where things stand (`groundAt`), the way from any
+ * source to them (`path`, with the ground under it, its snow, and its obstacles, cached per key), and
+ * the frame's requests. One-shots play at once (the loudest no louder than their `MOST_DB`), loud
+ * ones with their echoes off rock faces, and can be cut short (`stop`); continuous voices are
+ * offered (`hold`) and `commit` keeps the loudest of each kind up to its cap.
  *
  * @module audio/director/frame
  */
 import { groundZ } from "../../sim/map/ground.ts"
 import { heightAt } from "../../sim/map/index.ts"
+import type { Conditions } from "../../sim/sky/local.ts"
 import type { VehicleModel } from "../../sim/vehicles.ts"
 import { airCutoff, audibility, CABIN, dbToGain, gainToDb, panOf, SPEED_OF_SOUND, spreading } from "../acoustics.ts"
 import type { Echo } from "../places.ts"
 import type { Continuous, Heard, OneShot, Placement, Speaker } from "../types.ts"
 import { type Ears, hear, type Hearing, SILENT, type Source } from "./hearing.ts"
-import { CAPS, CRASH_MOST_DB, ECHO_MIN_DB, echoes, KEEP_DB, LEVELS, type Level } from "./levels.ts"
+import { CAPS, ECHO_MIN_DB, echoes, KEEP_DB, LEVELS, type Level, MOST_DB } from "./levels.ts"
 import type { Between, Occluder } from "./occluder.ts"
 
 /** How a path is heard: Doppler-shifted (vehicles), through the listener's `cabin` (unless false: their own car's crash, scrape, doors), `quiet` dB under the nominal peak. */
@@ -26,7 +28,11 @@ export interface Frame {
   /** Speaker time, s, and the time since the last frame (0 while the audio is off or paused). */
   readonly now: number
   readonly dt: number
+  /** The audio context exists: before, nothing is measured or played. */
+  readonly live: boolean
   readonly ears: Ears
+  /** The weather at the ears: the air's temperature, the rain and snow falling, the ground's wetness and snow cover. */
+  readonly air: Conditions
   /** The model of the vehicle the listener sits in. */
   readonly inside: VehicleModel | undefined
   /** The masking floor at the ears, dB(A). */
@@ -38,6 +44,8 @@ export interface Frame {
   readonly hold: (key: string, sound: Continuous, at: Hearing) => void
   /** Plays a one-shot `after` s past its travel time (ignored when inaudible). */
   readonly play: (sound: OneShot, at: Hearing, after?: number) => void
+  /** Fades out what is left of one-shot `sound`, played earlier, and of its echoes. */
+  readonly stop: (sound: OneShot) => void
 }
 
 /** A continuous voice offered this frame. */
@@ -51,6 +59,7 @@ export interface Setup {
   /** The audio context exists: before, nothing is measured or played (state is still tracked). */
   readonly live: boolean
   readonly ears: Ears
+  readonly air: Conditions
   readonly inside: VehicleModel | undefined
   readonly ambient: number
   readonly street: number
@@ -73,13 +82,14 @@ const finite = (p: Placement): boolean => Number.isFinite(p.gain + p.pan + p.cut
 
 /** This frame's view and requests. */
 export const makeFrame = (setup: Setup): Frame => {
-  const { ears, inside, ambient, street, speaker, occluder, now } = setup
+  const { ears, air, inside, ambient, street, speaker, occluder, now } = setup
   const cabin = inside === undefined ? undefined : CABIN[inside]
   const play = (sound: OneShot, at: Hearing, after = 0) => {
     const delay = at.delay + after
     if (!at.audible || !finite(at.placement) || !Number.isFinite(delay)) return
-    // A crash's direct sound only: its echoes, far under it, keep the way's own level.
-    speaker.play(sound, sound.kind === "crash" ? { ...at.placement, gain: Math.min(at.placement.gain, dbToGain(CRASH_MOST_DB)) } : at.placement, delay)
+    // The direct sound only: its echoes, far under it, keep the way's own level.
+    const most = MOST_DB[sound.kind]
+    speaker.play(sound, most === undefined ? at.placement : { ...at.placement, gain: Math.min(at.placement.gain, dbToGain(most)) }, delay)
     if (!echoes(sound)) return
     for (const echo of setup.echoes) {
       // The echo's extra way past the direct sound, never closer than `ECHO_MIN_DB` under it; in a street the facades
@@ -102,7 +112,9 @@ export const makeFrame = (setup: Setup): Frame => {
     heard: setup.heard,
     now,
     dt: setup.dt,
+    live: setup.live,
     ears,
+    air,
     inside,
     ambient,
     random: setup.random,
@@ -116,14 +128,15 @@ export const makeFrame = (setup: Setup): Frame => {
       // ISO 9613-2's mean path height: both ends over the terrain under them (a bridge deck lifts the path).
       const height = Math.max(0, (ears.z - heightAt(ears.x, ears.y) + source.z - heightAt(source.x, source.y)) / 2)
       return hear({
-        ears, source, db: level.db, rMin: level.rMin, height, quiet: way.quiet, delta: between.delta, forest: between.forest, ambient, street,
-        cabin, bare, doppler: way.doppler
+        ears, source, db: level.db, rMin: level.rMin, height, aloft: level.aloft, snow: air.snowCover, quiet: way.quiet, delta: between.delta,
+        forest: between.forest, ambient, street, cabin, bare, doppler: way.doppler
       })
     },
     hold: (key, sound, at) => {
       if (at.audible && finite(at.placement)) setup.offers.push({ key, sound, at })
     },
-    play
+    play,
+    stop: (sound) => speaker.stop(sound)
   }
 }
 

@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
 
-import { titleReady } from "./title.ts"
+import { DEFAULT_START, SetClock, SkyView } from "../sim/index.ts"
+import { start } from "../sim/testing.ts"
+import { clockText } from "./clock.ts"
+import { holdClock, titleReady } from "./title.ts"
 
 const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8")
 const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8")
@@ -20,20 +23,41 @@ const page = () => {
 test("the card shows the bar until the game is ready, then asks for a key and hides on the first one", () => {
   const { window, node } = page()
   assert.deepEqual([node("title").hidden, node("title-load").hidden, node("title-go").hidden], [false, false, true], "loading: the bar, no Press any key")
-  titleReady(window)
-  assert.deepEqual([node("title-load").hidden, node("title-go").hidden], [true, false], "ready: Press any key")
+  let dismissed = 0
+  titleReady(window, () => dismissed++)
+  assert.deepEqual([node("title-load").hidden, node("title-go").hidden, dismissed], [true, false, 0], "ready: Press any key")
+  window.dispatchEvent(new Event("keydown"))
+  node("title").dispatchEvent(new Event("click"))
+  assert.deepEqual([node("title").hidden, dismissed], [true, 1], "hidden by the first, once")
+})
+
+// A player who waited on the card started minutes after 08:00, the weather already moving: the clock ran behind it.
+test("the game clock stands still behind the title card, the world moving on: the game starts at 08:00 as the player dismisses it", () => {
+  const { runtime, run, world } = start()
+  // As main.ts: held after setup, released by the key that dismisses the card.
+  const release = holdClock((request) => runtime.send(SetClock, request))
+  const { window, node } = page()
+  titleReady(window, release)
+  const cars = world().vehicles.filter((car) => car.traffic).map(({ x, y }) => ({ x, y }))
+  run(5 * 60)
+  const under = runtime.inspect(SkyView)
+  assert.deepEqual([under.seconds, clockText(under.local.hour * 3600 + under.local.minute * 60)], [DEFAULT_START, "08:00"], "the HUD clock under the card")
+  assert.notDeepEqual(world().vehicles.filter((car) => car.traffic).map(({ x, y }) => ({ x, y })), cars, "traffic drove on behind the card")
   window.dispatchEvent(new Event("keydown"))
   assert.equal(node("title").hidden, true)
+  run(60)
+  assert.deepEqual(world().clock, { seconds: DEFAULT_START + 60, rate: 1 }, "from 08:00:00 as the card went, a game minute a real second")
 })
 
 // Regression: hidden on the press, the card let the tap's click land on the minimap under it, which opened the map.
 test("a tap hides the card on its click, not its press, so the click lands on the card", () => {
   const { window, node } = page()
-  titleReady(window)
+  let dismissed = 0
+  titleReady(window, () => dismissed++)
   window.dispatchEvent(new Event("pointerdown"))
   assert.equal(node("title").hidden, false, "pressed: still showing")
   node("title").dispatchEvent(new Event("click"))
-  assert.equal(node("title").hidden, true)
+  assert.deepEqual([node("title").hidden, dismissed], [true, 1])
 })
 
 // The opening warning should only say the game is early, not that it crashes or is rough.

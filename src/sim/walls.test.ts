@@ -3,17 +3,19 @@ import { test } from "node:test"
 
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
-import { carClear, crossesAny, moveCar, wallsAlong } from "./body.ts"
+import { carCircles, carClear, carRadius, crossesAny, moveCar, wallsAlong } from "./body.ts"
 import { settle, tiltOf, turn } from "./chassis.ts"
 import { groundZ } from "./map/ground.ts"
 import { graph, MAP, wallsNear } from "./map/index.ts"
 import { pushTrunk } from "./map/kinds.ts"
-import { CarInput, Chassis, Game, Motion, Pose, PrevPose, Vehicle } from "./schema.ts"
+import { CarInput, Chassis, Game, Motion, Pose, type PoseValue, PrevPose, SetClock, SetHandling, SetWeather, Vehicle } from "./schema.ts"
 import { edgeIndex, facesForward, laneOf, lanePoint, laneSide, roadOf, walkIndex, walkSide } from "./route.ts"
+import type { Regime } from "./sky/regimes.ts"
 import { parkedCar, pedestrian } from "./spawning.ts"
-import { HONK_STEPS } from "./systems/traffic.ts"
-import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, start, walkClear } from "./testing.ts"
+import { BACK_GAP, HONK_STEPS } from "./systems/traffic.ts"
+import { BATTISTI, battistiTraffic, door, DT, ON_BATTISTI, press, rolling, start, walkClear } from "./testing.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
+import { weatherFactor } from "./tyres.ts"
 import { VEHICLES } from "./vehicles.ts"
 
 // Trees are indexed as points and their trunk squares made on query: the broad phase must still return them.
@@ -180,6 +182,109 @@ test("traffic: a car held up by a car parked in its lane honks once each time it
   assert.ok(reversed.length > 0)
   assert.deepEqual(honked, reversed.map((frame) => frame - HONK_STEPS), "one honk per stuck episode, half-way to backing up")
   assert.ok(heard.honks.filter((h) => h.car === id).every((h) => h.model === "panda" && Vec2.distance(h, blocker) < 10), "behind the blocker")
+})
+
+/** How far apart two Pandas' bodies are, m (their `carCircles`, as Contacts sees them): negative where they overlap. */
+const bodyGap = (a: PoseValue, b: PoseValue): number => {
+  const circles = (p: PoseValue) => carCircles("panda", p.angle).map((o) => ({ x: p.x + o.x, y: p.y + o.y }))
+  return Math.min(...circles(a).flatMap((c) => circles(b).map((d) => Vec2.distance(c, d)))) - 2 * carRadius("panda")
+}
+
+/**
+ * A traffic car at `at` on Via Cesare Battisti, standing or rolling at `speed` m/s, among Pandas parked at `parked`, run for `frames`
+ * (with `regime` given, under that weather settled, the clock stopped and the weather's grip loss at the real 1): how often it touched
+ * a car, how far it backed up (m), its top speed (m/s), its controls after the last frame, and the closest its body came to each
+ * parked car (m), over the whole run and from the step it first backed up to get unstuck.
+ */
+const trafficAmong = (at: PoseValue, parked: ReadonlyArray<PoseValue>, frames: number, { regime, speed = 0 }: { readonly regime?: Regime; readonly speed?: number } = {}) => {
+  assert.ok([at, ...parked].every((pose) => carClear("panda", pose)), "staged clear of walls")
+  const { runtime, run, world, heard } = start([], [FAR, { cars: parked.map((pose) => parkedCar("panda", 0x3d6155, pose)), traffic: [battistiTraffic(0xd4a85e, at, speed)] }])
+  if (regime !== undefined) {
+    runtime.send(SetHandling, { key: "weatherGrip", value: 1 })
+    runtime.send(SetClock, { rate: 0 })
+    runtime.send(SetWeather, { regime, settle: true })
+  }
+  const id = world().vehicles.find((v) => v.traffic)!.id
+  const others = parked.map((pose) => world().vehicles.find((v) => !v.traffic && Vec2.distance(v, pose) < 0.1)!.id)
+  const closest = parked.map(() => Number.MAX_VALUE), closestBacking = parked.map(() => Number.MAX_VALUE)
+  let backed = 0, top = 0
+  run(frames, () => {
+    const vehicles = world().vehicles, car = vehicles.find((v) => v.id === id)!, ahead = car.vx * Ops.cos(car.angle) + car.vy * Ops.sin(car.angle)
+    backed += Math.max(0, -ahead) * DT
+    top = Math.max(top, ahead)
+    others.forEach((other, k) => {
+      const gap = bodyGap(car, vehicles.find((v) => v.id === other)!)
+      closest[k] = Math.min(closest[k]!, gap)
+      if (car.pilot!.reverseUntil > 0) closestBacking[k] = Math.min(closestBacking[k]!, gap)
+    })
+  })
+  const input = world().vehicles.find((v) => v.id === id)!.input
+  return { touches: heard.impacts.filter((i) => i.hit === "car" && (i.car === id || i.other === id)).length, backed, top, input, closest, closestBacking }
+}
+
+// Regressions: traffic cars shoved each other for seconds, an Impact every step.
+// The braking cone tested only the centre of what was ahead, within 1.8 m of the straight line ahead, so a car standing across the
+// road with its centre just outside it (its body in the way) was driven into.
+test("traffic: a driver stops for a car standing across its lane with its centre beside the lane", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  const { touches, backed } = trafficAmong(ON_BATTISTI, [{ ...lanePoint(lane, 12, side - 2), angle: ON_BATTISTI.angle + Math.PI / 2 }], 900)
+  assert.equal(touches, 0, `it touched a car ${touches} times`)
+  assert.ok(backed > 0, "held up long enough to back up")
+})
+
+// A stuck car backed up for 1.5 s at full speed, into the car queued behind it.
+test("traffic: backing up to get unstuck, a driver stops short of the car queued behind", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  // Held up 7 m on, it creeps to 1.5 m from the queued car, then backs up, slower the nearer it gets, and stops on the handbrake 1 m
+  // short of it. It stops once the speed the gap allows falls under 0.5 m/s, so without `BACK_GAP` it would still come within
+  // 0.53 m: the margin over `BACK_GAP` tells the two apart.
+  const ahead = { ...lanePoint(lane, 7, side), angle: ON_BATTISTI.angle }, queued = { ...lanePoint(lane, -4.5, side), angle: ON_BATTISTI.angle }
+  const { touches, backed, closestBacking } = trafficAmong(ON_BATTISTI, [ahead, queued], 300)
+  assert.equal(touches, 0, `it touched a car ${touches} times`)
+  assert.ok(backed > 0.3, `backed up ${backed.toFixed(2)} m toward it`)
+  assert.ok(closestBacking[1]! >= BACK_GAP + 0.3, `came within ${closestBacking[1]!.toFixed(2)} m of it`)
+})
+
+// Design: AI drivers slow for wet and snowy roads (TrafficAI's `grip`); no test drove one on a wet road.
+test("traffic: on a wet road a driver keeps slower, eases off for a car further ahead, and stops and backs up further from the cars around it", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda"), angle = ON_BATTISTI.angle
+  // The free road: its top speed in five seconds, the square root of the grip rain leaves (0.72) times the dry one's.
+  const free = (regime: Regime) => trafficAmong(ON_BATTISTI, [], 300, { regime }).top
+  const ratio = free("rain") / free("clear"), expected = Math.sqrt(weatherFactor({ wet: 1, snow: 0 }, 1))
+  assert.ok(Math.abs(ratio - expected) < 0.03, `wet top speed ${ratio.toFixed(3)} of the dry one, not ${expected.toFixed(3)}`)
+  // At 9 m/s a car 22 m ahead lies past the dry braking cone and its following limit, inside the wet ones.
+  const pedal = (regime: Regime, parked: ReadonlyArray<PoseValue>) => trafficAmong(ON_BATTISTI, parked, 1, { regime, speed: 9 }).input.throttle
+  const ahead = [{ ...lanePoint(lane, 22, side), angle }]
+  assert.equal(pedal("clear", ahead), pedal("clear", []), "dry: not slowing for it yet")
+  assert.ok(pedal("rain", ahead) < pedal("rain", []) - 0.1, `wet: easing off, ${pedal("rain", ahead)} against ${pedal("rain", [])}`)
+  // Held up by a car 7 m on, a car queued 7 m behind: wet, it stops further from the one ahead, then backs up less close to the other.
+  const between = (regime: Regime) => trafficAmong(ON_BATTISTI, [{ ...lanePoint(lane, 7, side), angle }, { ...lanePoint(lane, -7, side), angle }], 420, { regime })
+  const dry = between("clear"), wet = between("rain")
+  assert.ok(wet.closest[0]! > dry.closest[0]! + 0.15, `stopped ${wet.closest[0]!.toFixed(2)} m from the car ahead, ${dry.closest[0]!.toFixed(2)} m dry`)
+  assert.ok(wet.closestBacking[1]! > dry.closestBacking[1]! + 0.15, `backed to ${wet.closestBacking[1]!.toFixed(2)} m of the car behind, ${dry.closestBacking[1]!.toFixed(2)} m dry`)
+  assert.equal(wet.touches + dry.touches, 0)
+})
+
+// The braking cone follows the arc the front wheels steer: what stands beside the front, on the side the wheels turn to, is in the way.
+test("traffic: a driver steering back into its lane waits for a car standing there beside its front", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), side = laneSide(BATTISTI, "panda")
+  // Pulled out 2.4 m to the left of its lane, a Panda in the lane 2 m further on: it steers right at full lock, into the Panda.
+  const at = { ...lanePoint(lane, 0, side - 2.4), angle: ON_BATTISTI.angle }, beside = { ...lanePoint(lane, 2, side), angle: ON_BATTISTI.angle }
+  const { touches, closest } = trafficAmong(at, [beside], 300), from = bodyGap(at, beside)
+  assert.equal(touches, 0, `it touched a car ${touches} times`)
+  // It waits where it stands; a straight cone sees the Panda only once the nose points at it, 0.3 m from it.
+  assert.ok(closest[0]! > from - 0.1, `it nosed from ${from.toFixed(2)} m to ${closest[0]!.toFixed(2)} m of it`)
+})
+
+// Backing up at full lock past a car alongside swept the nose into it.
+test("traffic: a driver standing askew beside a car backs up straight, clear of it", () => {
+  const lane = laneOf(BATTISTI.edge, BATTISTI.forward), angle = ON_BATTISTI.angle - 0.35
+  const fx = Ops.cos(angle), fy = Ops.sin(angle), at = { ...lanePoint(lane, 0, laneSide(BATTISTI, "panda")), angle }
+  // Parallel to it on its left, 0.35 m from its body, half a metre further on.
+  const beside = { x: at.x - fy * 2 + fx * 0.5, y: at.y + fx * 2 + fy * 0.5, angle }
+  const { touches, backed } = trafficAmong(at, [beside], 300)
+  assert.equal(touches, 0, `it touched a car ${touches} times`)
+  assert.ok(backed > 1, `backed up ${backed.toFixed(2)} m`)
 })
 
 test("pedestrians: a walker whose verge is blocked by a parked car gets past it", () => {

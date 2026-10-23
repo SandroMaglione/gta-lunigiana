@@ -2,7 +2,8 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { HANDLING, HANDLING_KEYS, type HandlingKey } from "../sim/handling.ts"
-import { formatKnob, isDebugKey, sections } from "./debug.ts"
+import { isDebugKey } from "./debug.ts"
+import { formatKnob, sections } from "./debug-handling.ts"
 
 /** The first knob of `kind`, so the tests follow the table. */
 const knobOf = (kind: "scale" | "share" | "switch"): HandlingKey => HANDLING_KEYS.find((key) => HANDLING[key].kind === kind)!

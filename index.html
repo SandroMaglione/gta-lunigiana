@@ -15,14 +15,20 @@
   <body>
     <canvas id="game"></canvas>
     <div id="hud">
-      <div class="where" aria-live="polite">
-        <div id="hud-road"></div>
-        <div id="hud-district"></div>
+      <div class="top">
+        <div class="where" aria-live="polite">
+          <div id="hud-road"></div>
+          <div id="hud-district"></div>
+        </div>
+        <div class="when">
+          <time id="hud-clock"></time>
+          <div id="hud-weather" lang="en"></div>
+        </div>
+        <dl class="score">
+          <div><dt>Auto rubate <small>cars stolen</small></dt><dd id="hud-stolen">0</dd></div>
+          <div><dt>Persone investite <small>people hit</small></dt><dd id="hud-knocked">0</dd></div>
+        </dl>
       </div>
-      <dl class="score">
-        <div><dt>Auto rubate <small>cars stolen</small></dt><dd id="hud-stolen">0</dd></div>
-        <div><dt>Persone investite <small>people hit</small></dt><dd id="hud-knocked">0</dd></div>
-      </dl>
       <div id="hud-prompt" class="for-keys" hidden></div>
       <div id="hud-speedo" hidden><span id="hud-speed">0</span><span class="unit">km/h</span><div id="hud-vehicle"></div></div>
       <div id="hud-minimap"></div>
@@ -46,7 +52,7 @@
         <div class="pad turn" id="hud-touch-turnLeft">↺</div>
         <div class="pad turn" id="hud-touch-turnRight">↻</div>
       </div>
-      <div class="credits">Map data © OpenStreetMap contributors (ODbL) · Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR, Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)</div>
+      <div class="credits">Map data © OpenStreetMap contributors (ODbL) · Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR, Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)<br />Dati climatici: ISPRA SCIA (CC BY 4.0) · Informazioni elaborate utilizzando, tra l'altro, dati e prodotti del Servizio Meteorologico dell'Aeronautica Militare pubblicati sul sito www.meteoam.it</div>
     </div>
     <dialog id="settings" aria-labelledby="settings-title">
       <h2 id="settings-title">Settings</h2>
@@ -85,7 +91,7 @@
           <button id="title-retry" type="button" hidden>Retry</button>
         </div>
         <p class="go" id="title-go" hidden><span class="for-keys">Press any key</span><span class="for-touch">Tap to play</span></p>
-        <p class="fine">Map data © OpenStreetMap contributors (ODbL)<br />Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR,<br />Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)</p>
+        <p class="fine">Map data © OpenStreetMap contributors (ODbL)<br />Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR,<br />Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)<br />Dati climatici: ISPRA SCIA (CC BY 4.0)<br />Informazioni elaborate utilizzando, tra l'altro, dati e prodotti del Servizio Meteorologico dell'Aeronautica Militare pubblicati sul sito www.meteoam.it</p>
       </div>
     </div>
     <script>

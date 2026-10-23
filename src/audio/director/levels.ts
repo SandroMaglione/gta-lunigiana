@@ -6,15 +6,18 @@
  *
  * Flags, by kind: vehicle voices Doppler-shift (water and the beds are static); every one-shot
  * waits its travel time past `DELAY_FROM`; `echoes` says which one-shots answer off rock faces;
- * every positional source is occluded (the listener's own car and the beds are not).
+ * `MOST_DB` caps the loudest ones' direct sound; every positional source is occluded (the
+ * listener's own car, the beds and thunder are not); a source `aloft` (thunder) takes no ground
+ * effect.
  *
  * @module audio/director/levels
  */
 import type { VehicleModel } from "../../sim/vehicles.ts"
+import { rainQuiet } from "../synth/rain.ts"
 import type { Continuous, OneShot } from "../types.ts"
 
-/** A source's calibration: dB(A) at 1 m at the synth's nominal peak, and its size, m. */
-export interface Level { readonly db: number; readonly rMin: number }
+/** A source's calibration: dB(A) at 1 m at the synth's nominal peak, its size, m, and whether it stands so far `aloft` that the ground takes nothing on its way. */
+export interface Level { readonly db: number; readonly rMin: number; readonly aloft?: boolean }
 
 /** Engines at the redline under full load (pass-by levels, physics.md §8): every engine voice peaks alike, so the model's loudness lives here. */
 export const ENGINE = {
@@ -51,32 +54,66 @@ export const LEVELS = {
   groan: { db: 72, rMin: 1 },
   bird: { db: 85, rMin: 1 },
   bark: { db: 96, rMin: 1 },
-  bell: { db: 118, rMin: 5 }
-} as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">, Level>
+  bell: { db: 118, rMin: 5 },
+  // A lightning channel, kilometres of it, heard from its strike point (an in-cloud flash's start) and aloft, over no ground: 88 dB(A)
+  // at 1 km once the render's own `thunderQuiet` is taken (a close strike's pulse tops 120 dB unweighted there), 66 at 5 km; inside
+  // 300 m its crack is no louder, and its direct sound is capped (`MOST_DB`) anyway.
+  thunder: { db: 154, rMin: 300, aloft: true }
+} as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets" | "rain" | "roof">, Level>
 
 /**
- * TUNED: a crash's direct sound plays at most this many dB over gain 1, where the master limiter takes
- * a few dB of a 15 m/s crash's peak. Nearer (the listener's own crash comes about 25 dB over), it took
- * 20 dB off the hit and, released 0.25 s later, gave the crunch's sub-hits back nearly as loud as the
- * hit: an echo.
+ * At most this many dB over gain 1 a one-shot's direct sound plays (its echoes, at least `ECHO_MIN_DB` under it, keep the way's
+ * own level). TUNED: a crash at 8, where the master limiter takes a few dB of a 15 m/s crash's peak; nearer (the listener's own
+ * crash comes about 25 dB over), it took 20 dB off the hit and, released 0.25 s later, gave the crunch's sub-hits back nearly as
+ * loud as the hit: an echo. Thunder at 2: its loud part lasts seconds, so its crack (a render's 0.5 peak) stays under the limiter's
+ * −6 dBFS going in (×0.8 master): −9 dBFS centred, −6.0 at the widest pan (±0.85); its rumble 10 dB and more under that.
  */
-export const CRASH_MOST_DB = 8
+export const MOST_DB: Readonly<Partial<Record<OneShot["kind"], number>>> = { crash: 8, thunder: 2 }
+
+/**
+ * The tawny owl's hoot, a bird's call of its own: estimated (no measurement found) 5 dB over a songbird's, low (800 Hz) and carrying,
+ * so on a still night (the floor at `NIGHT_DB`) one is heard about a kilometre across open ground, as listeners report.
+ */
+export const OWL: Level = { db: 90, rMin: 1 }
 
 /** Water's level comes from places (the line source at the listener); its size is the 1 m that level is clamped at. */
 export const WATER_R_MIN = 1
 
-/** The beds, dB(A) at the listener at full strength / density (the voices scale themselves below that). */
-export const BEDS = { wind: 60, crickets: 42 } as const
+/**
+ * The beds, dB(A) at the listener at full strength / density, and the rain in a 60 mm/h downpour (estimated from noise charts: gentle
+ * rain under 40, heavy 60–70). The voices scale themselves below that; a gale's wind bed plays over its full strength, up to
+ * `GALE_DB`.
+ */
+export const BEDS = { wind: 60, crickets: 42, rain: 64 } as const
 
-/** The wind voice (body and leaves) follows strength², so its level falls 40 dB per decade of strength. */
+/**
+ * The loudest the wind bed plays, dB(A): a gale on a crest, the loudest a bed's 0.5 peak plays under the master limiter (gain 1.25).
+ * Past the voice's full strength (`BEDS.wind`) only the bed's gain rises, so the usual wind keeps the voice it was tuned with.
+ */
+export const GALE_DB = 65
+
+/** The wind (body and leaves) at `strength` follows strength², so its level falls 40 dB per decade of strength; past 1, the bed's gain carries it to `GALE_DB`. */
 export const windDb = (strength: number): number => BEDS.wind + 40 * Math.log10(Math.max(0.05, strength))
+
+/** Rain at the listener, dB(A), at `rate` mm/h: the downpour's `BEDS.rain`, `rainQuiet` under (43 at 1 mm/h, 50 at 4, 55 at 10, 62 at 40). */
+export const rainDb = (rate: number): number => BEDS.rain - rainQuiet(rate)
+
+/**
+ * Rain drumming on the roof of the car the listener sits in, dB(A) at the ears in a 60 mm/h downpour: heard with no cabin, as the
+ * own engine (the roof radiates inside). Estimated (no in-car measurement found): damped steel about 10 dB under a bare metal roof's
+ * 74 under ISO heavy rain, so 64 at 40 mm/h; the cabin idles at 46–48, so a shower is faint over it and a downpour drowns it.
+ */
+const ROOF_DB = 66
+
+/** The roof's drumming at the ears, dB(A), at `rate` mm/h: as the rain's law (45 at 1 mm/h, 52 at 4, 57 at 10, 64 at 40). */
+export const roofDb = (rate: number): number => ROOF_DB - rainQuiet(rate)
 
 /** Source heights above their ground, m: a vehicle's body, a person (feet to mouth), and water lifted out of its carved bed. */
 export const HEIGHT = { vehicle: 0.8, person: 1, water: 2 } as const
 
 /** At most this many voices of each kind play; the loudest at the listener win. */
 export const CAPS = {
-  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, water: 4, wind: 1, crickets: 1
+  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, water: 4, wind: 1, crickets: 1, rain: 1, roof: 1
 } as const satisfies Record<Continuous["kind"], number>
 
 /** A voice that played last frame keeps its place under the cap until a newcomer is this many dB louder: near-equals do not swap every frame. */
@@ -94,13 +131,15 @@ export const DELAY_FROM = 40
  * the woods (a known limit: docs/audio.md). In a street, street² of `db` dB at `ref` m (the tail
  * leaks out of every gap in the facades), 3 dB wetter per doubling of distance from `near` to `far` m:
  * along a street the reverberant field falls like a line source's, the direct sound like a point's
- * (Thomas et al. 2013). `cabin`× inside a vehicle, whose own noise masks the tail.
+ * (Thomas et al. 2013). `cabin`× inside a vehicle, whose own noise masks the tail; `snow` of it gone under a full snow cover,
+ * the street floor no longer reflecting (fresh snow's NRC is near 0.9).
  */
-export const REVERB = { db: 8, ref: 10, near: 2.5, far: 40, cabin: 0.25 } as const
+export const REVERB = { db: 8, ref: 10, near: 2.5, far: 40, cabin: 0.25, snow: 0.5 } as const
 
 /** An echo plays at least this many dB under the direct sound: a rock face's own reflection loss (places.ts). */
 export const ECHO_MIN_DB = 10
 
-/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices and bells (physics.md §7). */
+/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices, bells (physics.md §7) and thunder. */
 export const echoes = (sound: OneShot): boolean =>
-  sound.kind === "crash" ? sound.speed >= 6 : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell"
+  sound.kind === "crash" ? sound.speed >= 6
+  : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell" || sound.kind === "thunder"

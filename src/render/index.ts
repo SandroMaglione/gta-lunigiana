@@ -2,7 +2,8 @@
  * The render schedule: mirrors people and vehicles into three nodes with RenderSync, places them
  * between fixed steps (PrevPose → Pose at the loop's alpha), people on the ground or road under
  * them and vehicles at their centre of mass from their Chassis, marks the player's car for the
- * x-ray silhouette, and lays tyre marks and smoke from the Skid events. Read-only towards the
+ * x-ray silhouette, lays tyre marks and smoke from the Skid events, and hands the sky host the
+ * clock, the weather, the lightning and the cars with their lamps on. Read-only towards the
  * world (index.test.ts checks every system's declared access); the host ticks it once per
  * animation frame after writing `RenderClock.alpha`.
  *
@@ -14,12 +15,14 @@ import type { Object3D } from "three"
 
 import { wrapAngle } from "../sim/body.ts"
 import {
-  Chassis, type ChassisValue, Down, Driving, Game, Person, Player, Pose, type PoseValue, PrevPose, Skid, STEP, Time, Vehicle
+  Chassis, type ChassisValue, Down, Driving, Game, GameClock, Lightning, Person, Player, Pose, type PoseValue, PrevPose, Skid, STEP, Time, Traffic, Vehicle,
+  Weather
 } from "../sim/index.ts"
 import { type ActorNode, PersonNode, type VehicleNode, vehicleNode } from "./actors.ts"
-import { solidMaterial } from "./geometry.ts"
+import { actorMaterial } from "./geometry.ts"
 import { groundY, yOf } from "./ground.ts"
 import { Marks, TREAD } from "./marks.ts"
+import type { SkyHost } from "./sky/host.ts"
 import { Smoke } from "./smoke.ts"
 
 /** Person nodes, one per entity with a Person. */
@@ -49,6 +52,8 @@ export const makeEffects = (parent: Object3D) => {
 }
 /** The host's tyre marks and smoke (`makeEffects`), fed by the render schedule. */
 export const Effects = Descriptor.Service<ReturnType<typeof makeEffects>>()("Lunigiana/Effects")
+/** The host's sky (`SkyHost`), fed by the render schedule: it draws the light, the weather and the night lights. */
+export const Sky = Descriptor.Service<SkyHost>()("Lunigiana/Sky")
 
 const SyncPeople = RenderSync.system(Game, {
   name: "Lunigiana/SyncPeople",
@@ -57,7 +62,7 @@ const SyncPeople = RenderSync.system(Game, {
   select: { driving: Game.Query.optional(Driving), down: Game.Query.optional(Down), player: Game.Query.optional(Player) },
   // PrevPose is written every step, so apply also sees Driving and Down going away.
   redrawOn: [Driving, Down, PrevPose],
-  create: ({ renderable }) => new PersonNode(renderable, solidMaterial),
+  create: ({ renderable }) => new PersonNode(renderable, actorMaterial),
   apply: (node, { data }) => {
     node.visible = !data.driving.present
     node.rotation.z = data.down.present ? -Math.PI / 2 : 0
@@ -69,7 +74,7 @@ const SyncVehicles = RenderSync.system(Game, {
   name: "Lunigiana/SyncVehicles",
   renderable: Vehicle,
   registry: Vehicles,
-  create: ({ renderable }) => vehicleNode(renderable.model, renderable.color, solidMaterial),
+  create: ({ renderable }) => vehicleNode(renderable.model, renderable.color, actorMaterial),
   apply: () => {}
 })
 
@@ -163,5 +168,35 @@ const DrawEffects = Game.System("Lunigiana/DrawEffects", {
   smoke.update(now)
 })
 
+/**
+ * Hands the sky host this frame's game time (blended at alpha), the weather and sim time, the steps'
+ * lightning, and the cars with their lamps on, switching every car's lamps: on in traffic and in the
+ * player's car, off when parked. Last in the schedule, so the cars stand where they are drawn.
+ */
+const DrawSky = Game.System("Lunigiana/DrawSky", {
+  queries: {
+    player: Game.Query({ selection: { driving: Game.Query.optional(Driving) }, with: [Player] }),
+    vehicles: Game.Query({ selection: { vehicle: Game.Query.read(Vehicle), traffic: Game.Query.optional(Traffic) } })
+  },
+  resources: { time: Game.System.readResource(Time), clock: Game.System.readResource(GameClock), weather: Game.System.readResource(Weather) },
+  events: { lightning: Game.System.readEvent(Lightning) },
+  services: { sky: Game.System.service(Sky), nodes: Game.System.service(Vehicles), clock: Game.System.service(RenderClock) }
+}, ({ queries, resources, events, services }) => {
+  const { sky, nodes } = services, alpha = services.clock.alpha, { seconds, rate } = resources.clock.get()
+  sky.sky(seconds + alpha * rate, rate, resources.weather.get(), (resources.time.get().step + alpha) * STEP.dt)
+  for (const lightning of events.lightning.all()) sky.strike(lightning)
+  const found = queries.player.singleOptional()
+  const driving = found.ok ? found.value?.data.driving.value() : undefined
+  const car = driving === undefined ? undefined : queries.vehicles.getHandle(driving.vehicle)
+  const driven: number | undefined = car?.ok === true ? car.value.entity.id : undefined
+  for (const { entity, data } of queries.vehicles.each()) {
+    const node = nodes.get(entity.id)
+    if (node === undefined) continue
+    const on = data.traffic.present || entity.id === driven
+    node.setLamps(on)
+    if (on) sky.car({ id: entity.id, x: node.position.x, y: -node.position.z, z: node.position.y, angle: node.rotation.y, driven: entity.id === driven })
+  }
+})
+
 /** The render schedule, ticked once per animation frame after the fixed updates. */
-export const render = Game.Schedule(SyncPeople, SyncVehicles, MarkDriven, PlacePeople, PlaceVehicles, DrawEffects)
+export const render = Game.Schedule(SyncPeople, SyncVehicles, MarkDriven, PlacePeople, PlaceVehicles, DrawEffects, DrawSky)

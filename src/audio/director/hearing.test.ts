@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { screenAxes } from "../../sim/view.ts"
-import { CABIN, type Cabin, EAR_HEIGHT, gainToDb } from "../acoustics.ts"
+import { CABIN, type Cabin, EAR_HEIGHT, gainToDb, groundLoss } from "../acoustics.ts"
 import { hear } from "./hearing.ts"
 
 /** Ears over open, flat ground. */
@@ -30,4 +30,14 @@ test("a sound that skips the cabin (the own car's crash) plays open, but its tai
   assert.ok(Math.abs(bare.placement.gain * bare.placement.wet - through.placement.gain * through.placement.wet) < 1e-12, "the same tail")
   assert.equal(bare.shell, CABIN.panda)
   assert.equal(through.shell, undefined)
+})
+
+test("a source aloft (thunder's channel) takes no ground effect; snow on the ground takes up to 12 dB more and half the street's reverb", () => {
+  const at = (more: { readonly aloft?: boolean; readonly snow?: number }) =>
+    hear({ ears, source: { x: 0, y: -100, z: 0.8 }, db: 90, rMin: 2, height: 1.2, delta: 0, forest: 0, ambient: 35, street: 1, ...more })
+  const bare = at({}), aloft = at({ aloft: true }), snowy = at({ snow: 1 }), half = at({ snow: 0.5 })
+  assert.ok(Math.abs(aloft.level - bare.level - groundLoss(bare.r, 1.2)) < 1e-9 && groundLoss(bare.r, 1.2) > 4, `${aloft.level - bare.level} dB`)
+  assert.ok(Math.abs(bare.level - snowy.level - 12) < 1e-9 && Math.abs(bare.level - half.level - 6) < 1e-9)
+  assert.ok(Math.abs(snowy.placement.wet / bare.placement.wet - 0.5) < 1e-9)
+  assert.equal(at({ aloft: true, snow: 1 }).level, aloft.level, "nothing of the ground under a channel kilometres up")
 })

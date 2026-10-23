@@ -2,7 +2,7 @@
  * What the map around the listener sounds like: what a car hit (the material of the drive wall at
  * a contact point), the mix of forest, open ground and village (the ambience beds), how enclosed a
  * street is (the reverb send), forest along a path (foliage loss), rock faces that echo, and the
- * fixed places that make sound: church bells, farm dogs, birds in the trees. Running water is in
+ * fixed places that make sound: church bells, farm dogs, birds in the trees, owls in the woods. Running water is in
  * places/water.ts; the surface under a foot or a tyre is the sim's (`surfaceAt`). Off the roads
  * everything reads the sim's land-cover raster (`mapCover`, built once and shared); the other
  * structures are built on their first query.
@@ -241,6 +241,37 @@ let dogs: ReadonlyArray<Dog> | undefined
 /** The dogs within `radius` m of (x, y). */
 export const dogsNear = (x: number, y: number, radius: number): ReadonlyArray<Dog> =>
   (dogs ??= findDogs()).filter((d) => (d.x - x) ** 2 + (d.y - y) ** 2 <= radius * radius)
+
+/** A tawny owl in its wood: the tree it calls from. */
+export interface Owl { readonly key: string; readonly x: number; readonly y: number; readonly z: number }
+
+/**
+ * One owl territory in `OWL_SHARE` of the map's `OWL_CELL` m squares with woods in them (a tawny owl holds 20–30 ha), perched
+ * `OWL_PERCH` m up a tree at the first of `OWL_TRIES` hashed points of the square that falls in forest.
+ */
+const OWL_CELL = 500, OWL_SHARE = 0.7, OWL_TRIES = 8, OWL_PERCH = 8
+
+/** Every owl. */
+const findOwls = (): Array<Owl> => {
+  const { minX, minY, maxX, maxY } = MAP.bounds, out: Array<Owl> = []
+  for (let i = 0; minX + i * OWL_CELL < maxX; i++) {
+    for (let j = 0; minY + j * OWL_CELL < maxY; j++) {
+      if (hash01(i, j, 11) >= OWL_SHARE) continue
+      for (let k = 0; k < OWL_TRIES; k++) {
+        const x = Math.min(maxX, minX + (i + hash01(i, j, k, 12)) * OWL_CELL), y = Math.min(maxY, minY + (j + hash01(i, j, k, 13)) * OWL_CELL)
+        if (coverAt(x, y) !== "forest") continue
+        out.push({ key: `owl:${i},${j}`, x, y, z: heightAt(x, y) + OWL_PERCH })
+        break
+      }
+    }
+  }
+  return out
+}
+let owls: ReadonlyArray<Owl> | undefined
+
+/** The owls within `radius` m of (x, y). */
+export const owlsNear = (x: number, y: number, radius: number): ReadonlyArray<Owl> =>
+  (owls ??= findOwls()).filter((o) => (o.x - x) ** 2 + (o.y - y) ** 2 <= radius * radius)
 
 /** Birds sing from trees `BIRD_NEAR` to `BIRD_FAR` m from the listener. */
 const BIRD_NEAR = 15, BIRD_FAR = 70

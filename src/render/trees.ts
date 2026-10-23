@@ -1,11 +1,15 @@
 /**
  * Trees: chestnut-like round canopies and a few conifers, one
  * InstancedMesh per kind per chunk, built when the chunk streams in. Trees near the map edge are
- * mirrored into the apron so the forest does not stop at the bounds.
+ * mirrored into the apron so the forest does not stop at the bounds. A `canopy` vertex attribute
+ * (1 on the crown, 0 on the trunk) tells the tree material what sways in the wind.
  *
  * @module render/trees
  */
-import { Color, ConeGeometry, CylinderGeometry, IcosahedronGeometry, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type Material } from "three"
+import {
+  Color, ConeGeometry, CylinderGeometry, Float32BufferAttribute, IcosahedronGeometry, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry,
+  type Material
+} from "three"
 
 import { MAP } from "../sim/map/index.ts"
 import { hash01 } from "../tools/geometry.ts"
@@ -17,15 +21,19 @@ import { PALETTE } from "./palette.ts"
 const KINDS = ["broadleaf", "conifer"] as const
 type TreeKind = (typeof KINDS)[number]
 
+/** `piece` marked as crown (1: it sways rigidly in the wind) or trunk (0: it stays). */
+const crown = (piece: BufferGeometry, sways: 0 | 1): BufferGeometry =>
+  piece.setAttribute("canopy", new Float32BufferAttribute(new Float32Array(piece.getAttribute("position").count).fill(sways), 1))
+
 /** Unit-scale tree shapes (≈ 7 m tall), trunk base at the origin; shared by every chunk. */
 const shapes = {
   broadleaf: merge([
-    paint(new CylinderGeometry(0.22, 0.3, 2, 5).translate(0, 1, 0), PALETTE.woodBrown),
-    paint(new IcosahedronGeometry(1, 0).scale(3, 2.5, 3).translate(0, 4.2, 0), PALETTE.forest)
+    crown(paint(new CylinderGeometry(0.22, 0.3, 2, 5).translate(0, 1, 0), PALETTE.woodBrown), 0),
+    crown(paint(new IcosahedronGeometry(1, 0).scale(3, 2.5, 3).translate(0, 4.2, 0), PALETTE.forest), 1)
   ]),
   conifer: merge([
-    paint(new CylinderGeometry(0.18, 0.24, 1.6, 5).translate(0, 0.8, 0), PALETTE.woodBrown),
-    paint(new ConeGeometry(2, 6.5, 6).translate(0, 4.2, 0), PALETTE.conifer)
+    crown(paint(new CylinderGeometry(0.18, 0.24, 1.6, 5).translate(0, 0.8, 0), PALETTE.woodBrown), 0),
+    crown(paint(new ConeGeometry(2, 6.5, 6).translate(0, 4.2, 0), PALETTE.conifer), 1)
   ])
 } as const satisfies Record<TreeKind, BufferGeometry>
 

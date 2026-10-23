@@ -5,8 +5,12 @@ import { Group, InstancedMesh, Vector3, type Mesh } from "three"
 
 import { MAP } from "../sim/map/index.ts"
 import { chunkBoxes, CHUNKS, radiiFor, screenDistances, screenRects } from "./chunks.ts"
+import { decalMaterial, linear, solidMaterial, treeMaterial, waterMaterial } from "./geometry.ts"
 import { terrainY } from "./ground.ts"
+import { PALETTE } from "./palette.ts"
 import { QUARTER, viewAxes } from "./pipeline.ts"
+import { glowMaterial } from "./sky/glow.ts"
+import { lampsIn } from "./sky/lamps.ts"
 import { World } from "./world.ts"
 
 const boxes = chunkBoxes()
@@ -64,4 +68,50 @@ test("world streaming: small moves keep chunks (hysteresis), leaving frees their
   for (const key of before.keys()) assert.ok(!world.loaded.has(key), `chunk ${key} dropped`)
   assert.equal(freed.size, meshes.length, "every mesh of every dropped chunk freed")
   assert.ok(meshes.every((m) => m.parent === null))
+})
+
+test("world streaming: the spawn view's chunks glow at night (window panes and lantern glass, one unlit mesh per chunk, no shadows)", () => {
+  const parent = new Group(), world = new World(parent)
+  const { x, y } = MAP.spawns.player
+  world.update(ground(x, y), 0, REACH, Infinity)
+  const glow = [...world.loaded.values()].flatMap((meshes) => meshes.filter((m) => m.material === glowMaterial))
+  assert.ok(glow.length > 0 && glow.length <= world.loaded.size, `${glow.length} glow meshes in ${world.loaded.size} chunks`)
+  assert.ok(glow.every((m) => !m.castShadow && !m.receiveShadow))
+  // Every lamp within 60 m is in a loaded chunk. A lantern's glass is a box with a top and a bottom
+  // (4 level triangles); window panes are upright.
+  let lamps = 0
+  lampsIn(x - 60, y - 60, x + 60, y + 60, () => lamps++)
+  assert.ok(lamps > 0, "street lamps around the station")
+  const level = glow.reduce((n, m) => {
+    const normal = m.geometry.getAttribute("normal")
+    for (let i = 0; i < normal.count; i += 3) if (Math.abs(normal.getY(i)) > 0.99) n++
+    return n
+  }, 0)
+  assert.ok(level / 4 >= lamps, `${level / 4} lantern glasses drawn, ${lamps} lamps within 60 m`)
+})
+
+test("world streaming: rivers draw in their own water mesh (no snow on them), roads and rail in the decal one, trees with the swaying material", () => {
+  const parent = new Group(), world = new World(parent)
+  const { x, y } = MAP.spawns.player
+  world.update(ground(x, y), 0, REACH, Infinity)
+  const meshes = [...world.loaded.values()].flat()
+  const colours = (m: Mesh): Set<string> => {
+    const c = m.geometry.getAttribute("color"), seen = new Set<string>()
+    for (let i = 0; i < c.count; i += 3) seen.add(`${c.getX(i).toFixed(4)},${c.getY(i).toFixed(4)},${c.getZ(i).toFixed(4)}`)
+    return seen
+  }
+  const water = new Set([PALETTE.waterShallow, PALETTE.waterDeep].map((hex) => linear(hex).map((v) => v.toFixed(4)).join(",")))
+  const rivers = meshes.filter((m) => m.material === waterMaterial), decals = meshes.filter((m) => m.material === decalMaterial)
+  assert.ok(rivers.length > 0 && decals.length > 0, `the Lucido and the roads by the station: ${rivers.length} water, ${decals.length} decal meshes`)
+  assert.ok(rivers.every((m) => [...colours(m)].every((c) => water.has(c)) && !m.castShadow), "the water mesh holds only water")
+  assert.ok(decals.every((m) => [...colours(m)].every((c) => !water.has(c))), "the decal mesh holds no water")
+  const trees = meshes.filter((m) => m instanceof InstancedMesh)
+  assert.ok(trees.length > 0 && trees.every((m) => m.material === treeMaterial))
+  for (const t of trees) {
+    const canopy = t.geometry.getAttribute("canopy")
+    const values = new Set(Array.from({ length: canopy.count }, (_, i) => canopy.getX(i)))
+    assert.deepEqual([...values].sort(), [0, 1], "the trunk stays, the crown sways")
+  }
+  assert.ok(meshes.filter((m) => !(m instanceof InstancedMesh) && m.material !== glowMaterial && m.material !== waterMaterial && m.material !== decalMaterial)
+    .every((m) => m.material === solidMaterial), "terrain and buildings: the solid variant")
 })

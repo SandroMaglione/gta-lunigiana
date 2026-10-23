@@ -1,7 +1,8 @@
 /**
- * The valley's own sounds on an October afternoon: wind (Farnell, Designing Sound ch. 18) with its
- * gusts, whistle and leaves; Italian tree crickets in the grass; robins, tits, blackbirds and
- * chaffinches with their autumn calls; farm dogs; and the village church bells.
+ * The valley's own sounds: wind (Farnell, Designing Sound ch. 18) with its gusts, whistle and
+ * leaves; Italian tree crickets in the grass, chirping faster in warmer air; robins, tits,
+ * blackbirds and chaffinches with their autumn calls, and the tawny owl at night; farm dogs; and
+ * the village church bells.
  *
  * The continuous voices are diffuse, all around the listener, so they take no Doppler shift.
  *
@@ -14,10 +15,15 @@ import { type Vocal, vocalise } from "./voices.ts"
 
 /** Smoothing of wind changes, s: altitude and exposure change slowly, and the gusts carry the motion. */
 const WIND_TAU = 1
+/** The valley's usual gustiness (a gust factor near 1.5, open ground at 10 m): the wind as it blew before the weather. */
+export const VALLEY_GUSTS = 0.5
 /** Waveshaper passing only the top of the gust signal (above 0.5), scaled back to 0…1: the whistle opens on strong gusts. */
 const GUST_THRESHOLD = Float32Array.from({ length: 256 }, (_, i) => Math.max(0, (i / 255) * 2 - 1.5) * 2)
 
-/** Wind at `strength` 0…1: louder, higher and more tonal as it rises (a whistle on strong gusts), with leaves ∝ `forest`. */
+/**
+ * Wind at `strength` 0…1: louder, higher and more tonal as it rises (a whistle on strong gusts), with leaves ∝ `forest`; `gusts`
+ * 0…1 deepens its swells (from half to 0.95 of its level) and quickens them (the gust signal at ½× to 2×), `VALLEY_GUSTS` as before.
+ */
 export const wind: VoiceFactory<Extract<Continuous, { readonly kind: "wind" }>> = ({ ctx, out, kit }) => {
   const level = outlet(ctx, out), gust = loop(ctx, kit.gust)
   // Body: brown noise in a band whose level and centre breathe with the gusts.
@@ -39,10 +45,11 @@ export const wind: VoiceFactory<Extract<Continuous, { readonly kind: "wind" }>> 
   let tau = 0.01
   return {
     update: (sound, now) => {
-      const w = unit(sound.strength), w2 = w * w
-      // The gust swing stays below the base level, so the body's gain never goes negative.
+      const w = unit(sound.strength), w2 = w * w, g = unit(sound.gusts)
+      // The gust swing stays below the base level (0.325…0.615 of 0.65), so the body's gain never goes negative.
       body.gain.setTargetAtTime(0.65 * w2, now, tau)
-      bodyGust.gain.setTargetAtTime(0.47 * w2, now, tau)
+      bodyGust.gain.setTargetAtTime((0.47 + 0.29 * (g - VALLEY_GUSTS)) * w2, now, tau)
+      gust.playbackRate.setTargetAtTime(2 ** (2 * g - 1), now, tau)
       band.frequency.setTargetAtTime(250 + 400 * w, now, tau)
       bandGust.gain.setTargetAtTime(150 * w, now, tau)
       whistle.gain.setTargetAtTime(8 * smoothstep(0.4, 1, w), now, tau)
@@ -58,10 +65,8 @@ export const wind: VoiceFactory<Extract<Continuous, { readonly kind: "wind" }>> 
 /** Echemes (chirps) per second of the Italian tree cricket at `celsius`: Dolbear's linear form fitted to 1/s at 22 °C, silent below 10 °C. */
 export const echemeRate = (celsius: number): number => (celsius < 10 ? 0 : (celsius - 5) / 17)
 
-/** The game's weather: a 15 °C October afternoon. */
-const AFTERNOON = 15
-/** Echemes per second: the afternoon's, or the slowest rate that still chirps if the law fell silent, since it is daytime. */
-const CRICKET_RATE = Math.max(echemeRate(AFTERNOON), echemeRate(10))
+/** Echemes per second the voice chirps at `celsius`: the law, never slower than at 10 °C, so a voice held in the cold (the director holds it only where the law sings) still chirps, never waiting forever. */
+export const chirpRate = (celsius: number): number => Math.max(echemeRate(celsius) || 0, echemeRate(10))
 /** Oecanthus pellucens' carrier, Hz. */
 const CARRIER = 2600
 /** Crickets within earshot at full density. */
@@ -78,7 +83,7 @@ export const cricketsQuiet = (density: number): number => {
   return 10 * Math.log10(SINGERS / Math.max(1, Math.ceil(d * SINGERS))) - 20 * Math.log10(chorusAt(d))
 }
 
-/** Tree crickets around the listener: `density` 0…1 sets how many sing and how loud. */
+/** Tree crickets around the listener: `density` 0…1 sets how many sing and how loud, `celsius` how fast they chirp. */
 export const crickets: VoiceFactory<Extract<Continuous, { readonly kind: "crickets" }>> = ({ ctx, out }) => {
   const level = outlet(ctx, out), chorus = new GainNode(ctx, { gain: 0 })
   chorus.connect(level)
@@ -95,18 +100,18 @@ export const crickets: VoiceFactory<Extract<Continuous, { readonly kind: "cricke
   })
   return {
     update: (sound, now) => {
-      const density = unit(sound.density)
+      const density = unit(sound.density), rate = chirpRate(sound.celsius)
       chorus.gain.setTargetAtTime(chorusAt(density), now, 0.5)
       for (const singer of singers.slice(0, Math.ceil(density * SINGERS))) {
         // A cricket that was quiet (or fell behind) starts again somewhere in its next cycle.
-        if (singer.next < now) singer.next = now + Math.random() / CRICKET_RATE
+        if (singer.next < now) singer.next = now + Math.random() / rate
         while (singer.next < now + LOOKAHEAD) {
           const t = singer.next, seconds = 0.29 + Math.random() * 0.43
           singer.gate.setValueAtTime(0, t)
           singer.gate.linearRampToValueAtTime(singer.amp, t + 0.01)
           singer.gate.setValueAtTime(singer.amp, t + seconds - 0.01)
           singer.gate.linearRampToValueAtTime(0, t + seconds)
-          singer.next = t + Math.max(seconds + 0.15, jitter(0.15) / CRICKET_RATE)
+          singer.next = t + Math.max(seconds + 0.15, jitter(0.15) / rate)
         }
       }
     },
@@ -131,6 +136,33 @@ const note = (io: ShotIo, t: number, from: number, to: number, seconds: number, 
   amp.gain.setValueAtTime(0, t)
   amp.gain.linearRampToValueAtTime(peak, t + Math.min(0.008, seconds / 3))
   amp.gain.setTargetAtTime(0, t + seconds * 0.6, seconds / 6)
+  tone.connect(amp).connect(io.out)
+  tone.onended = () => amp.disconnect()
+  tone.start(t)
+  tone.stop(end)
+  return end
+}
+
+/**
+ * An owl's note at `t`: its fundamental and a weak octave (−18 dB) through the (s, Hz) points of `contour` scaled by `pitch`, at
+ * `peak`, softly breathed in, quavering by `trill` (rate Hz, depth Hz) if given; returns its end.
+ */
+const hoot = (io: ShotIo, t: number, contour: ReadonlyArray<readonly [number, number]>, pitch: number, peak: number, trill?: readonly [number, number]): number => {
+  const { ctx } = io, seconds = contour[contour.length - 1]![0], end = t + seconds + 0.06
+  const tone = new OscillatorNode(ctx, { periodicWave: new PeriodicWave(ctx, { real: [0, 0, 0], imag: [0, 1, 0.12] }) }), amp = new GainNode(ctx, { gain: 0 })
+  tone.frequency.setValueAtTime(contour[0]![1] * pitch, t)
+  for (const [at, hz] of contour.slice(1)) tone.frequency.linearRampToValueAtTime(hz * pitch, t + at)
+  if (trill !== undefined) {
+    const lfo = new OscillatorNode(ctx, { frequency: trill[0] })
+    lfo.connect(new GainNode(ctx, { gain: trill[1] })).connect(tone.frequency)
+    lfo.start(t)
+    lfo.stop(end)
+  }
+  amp.gain.setValueAtTime(0, t)
+  amp.gain.linearRampToValueAtTime(peak, t + Math.min(0.04, seconds / 4))
+  amp.gain.setValueAtTime(peak, t + seconds - Math.min(0.05, seconds / 4))
+  amp.gain.linearRampToValueAtTime(0, end)
+  burst(ctx, io.kit.white, io.out, t, 0.02, seconds / 8, contour[0]![1] * pitch, 1.2, 0.15 * peak)
   tone.connect(amp).connect(io.out)
   tone.onended = () => amp.disconnect()
   tone.start(t)
@@ -172,6 +204,19 @@ const CALLS = {
     let end = t
     for (let i = 0, n = 1 + Math.floor(Math.random() * 3); i < n; i++, t += 0.5 + 0.4 * Math.random()) end = note(io, t, 5600, 4600, 0.04, 0.45, [120, 400])
     return end
+  },
+  // The tawny owl (Strix aluco), the woods' caller at night, most vocal in autumn (Wild Echoes; BTO): the male's hoot, a note rising
+  // 750 → 850 Hz and falling over 0.9 s, a pause of 2.5–4 s, a short "hu", then the quavering "hu-hu-hu-hooo"; now and then the
+  // female's rough "kewick" (1.2 → 1.0 → 1.4 kHz). Each owl a little higher or lower.
+  owl: (io, t) => {
+    const pitch = jitter(0.05)
+    if (Math.random() < 0.3) return hoot(io, t, [[0, 1200], [0.12, 1000], [0.4, 1400]], pitch, 0.45, [70, 120])
+    hoot(io, t, [[0, 760], [0.25, 850], [0.9, 720]], pitch, 0.5)
+    t += 3.4 + 1.5 * Math.random()
+    hoot(io, t, [[0, 800], [0.15, 760]], pitch, 0.3)
+    t += 0.4
+    for (let i = 0; i < 3; i++, t += 0.13) hoot(io, t, [[0, 780], [0.09, 800]], pitch, 0.35)
+    return hoot(io, t, [[0, 800], [0.3, 850], [1, 730]], pitch, 0.5, [5, 12])
   }
 } satisfies Record<Species, (io: ShotIo, t: number) => number>
 

@@ -46,8 +46,8 @@ const COVER_LOOK = {
   pebble: { base: PALETTE.limestone, alt: PALETTE.marbleWhite, share: 0.4 }
 } as const satisfies Record<Cover, CoverLook>
 
-/** Faces steeper than this (normal y below it, ≈ 50°) show bare rock. */
-const ROCK_NORMAL_Y = 0.64
+/** Faces steeper than this (normal y below it, ≈ 50°) show bare rock, and hold no snow (render/sky/surface). */
+export const ROCK_NORMAL_Y = 0.64
 
 const PATCH = 4 // cells between noise lattice points: variant patches are blobs of ~16 m, not single cells
 /** Smooth value noise in [0, 1): hashed lattice values blended bilinearly. */

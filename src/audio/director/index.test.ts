@@ -8,93 +8,15 @@ import { VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
 import { screenAxes } from "../../sim/view.ts"
 import { hash01 } from "../../tools/geometry.ts"
 import { AMBIENT_DB, CABIN, dbToGain, gainToDb, SPEED_OF_SOUND } from "../acoustics.ts"
+import { skyAt } from "../index.ts"
 import { bells, streetAt, wallAt } from "../places.ts"
 import { stepRate } from "../synth/steps.ts"
-import type { Continuous, Happening, Heard, HeardPerson, HeardVehicle, OneShot, Placement, Speaker, Zone } from "../types.ts"
-import { makeDirector, type WallClock } from "./index.ts"
-import { CRASH_MOST_DB, TOWERS, windDb } from "./levels.ts"
-
-/**
- * Real map spots (found by probing the map): a treeless meadow on Monte dei Bianchi clear for 300 m to the south and
- * screen-right, a lane at Pian del Molino with a 10.7 m building 30 m east and open ground 30 m north-west, a wooded
- * ridge above Aiola (900 m) with no water within 400 m, Monzone station 68 m from the Torrente Lucido, a street
- * 50 m from Monzone Alto's tower, the woods above Isolano, in earshot of eleven bell towers, and the street of Monzone
- * where the game starts, 50 m from the Lucido behind the houses; a bank 15 m from the Lucido with nothing in the way,
- * the two flanks of Monte San Giorgio, 400 m apart (the west one in the open under a rock face), Gragnola's centre,
- * walled in on every side, the rendered house wall on Via Cesare Battisti where src/sim/index.test.ts drives a
- * Panda, on its cobbles, and the riverbed's gravel 16 m under a bridge's asphalt deck.
- */
-const MEADOW = { x: -329, y: 1078 }, STREET = { x: -916.6, y: 1706.8 }, BEHIND = { x: -886.6, y: 1706.8 }, OPEN = { x: -937.8, y: 1728 }
-const RIDGE = { x: 1600, y: -494.5 }, STATION = { x: -494, y: 437 }, BELFRY = { x: -41.8, y: -306.6 }
-const HILLSIDE = { x: -950, y: 71 }, SPAWN = { x: -412.6, y: 437.8 }, BANK = { x: -418.6, y: 395.8 }
-const WEST_FLANK = { x: 785.7, y: -563.4 }, EAST_FLANK = { x: 1185.7, y: -563.4 }, HOUSE_WALL = { x: -429.85, y: 452.9 }
-const GRAGNOLA = { x: -1751.2, y: 3360.4 }, UNDER_BRIDGE = { x: -1190.3, y: 1273.1 }
-const FRAME = 1 / 60
-/** Screen-right on the ground, with the view in its home seat. */
-const SCREEN_RIGHT = screenAxes(0).right
-
-/** A small deterministic random source. */
-const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
-
-/** A one-shot played at speaker time `t`, `delay` s ahead. */
-interface Played { readonly sound: OneShot; readonly at: Placement; readonly delay: number; readonly t: number }
-
-/** A director on a recording speaker whose clock (from `t`; 0 is no context yet) the test advances by `dt` per `hear`. */
-const rig = (clock: () => WallClock = () => ({ hour: 10, minute: 10, second: 0 }), t = 1) => {
-  let holding = new Map<string, { readonly sound: Continuous; readonly at: Placement }>()
-  let held = holding
-  const plays: Array<Played> = []
-  const speaker: Speaker = {
-    now: () => t,
-    hold: (key, sound, at) => void holding.set(key, { sound, at }),
-    play: (sound, at, delay) => void plays.push({ sound, at, delay, t }),
-    flush: () => {
-      held = holding
-      holding = new Map()
-    }
-  }
-  const director = makeDirector(speaker, { random: seeded(7), clock })
-  return {
-    plays,
-    /** What the last frame held. */
-    held: () => held,
-    hear: (heard: Heard, frames = 1, dt = FRAME) => {
-      for (let i = 0; i < frames; i++) {
-        t += dt
-        director.hear(heard)
-      }
-    },
-    /** Plays of `kind` since it was last taken. */
-    take: (kind: OneShot["kind"]): Array<Played> => {
-      const taken = plays.filter((p) => p.sound.kind === kind)
-      plays.splice(0, plays.length, ...plays.filter((p) => p.sound.kind !== kind))
-      return taken
-    }
-  }
-}
-
-/** Vehicle `id`, idling on its wheels at `at`. */
-const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly y: number }, more: Partial<HeardVehicle> = {}): HeardVehicle => ({
-  id, model, x: at.x, y: at.y, z: groundZ(at.x, at.y) + VEHICLES[model].cg, angle: 0, vx: 0, vy: 0, rpm: VEHICLES[model].engine.idle, load: 0,
-  wheelsDown: true, hullDown: false, running: true, mine: false, ...more
-})
-/** A Panda revving at the redline under full load. */
-const FULL = { rpm: VEHICLES.panda.engine.redline, load: 1 } as const
-const person = (id: number, at: { readonly x: number; readonly y: number }, more: Partial<HeardPerson> = {}): HeardPerson => ({
-  id, x: at.x, y: at.y, vx: 0, vy: 0, player: false, fleeing: false, down: false, ...more
-})
-const world = (at: { readonly x: number; readonly y: number }, more: Partial<Heard> = {}, car?: number): Heard => ({
-  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 }, vehicles: [], people: [], happenings: [], horn: false, ...more
-})
-const away = (from: { readonly x: number; readonly y: number }, metres: number, dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT) =>
-  ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
-const SOUTH = { x: 0, y: -1 }
-/** A Panda's mass, t. */
-const PANDA = VEHICLES.panda.mass / 1000
-/** Car `car`, a Panda, hitting a wall at `at` on its `zone` (nose first). */
-const wallHit = (at: { readonly x: number; readonly y: number }, speed: number, car = 1, zone: Zone = "front"): Happening => ({
-  kind: "impact", hit: "wall", x: at.x, y: at.y, speed, mass: PANDA, car, body: { model: "panda", zone }
-})
+import type { Happening, Zone } from "../types.ts"
+import { MOST_DB, TOWERS, windDb } from "./levels.ts"
+import {
+  at as clock, away, BANK, BEHIND, BELFRY, car, EAST_FLANK, FRAME, FULL, GRAGNOLA, HILLSIDE, HOUSE_WALL, MEADOW, OPEN, PANDA, person, RIDGE, rig,
+  SCREEN_RIGHT, SOUTH, SPAWN, STATION, STREET, UNDER_BRIDGE, wallHit, WEST_FLANK, world
+} from "./testing.ts"
 
 test("a running car 30 m away on screen-right is heard there; 2 km away it is not (proximity)", () => {
   const near = rig()
@@ -408,19 +330,22 @@ test("the reverb follows the surroundings: a honk in the open meadow plays dry, 
   assert.ok(walled.length > 0 && walled[0]!.at.wet > 1, JSON.stringify(walled))
 })
 
-test("inside the Panda its own crash plays open, at most CRASH_MOST_DB over gain 1, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
-  const crash = (spot: { readonly x: number; readonly y: number }, own: boolean) => {
-    const director = rig(), other = away(spot, 3, SOUTH), at = own ? spot : other
+test("inside the Panda its own crash plays open, at most MOST_DB.crash over gain 1, but its street tail and its echoes come back through the cabin like a crash 3 m away", () => {
+  const crash = (spot: { readonly x: number; readonly y: number }, own: boolean, dir = SOUTH) => {
+    const director = rig(), other = away(spot, 3, dir), at = own ? spot : other
     const vehicles = [car(5, "panda", spot, { mine: true }), car(2, "panda", other)]
     director.hear(world(spot, { vehicles, happenings: [wallHit(at, 10, own ? 5 : 2)] }, 5))
     return director.take("crash")
   }
   const [own] = crash(GRAGNOLA, true), [outside] = crash(GRAGNOLA, false)
   // Regression: it came about 25 dB over gain 1, and the master limiter, taking 20 dB off the hit, gave the sub-hits back as loud as it.
-  assert.equal(own!.at.gain, dbToGain(CRASH_MOST_DB))
+  assert.equal(own!.at.gain, dbToGain(MOST_DB.crash!))
   assert.ok(own!.at.cutoff === 20000 && outside!.at.cutoff <= CABIN.panda.cutoff && own!.at.wet < outside!.at.wet, `${JSON.stringify(own!.at)} against ${JSON.stringify(outside!.at)}`)
-  for (const spot of [WEST_FLANK, BELFRY]) {
-    const [direct, ...echoes] = crash(spot, true), [, ...outsides] = crash(spot, false)
+  // A like crash, into the same wall on the same ground, so its echoes are as loud: in Monzone Alto's street 3 m south is a stone
+  // wall, 4.5 dB louder than the own crash's bank, and the cabin's floor lets through a faint echo of it the bank's crash lacks.
+  for (const [spot, dir] of [[WEST_FLANK, SOUTH], [BELFRY, { x: -1, y: 0 }]] as const) {
+    const [direct, ...echoes] = crash(spot, true, dir), [alike, ...outsides] = crash(spot, false, dir)
+    assert.deepEqual(alike!.sound, direct!.sound)
     assert.ok(echoes.length > 0 && echoes.length === outsides.length, `${echoes.length} echoes`)
     echoes.forEach((echo, i) => {
       const like = outsides[i]!.at
@@ -431,7 +356,7 @@ test("inside the Panda its own crash plays open, at most CRASH_MOST_DB over gain
 })
 
 test("before the audio context runs nothing is measured or played, but who sits where is still tracked", () => {
-  const director = rig(undefined, 0)
+  const director = rig(0)
   director.hear(world(MEADOW, { people: [person(1, MEADOW, { player: true })] }), 1, 0)
   director.hear(world(MEADOW, { vehicles: [car(5, "panda", MEADOW, { mine: true })] }, 5), 30, 0)
   assert.equal(director.plays.length, 0)
@@ -502,28 +427,31 @@ test("in the Carabinieri car a horn press toggles the siren; in the Panda the ho
   assert.equal(horns[1]!.cutoff, CABIN.panda.cutoff)
 })
 
-test("bells: at 15:00 the nearby tower strikes three times 2.5 s apart, at 15:30 once, never twice in the same minute; only the loudest towers ring", () => {
-  let now: WallClock = { hour: 15, minute: 0, second: 0 }
-  const clock = () => now
-  /** 15 s at `spot` (the clock then moves on within its minute): when each pitch's loudest strokes reach the ears (echoes are fainter). */
-  const ring = (director: ReturnType<typeof rig>, spot: { readonly x: number; readonly y: number }) => {
-    director.hear(world(spot), 15 * 60)
-    now = { ...now, second: 30 }
+test("bells strike the game clock's hours by day: at 15:00 the nearby tower three times 2.5 s apart, once a day; not on the half hour, nor 22:00–06:00", () => {
+  /** `seconds` at `spot` at `hour`:`minute` on day `days`: when each pitch's loudest strokes reach the ears (echoes are fainter). */
+  const ring = (director: ReturnType<typeof rig>, spot: { readonly x: number; readonly y: number }, hour: number, minute = 0, days = 0, seconds = 15) => {
+    director.hear(world(spot, { sky: skyAt(clock(hour, minute, days)) }), seconds * 60)
     const rung = Map.groupBy(director.take("bell"), (p) => (p.sound.kind === "bell" ? p.sound.pitch : 0))
     return new Map([...rung].map(([pitch, plays]) => {
       const loudest = Math.max(...plays.map((p) => p.at.gain))
       return [pitch, plays.filter((p) => p.at.gain === loudest).map((p) => p.t + p.delay)] as const
     }))
   }
-  const director = rig(clock)
+  const director = rig()
   const tower = bells.reduce((a, b) => (Math.hypot(b.x - BELFRY.x, b.y - BELFRY.y) < Math.hypot(a.x - BELFRY.x, a.y - BELFRY.y) ? b : a))
-  const [a, b, c, ...more] = ring(director, BELFRY).get(tower.pitch) ?? []
+  const [a, b, c, ...more] = ring(director, BELFRY, 15).get(tower.pitch) ?? []
   assert.ok(more.length === 0 && Math.abs(b! - a! - 2.5) < 1e-6 && Math.abs(c! - b! - 2.5) < 1e-6, `${[a, b, c, ...more]}`)
-  assert.equal(ring(director, BELFRY).size, 0, "the same minute again")
-  now = { hour: 15, minute: 30, second: 0 }
-  assert.equal(ring(director, BELFRY).get(tower.pitch)?.length, 1)
+  assert.equal(ring(director, BELFRY, 15).size, 0, "the same hour again")
+  assert.equal(ring(director, BELFRY, 15, 30).size, 0, "the half hour")
+  assert.equal(ring(director, BELFRY, 15, 0, 1).get(tower.pitch)?.length, 3, "the next day's 15:00")
+  assert.equal(ring(director, BELFRY, 23).size, 0, "the night's silence")
+  // Its edges: 22:00 and 06:00 would strike 10 and 6 times, within 30 s.
+  assert.equal(ring(director, BELFRY, 22, 0, 0, 30).size, 0, "22:00 is silent")
+  assert.equal(ring(director, BELFRY, 6, 0, 0, 30).size, 0, "06:00 is silent")
+  assert.equal(ring(director, BELFRY, 7, 0, 0, 30).get(tower.pitch)?.length, 7, "07:00 rings")
+  assert.equal(ring(director, BELFRY, 21, 0, 0, 30).get(tower.pitch)?.length, 9, "21:00 rings")
   // Eleven towers are in earshot of the woods above Isolano.
-  const towers = ring(rig(clock), HILLSIDE).size
+  const towers = ring(rig(), HILLSIDE, 15).size
   assert.ok(towers > 0 && towers <= TOWERS, `${towers} towers rang`)
 })
 

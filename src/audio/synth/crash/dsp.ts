@@ -76,8 +76,8 @@ const weight = (b: number, hz: number): number => {
   return Math.abs(x) < 1 ? Math.cos((Math.PI * x) / 2) : 0
 }
 
-/** A fixed-seed generator (mulberry32), so the noise loops are the same every session. */
-const seeded = (seed: number) => () => {
+/** A generator of uniform draws in [0, 1) from `seed` (mulberry32): the noise loops are the same every session, a thunder the same for its flash. */
+export const seeded = (seed: number) => (): number => {
   seed = (seed + 0x6d2b79f5) | 0
   let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t

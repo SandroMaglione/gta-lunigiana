@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Vector3 } from "three"
+import { Group, Scene, Vector3, type WebGLRenderer } from "three"
 
 import { screenAxes } from "../sim/view.ts"
-import { QUARTER, shadowFit, turnToward, viewAxes, zoomFor } from "./pipeline.ts"
+import { PixelView, QUARTER, shadowFit, turnToward, viewAxes, zoomFor } from "./pipeline.ts"
 
 test("at every quarter turn the camera's screen axes are the sim's on the ground, and ground axes project as exact 2:1 pixel lines", () => {
   for (const turns of [0, 1, 2, 3, -1, 6]) {
@@ -62,4 +62,29 @@ test("the shadow box reaches ground that shows only between the view's edges", (
   // A 6 m wide gully 800 m deep, a quarter of the view's width right of centre, beyond the focus.
   const gully = (x: number, z: number) => Math.abs(x * right.x + z * right.z - 25) < 3 && x * ahead.x + z * ahead.z > 0 ? -800 : 0
   assert.ok(shadowFit(focus, axes, 100, 60, toSun, gully).below < -400)
+})
+
+// Regression: compiled while the canvas was bound, every program was an sRGB-output twin no frame used
+// (26 programs against 16), and the ones the frames draw with compiled mid-game.
+test("compile builds the programs into the target the scene renders into, then binds the canvas again", () => {
+  let bound: unknown = null
+  const compiled: Array<unknown> = [], rendered: Array<unknown> = []
+  const renderer = {
+    setRenderTarget: (target: unknown) => {
+      bound = target
+    },
+    compile: () => compiled.push(bound),
+    render: () => rendered.push(bound),
+    setPixelRatio: () => {},
+    setSize: () => {},
+    getDrawingBufferSize: (size: { set(x: number, y: number): unknown }) => size.set(640, 360)
+  }
+  const view = new PixelView(renderer as unknown as WebGLRenderer), scene = new Scene()
+  view.resize(640, 360, 1)
+  view.compile(scene, new Group())
+  assert.equal(bound, null, "the canvas bound again")
+  view.render(scene)
+  const [target, canvas] = rendered
+  assert.ok(target !== null && canvas === null, "the scene into the target, then the blit to the canvas")
+  assert.deepEqual(compiled, [target, target], "the scene and the stand-ins, both into that target")
 })

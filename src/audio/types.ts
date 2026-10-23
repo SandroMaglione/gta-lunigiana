@@ -2,8 +2,9 @@
  * The audio host's shared vocabulary. Three layers meet here:
  *
  * - `Heard`: what the world sounds like this frame, as plain data. The audio schedule reads it
- *   from the simulation (components, the `Impact`, `Skid` and `Honk` events, the horn key) and
- *   hands it to the `Audio` service once per animation frame.
+ *   from the simulation (components, the `Impact`, `Skid`, `Honk` and `Lightning` events, the horn
+ *   key, the game clock and the weather) and hands it to the `Audio` service once per animation
+ *   frame.
  * - The director (pure TypeScript, tested in Node) turns `Heard` into sound requests: continuous
  *   voices it holds frame after frame (`Continuous`) and one-shots (`OneShot`), each with a
  *   `Placement` computed from acoustics (spreading, air absorption, occlusion, Doppler, cabin).
@@ -16,6 +17,7 @@
  * @module audio/types
  */
 import type { Surface } from "../sim/map/surface.ts"
+import type { WeatherValue } from "../sim/schema.ts"
 import type { VehicleModel } from "../sim/vehicles.ts"
 
 export type { Surface }
@@ -103,6 +105,15 @@ export type Happening =
     readonly x: number
     readonly y: number
   }
+  | {
+    /** Lightning (the sim's `Lightning`): a bolt to the ground at (x, y) when `bolt`, else a flash in the cloud above it; `power` 0…1; `seed` shapes its thunder. */
+    readonly kind: "lightning"
+    readonly x: number
+    readonly y: number
+    readonly bolt: boolean
+    readonly power: number
+    readonly seed: number
+  }
 
 /** The ears: the player, on foot or in `car`. */
 interface HeardListener {
@@ -116,6 +127,18 @@ interface HeardListener {
   readonly turns: number
 }
 
+/** The game's clock and sun this frame (the sim's `GameClock`). */
+export interface HeardSky {
+  /** Game time, Unix UTC seconds: what the weather at the ears is worked out for. */
+  readonly seconds: number
+  /** The Rome calendar day (days since 1 January 1970 there) and the time of day there: the bells ring by them. */
+  readonly day: number
+  readonly hour: number
+  readonly minute: number
+  /** The sun's elevation over the map, degrees (negative below the horizon). */
+  readonly sun: number
+}
+
 /** One frame of the world, as the audio schedule reads it. */
 export interface Heard {
   readonly listener: HeardListener
@@ -124,6 +147,9 @@ export interface Heard {
   readonly happenings: ReadonlyArray<Happening>
   /** The player holds the horn key (it sounds only from the driver's seat). */
   readonly horn: boolean
+  readonly sky: HeardSky
+  /** The weather over the map (a copy of the sim's `Weather`): the director works out what it is at the ears. */
+  readonly weather: WeatherValue
 }
 
 /** Where a sound reaches the listener from, after everything between them. */
@@ -159,10 +185,14 @@ export type Continuous =
   | { readonly kind: "beeper" }
   /** Running water: `flow` 0 (trickle) … 1 (the Lucido in spate); `body` sets the texture. */
   | { readonly kind: "water"; readonly body: "fountain" | "stream" | "river"; readonly flow: number }
-  /** Wind at the listener: `strength` 0…1 (altitude, exposure), `forest` 0…1 (leaves in it). */
-  | { readonly kind: "wind"; readonly strength: number; readonly forest: number }
-  /** Tree crickets in the grass around the listener: `density` 0…1. */
-  | { readonly kind: "crickets"; readonly density: number }
+  /** Wind at the listener: `strength` 0…1 (altitude, exposure, weather), `forest` 0…1 (leaves in it), `gusts` 0…1 (a steady breeze … squalls: deeper and quicker gusts; `VALLEY_GUSTS` the valley's usual). */
+  | { readonly kind: "wind"; readonly strength: number; readonly forest: number; readonly gusts: number }
+  /** Tree crickets in the grass around the listener: `density` 0…1; they chirp faster in warmer air (`celsius`). */
+  | { readonly kind: "crickets"; readonly density: number; readonly celsius: number }
+  /** Rain falling around the listener: `rate` mm/h, on the shares of the ground that are `forest` (leaves), `built` (roofs, paving) and `water` (a river, puddles), 0…1 each. */
+  | { readonly kind: "rain"; readonly rate: number; readonly forest: number; readonly built: number; readonly water: number }
+  /** Rain drumming on the roof and windscreen of the car the listener sits in: `rate` mm/h. */
+  | { readonly kind: "roof"; readonly rate: number }
 
 /** One-shot sounds: played once, at a placement, possibly delayed (sound travelling, echoes). */
 export type OneShot =
@@ -181,15 +211,24 @@ export type OneShot =
   | { readonly kind: "ignition"; readonly model: VehicleModel }
   /** A short AI honk. */
   | { readonly kind: "honk"; readonly model: VehicleModel }
-  | { readonly kind: "step"; readonly surface: Surface; readonly run: boolean }
+  /** A footstep on `surface`, or crunching the snow that lies on it (`snow`). */
+  | { readonly kind: "step"; readonly surface: Surface; readonly run: boolean; readonly snow: boolean }
   /** Human cues; `voice` 0…1 picks the speaker (pitch, sex) so one person keeps one voice. */
   | { readonly kind: "scream"; readonly voice: number }
   | { readonly kind: "shout"; readonly voice: number }
   | { readonly kind: "groan"; readonly voice: number }
   /** One stroke of a church bell with prime partial `pitch` Hz. */
   | { readonly kind: "bell"; readonly pitch: number }
-  | { readonly kind: "bird"; readonly species: "robin" | "tit" | "blackbird" | "chaffinch" }
+  /** A songbird by day; the tawny owl (`owl`) at night. */
+  | { readonly kind: "bird"; readonly species: "robin" | "tit" | "blackbird" | "chaffinch" | "owl" }
   | { readonly kind: "bark"; readonly big: boolean }
+  /**
+   * The thunder of a lightning flash `distance` m away horizontally (to the strike point of a `bolt`, to the point under an
+   * in-cloud flash; not the slant range), heard with the ears `ears` m above the ground under the flash (1.6 on level ground,
+   * hundreds on a ridge over a valley's strike, under 0 below one): a crack and a boom near, a low rumble far; `seed` (the
+   * flash's) draws its channel.
+   */
+  | { readonly kind: "thunder"; readonly distance: number; readonly ears: number; readonly bolt: boolean; readonly seed: number }
 
 /** Noise and control buffers made once per context and shared by every voice. */
 export interface Kit {
@@ -245,6 +284,8 @@ export interface Speaker {
   readonly hold: (key: string, sound: Continuous, at: Placement) => void
   /** Plays `sound` `delay` seconds from now. */
   readonly play: (sound: OneShot, at: Placement, delay: number) => void
+  /** Fades out what is left of every play of `sound` (the same params object): its echoes too. */
+  readonly stop: (sound: OneShot) => void
   /** Ends the frame: every voice not held since the last flush fades out. */
   readonly flush: () => void
 }

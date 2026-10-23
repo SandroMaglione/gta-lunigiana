@@ -8,12 +8,13 @@ import { engineRevs } from "../sim/drivetrain.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { laneOf, lanePoint, laneSide, roadOf, walkSide } from "../sim/route.ts"
 import {
-  bindings, CarInput, Chassis, type ChassisValue, Game, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, setup, Skid, update, Vehicle
+  bindings, CarInput, Chassis, type ChassisValue, DEFAULT_START, Game, Honk, Impact, KeyboardInput, Lightning, makeRuntime, Motion, Pose, type PoseValue, PrevPose,
+  SetClock, setup, Skid, SkyView, update, Vehicle
 } from "../sim/index.ts"
 import { parkedCar, pedestrian, rollingChassis } from "../sim/spawning.ts"
 import { BATTISTI, battistiTraffic, door, ON_BATTISTI, press, rolling, stage, type Timeline } from "../sim/testing.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
-import { Audio, audio } from "./index.ts"
+import { Audio, audio, skyAt } from "./index.ts"
 import type { Heard } from "./types.ts"
 
 /** A runtime on `timeline` whose Audio service records every Heard, the audio schedule ticked after each update. */
@@ -138,7 +139,7 @@ test("hear: each vehicle's skids since the last frame, the hardest-sliding wheel
   const { runtime, hear, frames } = listen([], door(ON_BATTISTI), { cars: [rolling("panda", at, 5, 0)] })
   hear()
   const car = frames[0]!.vehicles.find((v) => v.model === "panda")!.id
-  const skid = { car, x: at.x, y: at.y, z: 0, step: 0 }
+  const skid = { car, x: at.x, y: at.y, z: 0, snow: 0, step: 0 }
   runtime.send(Skid, { ...skid, wheel: 0, slip: 9, amount: 0.4, surface: "asphalt" })
   runtime.send(Skid, { ...skid, wheel: 2, slip: 6, amount: 0.9, surface: "gravel" })
   hear()
@@ -220,4 +221,24 @@ test("hear: a Panda rolling 50° off square into a house wall hits it with its f
   run(40)
   const hits = frames.flatMap((f) => f.happenings).flatMap((h) => (h.kind === "impact" && h.hit === "wall" ? [h] : []))
   assert.ok(hits.length > 0 && hits.every((h) => h.body.zone === "front"), hits.map((h) => h.body.zone).join())
+})
+
+test("hear: the game clock's day, time and sun, a copy of the weather, and each lightning flash since the last frame, once", () => {
+  const { runtime, hear, run, frames } = listen([], door(ON_BATTISTI))
+  hear()
+  // 22 October 2026, 08:00 in Rome: the sun 2° up.
+  assert.deepEqual(frames[0]!.sky, skyAt(DEFAULT_START))
+  assert.deepEqual([frames[0]!.sky.hour, frames[0]!.sky.minute], [8, 0])
+  assert.ok(frames[0]!.sky.sun > 0 && frames[0]!.sky.sun < 5, `${frames[0]!.sky.sun}°`)
+  assert.deepEqual(frames[0]!.weather, runtime.inspect(SkyView).weather)
+  runtime.send(SetClock, { seconds: DEFAULT_START + 15 * 3600 })
+  const flash = { x: 100, y: 200, bolt: true, power: 0.8, seed: 42, step: 0 }
+  runtime.send(Lightning, flash)
+  run(1)
+  hear()
+  assert.deepEqual([frames[1]!.sky.hour, frames[1]!.sky.day], [23, frames[0]!.sky.day], "the clock set to 23:00 the same day")
+  assert.deepEqual(frames.slice(1).map((f) => f.happenings.filter((h) => h.kind === "lightning")), [
+    [{ kind: "lightning", x: 100, y: 200, bolt: true, power: 0.8, seed: 42 }],
+    []
+  ])
 })

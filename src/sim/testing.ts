@@ -17,9 +17,10 @@ import { gearFor } from "./drivetrain.ts"
 import type { Ground, StepResult } from "./dynamics.ts"
 import type { HandlingValue } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
+import { DRY, type GroundWeather } from "./sky/local.ts"
 import {
-  Autopilot, bindings, CarInput, Chassis, type ChassisValue, Down, Game, Handling, Honk, Impact, KeyboardInput, makeRuntime, Motion, Pedestrian, Person, Player, PlayerView, Pose,
-  type PoseValue, PrevPose, Route, Score, setup, Stolen, Traffic, update, Vehicle
+  Autopilot, bindings, CarInput, Chassis, type ChassisValue, Down, Game, GameClock, Handling, Honk, Impact, KeyboardInput, Lightning, makeRuntime, Motion, Pedestrian, Person,
+  Player, PlayerView, Pose, type PoseValue, PrevPose, Rng, Route, Score, setup, Stolen, Traffic, update, Vehicle, Weather
 } from "./index.ts"
 import { graph } from "./map/index.ts"
 import { edgeIndex, endNode, facesForward, laneOf, lanePoint, laneSide, nextTrafficEdge, roadOf, type Step } from "./route.ts"
@@ -49,7 +50,10 @@ export const World = Game.Inspector("Test/World", {
     }),
     peds: Game.Query({ selection: { pose: Game.Query.read(Pose), ped: Game.Query.read(Pedestrian), down: Game.Query.optional(Down) } })
   },
-  resources: { score: Game.System.readResource(Score), handling: Game.System.readResource(Handling) }
+  resources: {
+    score: Game.System.readResource(Score), handling: Game.System.readResource(Handling), clock: Game.System.readResource(GameClock),
+    weather: Game.System.readResource(Weather), rng: Game.System.readResource(Rng)
+  }
 }, ({ queries, resources }) => ({
   vehicles: queries.vehicles.each().map(({ entity, data }) => ({
     id: entity.id, ...data.pose.get(), ...data.motion.get(), ...data.vehicle.get(), input: data.input.get(), chassis: data.chassis.get(), traffic: data.traffic.present,
@@ -57,7 +61,11 @@ export const World = Game.Inspector("Test/World", {
   })),
   peds: queries.peds.each().map(({ entity, data }) => ({ id: entity.id, ...data.pose.get(), ...data.ped.get(), down: data.down.present })),
   score: resources.score.get(),
-  handling: resources.handling.get()
+  handling: resources.handling.get(),
+  clock: resources.clock.get(),
+  weather: resources.weather.get(),
+  /** The world's random stream's state: what traffic, pedestrians and parking have drawn. */
+  rng: resources.rng.get()
 }))
 
 /** What a test puts on the cleared map. */
@@ -113,12 +121,16 @@ export const start = (timeline: Timeline = [], staging?: readonly [PoseValue, Ca
   const runtime = made.value
   assert.ok(runtime.tick(setup).ok)
   if (staging !== undefined) assert.ok(runtime.tick(stage(...staging)).ok)
-  const heard = { impacts: new Array<Descriptor.Descriptor.Value<typeof Impact>>(), honks: new Array<Descriptor.Descriptor.Value<typeof Honk>>() }
+  const heard = {
+    impacts: new Array<Descriptor.Descriptor.Value<typeof Impact>>(), honks: new Array<Descriptor.Descriptor.Value<typeof Honk>>(),
+    lightning: new Array<Descriptor.Descriptor.Value<typeof Lightning>>()
+  }
   const listen = Game.Schedule(Game.System("Test/Listen", {
-    events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk) }
+    events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), lightning: Game.System.readEvent(Lightning) }
   }, ({ events }) => {
     heard.impacts.push(...events.impacts.all())
     heard.honks.push(...events.honks.all())
+    heard.lightning.push(...events.lightning.all())
   }))
   const run = (frames: number, each: (frame: number) => void = () => {}) => {
     for (let i = 0; i < frames; i++) {
@@ -176,8 +188,8 @@ export const rolling = (model: VehicleModel, pose: PoseValue, speed: number, thr
     [Chassis, rollingChassis(model, pose, speed)]
   )
 
-/** A traffic car on Via Cesare Battisti, eastbound, standing. */
-export const battistiTraffic = (color: number) => trafficCar("panda", color, ON_BATTISTI, 0,
+/** A traffic car on Via Cesare Battisti, eastbound, at `at` (the lane's start by default), standing or rolling at `speed` m/s. */
+export const battistiTraffic = (color: number, at: PoseValue = ON_BATTISTI, speed = 0) => trafficCar("panda", color, at, speed,
   { ...BATTISTI, side: laneSide(BATTISTI, "panda") },
   nextTrafficEdge(endNode(BATTISTI.edge, BATTISTI.forward), BATTISTI.edge, "panda", Random.make(1)))
 
@@ -197,19 +209,19 @@ export type Pedals = { readonly throttle: number; readonly steer: number; readon
 
 /**
  * A vehicle driven by `input` for `frames` steps on `ground` (no walls, `advance` alone), starting at the origin heading east at
- * `speed`, under `handling`.
+ * `speed`, under `handling`, on `surface` as wet and snowy as `weather` (dry when omitted).
  */
 export const drive = (
   model: VehicleModel, frames: number, input: (frame: number, state: DriveState) => Pedals,
   options: {
-    readonly speed?: number; readonly ground?: Ground; readonly surface?: Surface; readonly chassis?: Partial<ChassisValue>; readonly handling?: HandlingValue
-    readonly each?: (frame: number, state: DriveState, result: StepResult) => void
+    readonly speed?: number; readonly ground?: Ground; readonly surface?: Surface; readonly weather?: GroundWeather; readonly chassis?: Partial<ChassisValue>
+    readonly handling?: HandlingValue; readonly each?: (frame: number, state: DriveState, result: StepResult) => void
   } = {}
 ): DriveState => {
   const ground = options.ground ?? flat, pose = { x: 0, y: 0, angle: 0 }, speed = options.speed ?? 0
   let state: DriveState = { pose, motion: { vx: speed, vy: 0, spin: 0 }, chassis: { ...settle(model, pose, ground), gear: gearFor(VEHICLES[model], speed), ...options.chassis } }
   for (let frame = 0; frame < frames; frame++) {
-    const { body, steer, gearbox, result } = advance(model, state, input(frame, state), frame, DT, ground, () => options.surface ?? "asphalt", options.handling)
+    const { body, steer, gearbox, result } = advance(model, state, input(frame, state), frame, DT, ground, () => options.surface ?? "asphalt", options.handling, () => options.weather ?? DRY)
     state = {
       pose: { x: body.x, y: body.y, angle: body.angle },
       motion: { vx: body.vx, vy: body.vy, spin: body.spin },

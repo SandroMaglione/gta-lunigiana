@@ -162,7 +162,7 @@ export const makeVehicles = () => {
       for (const h of heard.happenings) {
         if (h.kind === "honk") {
           frame.play({ kind: "honk", model: h.model }, frame.path(`car:${h.car}`, { x: h.x, y: h.y, z: groundAt(h.x, h.y, levelOf(byId.get(h.car))) + HEIGHT.vehicle }, LEVELS.honk))
-        } else if (h.hit === "person") {
+        } else if (h.kind === "impact" && h.hit === "person") {
           const who = h.other ?? h.car, key = `person:${who}`, at = { x: h.x, y: h.y, z: groundAt(h.x, h.y) + HEIGHT.person }
           frame.play({ kind: "thud", speed: h.speed }, frame.path(key, at, LEVELS.thud, { cabin: h.car !== mine }))
           frame.play({ kind: "groan", voice: hash01(who) }, frame.path(key, at, LEVELS.groan), GROAN_AFTER)

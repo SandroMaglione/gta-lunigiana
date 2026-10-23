@@ -22,16 +22,16 @@ export interface Emitter {
   readonly cents: AudioNode
   /** Glides to a new placement from `now` (continuous voices, once per frame). */
   readonly place: (at: Placement, now: number) => void
-  /** Fades out from `now` and frees the nodes once the fade is over. */
-  readonly release: (now: number) => void
+  /** Fades out from `now` (time constant `fade` s, a voice's quick one unless given) and frees the nodes once the fade is over. */
+  readonly release: (now: number, fade?: number) => void
   /** Frees every node at context time `at`, without a fade (a one-shot that has finished). */
   readonly free: (at: number) => void
 }
 
 /** Smoothing time constants, s: gain, pan, send and Doppler; the cutoff glides slower. */
 const GLIDE = 0.05, CUTOFF_GLIDE = 0.1
-/** Release fade time constant, and how long after the release the nodes are freed (6 τ: −52 dB). */
-const FADE = 0.08, LINGER = 0.5
+/** Release fade time constant, s, and how many of them after the release the nodes are freed (−52 dB). */
+const FADE = 0.08, LINGER = 6
 /**
  * Web Audio reads a lowpass Q in dB. 20·log10(√½) ≈ −3.01 dB is Butterworth: maximally flat, no
  * resonance bump, −3 dB at the cutoff, so an open path (20 kHz) stays transparent.
@@ -64,10 +64,10 @@ export const makeEmitter = (ctx: BaseAudioContext, bus: Bus, at: Placement): Emi
       cents.offset.setTargetAtTime(to.cents, now, GLIDE)
       lowpass.frequency.setTargetAtTime(Math.min(to.cutoff, nyquist), now, CUTOFF_GLIDE)
     },
-    release: (now) => {
+    release: (now, fade = FADE) => {
       gain.gain.cancelScheduledValues(now)
-      gain.gain.setTargetAtTime(0, now, FADE)
-      free(now + LINGER)
+      gain.gain.setTargetAtTime(0, now, fade)
+      free(now + LINGER * fade)
     },
     free
   }

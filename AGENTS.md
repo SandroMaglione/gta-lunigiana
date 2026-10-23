@@ -16,5 +16,6 @@ Grand Theft Auto: Lunigiana is a Ritmo ECS simulation (`src/sim`), the browser h
 |---|---|
 | systems, schedules, state, input, rendering, HUD, checks | [docs/architecture.md](docs/architecture.md) |
 | the player, vehicles, traffic, pedestrians, score, tuning | [docs/gameplay.md](docs/gameplay.md) |
+| the game clock, sun and moon, climate model and its sources, weather, grip, lightning, how the weather looks and sounds | [docs/weather.md](docs/weather.md) |
 | the map build, its sources, the file format, the data's limits | [docs/map.md](docs/map.md) |
 | sounds, acoustics, calibration, audio tests | [docs/audio.md](docs/audio.md) |

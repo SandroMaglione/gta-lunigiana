@@ -2,8 +2,9 @@
  * Pixel-art isometric pipeline (three 0.186): an orthographic camera at 30° elevation sitting
  * opposite screen-up (north-west of the focus at the home seat, turnable by quarter turns), the
  * scene rendered into a low-res HalfFloat target (~270 texels tall), then one fullscreen pass that
- * draws depth-edge outlines, converts linear to sRGB and upscales by an integer factor with a
- * sub-texel scroll offset. The camera snaps to the texel grid, so the static world never shimmers
+ * draws depth-edge outlines, lays the sky's fog, haze, exposure and night grade over them
+ * (`sky/post.ts`, per target texel), converts linear to sRGB and upscales by an integer factor with
+ * a sub-texel scroll offset. The camera snaps to the texel grid, so the static world never shimmers
  * while the view still scrolls smoothly.
  *
  * @module render/pipeline
@@ -15,6 +16,7 @@ import {
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js"
 
 import { screenAxes } from "../sim/view.ts"
+import { makePost, POST_GLSL } from "./sky/post.ts"
 
 /** 30° elevation: world ground axes project to exact 2:1 pixel lines. */
 const ELEVATION = Math.PI / 6
@@ -56,6 +58,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uDepthRange;
   uniform float uOutlineMetres;
   uniform float uOutlineDarken;
+  ${POST_GLSL}
 
   // Orthographic camera: the depth buffer is linear in [near, far].
   float depthAt(vec2 t) { return texture2D(tDepth, (t + 0.5) / uRtSize).r * uDepthRange; }
@@ -68,6 +71,8 @@ const FRAGMENT = /* glsl */ `
       max(depthAt(t + vec2(1.0, 0.0)), depthAt(t - vec2(1.0, 0.0))),
       max(depthAt(t + vec2(0.0, 1.0)), depthAt(t - vec2(0.0, 1.0)))) - d;
     if (deeper > uOutlineMetres) c.rgb *= uOutlineDarken;
+    // After the outlines, so they fade into the fog with what they edge.
+    c.rgb = atmosphere(c.rgb, t, d);
     gl_FragColor = linearToOutputTexel(c);
   }`
 
@@ -107,6 +112,8 @@ export class PixelView {
   scale = 1
   /** Low-res texels on screen, margin excluded. */
   readonly view = new Vector2(1, 1)
+  /** The post pass's uniforms: the camera's are written here each frame, the atmosphere's by the sky host (`writePost`). */
+  readonly post = makePost()
 
   private readonly renderer: WebGLRenderer
   private readonly targetHeight: number
@@ -135,7 +142,8 @@ export class PixelView {
         uOffset: { value: new Vector2(MARGIN, MARGIN) },
         uDepthRange: { value: FAR - NEAR },
         uOutlineMetres: { value: 1 },
-        uOutlineDarken: { value: 0.45 }
+        uOutlineDarken: { value: 0.45 },
+        ...this.post
       },
       depthTest: false,
       depthWrite: false,
@@ -170,6 +178,18 @@ export class PixelView {
     return shadowFit(this.focus, { right: this.right, up: this.up, back: this.back }, this.view.x / this.texelsPerMetre, this.view.y / this.texelsPerMetre, toSun, groundAt)
   }
 
+  /**
+   * Compiles every program `scene` and `extra` (stand-ins never drawn, `render/stand-ins`) need, lit by
+   * `scene`'s lights, as `render` draws them: into the linear HalfFloat target. Compiled for the canvas
+   * instead, each would be an sRGB-output twin no frame uses, and the real one would compile later.
+   */
+  compile(scene: Scene, extra: Object3D): void {
+    this.renderer.setRenderTarget(this.target)
+    this.renderer.compile(scene, this.camera)
+    this.renderer.compile(extra, this.camera, scene)
+    this.renderer.setRenderTarget(null)
+  }
+
   /** Renders one frame: camera turned to `yaw` and snapped to the texel grid, remainder handed to the blit. */
   render(scene: Scene): void {
     const texel = 1 / this.texelsPerMetre
@@ -187,6 +207,12 @@ export class PixelView {
       .addScaledVector(this.back, this.focus.dot(this.back) + DISTANCE)
     cam.updateMatrixWorld()
     this.material.uniforms["uOffset"]!.value.set(MARGIN + fx - sx, MARGIN + fy - sy)
+    const post = this.post
+    post.uCamPos.value.copy(cam.position)
+    post.uRight.value.copy(this.right)
+    post.uUp.value.copy(this.up)
+    post.uBack.value.copy(this.back)
+    post.uTexel.value = texel
     this.renderer.setRenderTarget(this.target)
     this.renderer.render(scene, cam)
     this.renderer.setRenderTarget(null)

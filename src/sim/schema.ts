@@ -4,6 +4,7 @@ import { Random } from "@typeonce/ritmo-math"
 
 import type { HandlingKey } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
+import { type Regime, REGIMES } from "./sky/regimes.ts"
 import { VEHICLE_MODELS, type VehicleModel } from "./vehicles.ts"
 
 /**
@@ -114,13 +115,52 @@ export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode
  * it was played with; set only through `SetHandling`.
  */
 export const Handling = Descriptor.ConstructedResource(Decode.struct({
-  grip: Decode.number, looseGround: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
+  grip: Decode.number, looseGround: Decode.number, weatherGrip: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
   stability: Decode.number, selfRighting: Decode.number,
   traction: Decode.number, steering: Decode.number, steeringRate: Decode.number, weightTransfer: Decode.number, antiRoll: Decode.number,
   stiffness: Decode.number, damping: Decode.number
 } satisfies Record<HandlingKey, typeof Decode.number>))("Lunigiana/Handling")
 /** A request to set one handling knob, sent by the host's handling store (the settings, the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
 export const SetHandling = Descriptor.Event<{ readonly key: HandlingKey; readonly value: number }>()("Lunigiana/SetHandling")
+
+/**
+ * The game's date and time of day: whole Unix UTC `seconds`, and the game seconds each step adds
+ * (`rate`: 1 in play, a game minute per real second; 0 stands the day still; the dev menu runs it up to
+ * an hour a step). Saved; set only through `SetClock`.
+ */
+export const GameClock = Descriptor.ConstructedResource(Decode.struct({ seconds: Decode.integer, rate: Decode.integer }))("Lunigiana/GameClock")
+/** A GameClock value. */
+export type GameClockValue = Descriptor.Descriptor.Value<typeof GameClock>
+/** The weather's own random stream (saved), apart from `Rng` so the weather never changes traffic, pedestrians or parking. */
+export const WeatherRng = Descriptor.ConstructedResource(Random)("Lunigiana/WeatherRng")
+/**
+ * The weather (sky/weather.ts): the `regime` it is moving toward, the game seconds `left` until the next
+ * regime is drawn (counted down by the clock's rate), and whether the dev menu `forced` the regime (no
+ * draws then). Then what eases toward the regime's targets: the sky's `cloud` cover (0…1), `precip`
+ * (mm/h liquid-equivalent on the valley floor at 250 m; `orographic` scales it with height), `storm`
+ * (thunderstorm activity 0…1), the valley `wind` at 10 m (m/s) and its `windAngle` (rad counter-clockwise
+ * from east, where the air moves), the `gust` factor (≥ 1, peak over mean), `fog` (the regime's mist and
+ * low cloud, 0…1) and the air mass's temperature `anomaly` (°C over the month's normal). Then the ground:
+ * its wetness `wet` (0…1, where no snow lies) and the `snowLine` (m a.s.l., the lowest ground with snow
+ * cover; `NO_SNOW` when none lies on the map). Last the thunderstorm cell's centre (`cellX`, `cellY`, m;
+ * far off the map when no storm is near). Saved; forced only through `SetWeather`.
+ */
+export const Weather = Descriptor.ConstructedResource(Decode.struct({
+  regime: Decode.literal(...REGIMES), left: Decode.integer, forced: Decode.boolean,
+  cloud: Decode.number, precip: Decode.number, storm: Decode.number, wind: Decode.number, windAngle: Decode.number, gust: Decode.number, fog: Decode.number,
+  anomaly: Decode.number, wet: Decode.number, snowLine: Decode.number, cellX: Decode.number, cellY: Decode.number
+}))("Lunigiana/Weather")
+/** A Weather value. */
+export type WeatherValue = Descriptor.Descriptor.Value<typeof Weather>
+/**
+ * A request to set the game time (Unix UTC seconds) and/or its rate (game seconds per step), from two
+ * senders: the host, which holds the clock at rate 0 behind the title card and sends rate 1 when the
+ * player dismisses it (`holdClock`, hud/title.ts), and the dev debug menu. `ApplyClock` keeps both in
+ * range. Not saved.
+ */
+export const SetClock = Descriptor.Event<{ readonly seconds?: number; readonly rate?: number }>()("Lunigiana/SetClock")
+/** A request from the dev debug menu to force a regime (`settle`: jump straight to its steady state) or hand the weather back to chance (`regime` null); `ApplyWeather` checks it. Not saved. */
+export const SetWeather = Descriptor.Event<{ readonly regime: Regime | null; readonly settle?: boolean }>()("Lunigiana/SetWeather")
 
 /**
  * A vehicle hit something this step: a wall, another vehicle, a person (`other`, their entity ids)
@@ -143,8 +183,9 @@ export const Impact = Descriptor.Event<{
 /**
  * A tyre slid this step: wheel `wheel` (index into the model's `wheels`) of vehicle `car`, at its
  * contact point (x, y, z m a.s.l.), sliding at `slip` m/s past the ground (sideways beyond its grip,
- * spinning or locked), `amount` 0…1 how far past its grip, on `surface`, at simulation `step`. Not
- * saved; the render lays tyre marks and smoke from it and the audio plays the squeal.
+ * spinning or locked), `amount` 0…1 how far past its grip, on `surface`, how snow-covered (`snow`, 0…1)
+ * the ground is there, at simulation `step`. Not saved; the render lays tyre marks and smoke from it
+ * (slush ruts and white spray on snow) and the audio plays the squeal.
  */
 export const Skid = Descriptor.Event<{
   readonly car: number
@@ -155,10 +196,26 @@ export const Skid = Descriptor.Event<{
   readonly slip: number
   readonly amount: number
   readonly surface: Surface
+  readonly snow: number
   readonly step: number
 }>()("Lunigiana/Skid")
 /** An AI driver held up for a while sounds the horn, once per stuck episode. Not saved; the audio schedule plays it. */
 export const Honk = Descriptor.Event<{ readonly car: number; readonly model: VehicleModel; readonly x: number; readonly y: number }>()("Lunigiana/Honk")
+/**
+ * Lightning this step: a bolt to the ground at (x, y) (m) when `bolt`, else a flash inside the cloud above
+ * it; `power` 0…1; `seed` a whole number for the bolt's shape and its thunder; at simulation `step`. Not
+ * saved; the render draws it and the audio thunders it.
+ */
+export const Lightning = Descriptor.Event<{
+  readonly x: number
+  readonly y: number
+  readonly bolt: boolean
+  readonly power: number
+  readonly seed: number
+  readonly step: number
+}>()("Lunigiana/Lightning")
+/** A Lightning event. */
+export type LightningValue = Descriptor.Descriptor.Value<typeof Lightning>
 
 /** Player controls. Keys are host detail, but they live here so `Controls` has one home. */
 export const bindings = {
@@ -184,8 +241,8 @@ export const KeyboardInput = Descriptor.Service<InputCapture.Source<Controls>>()
 export const Game = Schema.bind(
   Schema.fragment({
     components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Chassis, Traffic, Route, Driving, Autopilot, Stolen },
-    resources: { Time, Rng, Score, View, Handling, Input },
-    events: { Impact, Honk, Skid, SetHandling },
+    resources: { Time, Rng, WeatherRng, Score, View, Handling, GameClock, Weather, Input },
+    events: { Impact, Honk, Skid, Lightning, SetHandling, SetClock, SetWeather },
     requires: [
       Schema.requires(Player, Pose, PrevPose, Motion, Person),
       Schema.requires(Pedestrian, Pose, PrevPose, Motion, Person, Route),

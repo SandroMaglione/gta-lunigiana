@@ -5,7 +5,7 @@
 
 ![Title card](docs/screenshots/title.png)
 
-Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and knock pedestrians over, on a map built from survey data of the real places. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look.
+Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and knock pedestrians over, on a map built from survey data of the real places. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look. A game day lasts 24 minutes under the real sun and moon, and the weather follows the valley’s climate: rain wets the roads, snow whitens the mountains, and both cost grip.
 
 The game will cover all of Lunigiana, from the beaches at the mouth of the Magra to the Apennine ridge. Today the playable map is one valley of it, the [Valle del Lucido](#the-playable-map-today-the-valle-del-lucido).
 
@@ -104,9 +104,9 @@ pnpm install
 pnpm dev
 ```
 
-Then open `http://localhost:5173`. The server listens on the local network too, so a phone or another computer on the same network can play: open the `Network` address that Vite prints. Anyone on that network can reach it, so stop it on a shared network you don't trust. Every load is a new world. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
+Then open `http://localhost:5173`. The server listens on the local network too, so a phone or another computer on the same network can play: open the `Network` address that Vite prints. Anyone on that network can reach it, so stop it on a shared network you don't trust. Every load is a new world, starting on today’s date at 08:00 Rome time once you dismiss the title card. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
 
-In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu that tunes the vehicle handling (the knobs it changes stay for the next load), and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)).
+In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu, and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)). The debug menu sets the time (stop the clock or run it 10 or 60 times faster, pick the time of day and the date, jump to sunrise or sunset), the weather (leave it to chance or force a regime, settled at once if you like) and the vehicle handling. The handling knobs it changes stay for the next load; the time and the weather do not (see [docs/weather.md](docs/weather.md#the-hud-and-the-dev-menu)).
 
 ## Controls on foot and driving
 
@@ -122,9 +122,9 @@ The same keys walk and drive; the table shows what each does in both modes:
 | H | | horn while held; in the Carabinieri car, siren on or off |
 | M | full map (pauses the game); M, Esc or a click closes it | same |
 | Esc | settings, which pause the game: the vehicle physics (Simulation, Balanced or Arcade; a new game starts on Balanced); Esc or Resume closes them. With the full map open, Esc closes the map instead | same |
-| P (dev builds only) | debug menu: the vehicle physics presets and the handling knobs, for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
+| P (dev builds only) | debug menu: the time of day, the clock’s speed and the date, the weather, and the vehicle physics presets and handling knobs for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
 
-The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
+The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, the time in Rome (HH:MM) with the weather and the temperature where you stand (for example “Rain · 9 °C”), cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. On screens 600 px wide or narrower the clock sits under the score. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
 ### Touch controls on a phone or tablet
 
@@ -146,7 +146,7 @@ The settings have no touch control yet: Esc on a keyboard opens them.
 
 ## How the game sounds
 
-The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, crickets, birds, farm dogs, the village church bells striking the hours, and the Lucido and its streams.
+The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, rain on the ground and on the car’s roof, thunder, crickets in warm, dry air, birds by day and the owl at night, farm dogs, the village church bells striking the game’s hours, and the Lucido and its streams.
 
 Each sound reaches you through outdoor acoustics. It fades with distance and under the background noise, so you hear only what’s near. Houses and hills muffle it, the air dulls it, its pitch shifts as it passes, far crashes arrive late, and loud ones echo off the slopes.
 
@@ -176,18 +176,19 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | Path | Contents |
 |---|---|
 | `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, tuning. Headless and deterministic |
-| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, populate) |
+| `src/sim/sky/` | the game clock and Rome’s calendar, the sun and the moon, the climate model, the weather regimes and what the weather is at a point (temperature, rain and snow, wet and snowy ground, fog, wind) |
+| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, populate, sky) |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
-| `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule |
-| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director, the speaker and mixer, the synths, the audition page |
-| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the vehicle handling, both setting it through one store |
+| `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule; `sky/` lights the day and the night and draws the weather (fog, snow, wet ground, cloud shadows, rain and snow, lightning, street lamps, lit windows, headlights) |
+| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director (with the time of day, the weather and the thunder), the speaker and mixer, the synths, the audition page |
+| `src/hud/` | DOM HUD: the title card as loading screen, location names, the clock and weather readout, score, prompt, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the time, the weather and the vehicle handling; the settings and the menu set the handling through one store, the menu the sky through another |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
 | `src/main.ts` | browser host: builds the scene, makes the runtime, runs the fixed loop |
 | `index.html` | canvas, HUD and touch-control markup, title card (the loading screen), and the switch to mobile mode |
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
-| `docs/` | architecture, map pipeline, gameplay and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `docs/` | architecture, map pipeline, gameplay, weather and audio notes; `docs/standards/` holds the checks for each part of the game |
 
 ## Rebuilding the map
 
@@ -211,12 +212,14 @@ Downloading the OSM data again pulls current edits, so the map changes; the file
 
 ## Data attribution and licences
 
-The map uses open data under these licences:
+The map and the climate model use open data under these licences and terms:
 
 - **OpenStreetMap**: map data © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright). `monzone.bin` is a derived database and stays under the ODbL.
 - **Regione Toscana**: buildings, road surfaces, elevation and land cover, “Fonte dei dati: Regione Toscana – Rilievi LIDAR”, the Carta Tecnica Regionale 1:2000 and the Uso e copertura del suolo 2019, under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/), and the DTM 10x10 metri, under [Creative Commons Attribution 3.0 Italia](https://creativecommons.org/licenses/by/3.0/it/), from the [Geoscopio cartoteca](https://www502.regione.toscana.it/geoscopio/cartoteca.html).
+- **ISPRA SCIA**: the climate normals (temperature, precipitation and wet days) the climate model is fitted to, from ISPRA’s SCIA [valori climatici normali](http://valori-climatici-normali.isprambiente.it/), under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+- **Aeronautica Militare**: temperature, cumulonimbus, fog, sunshine and wind normals from its *Atlante Climatico d’Italia*, used under its [terms](https://www.meteoam.it/it/condizioni-utilizzo), which ask for this credit: “Informazioni elaborate utilizzando, tra l'altro, dati e prodotti del Servizio Meteorologico dell'Aeronautica Militare pubblicati sul sito www.meteoam.it”.
 
-The game shows these credits on the title card and in the HUD.
+The game shows these credits on the title card and in the HUD. The papers and the sources left out of the climate model are recorded in [docs/weather.md](docs/weather.md#the-climate-sources-record).
 
 Sources for the description of Lunigiana and the Valle del Lucido: the Italian Wikipedia pages for [Lunigiana](https://it.wikipedia.org/wiki/Lunigiana), [Monzone](https://it.wikipedia.org/wiki/Monzone), [Equi Terme](https://it.wikipedia.org/wiki/Equi_Terme), [Gragnola](https://it.wikipedia.org/wiki/Gragnola_(Fivizzano)), [the Aulella](https://it.wikipedia.org/wiki/Aulella) and [Monzone station](https://it.wikipedia.org/wiki/Stazione_di_Monzone-Monte_dei_Bianchi-Isolano), [Grotte di Equi, *La Valle del Lucido*](https://grottediequi.it/territorio/la-valle-del-lucido/), [*Il nome Valle del Lucido*](https://aipiedidelleapuane.wordpress.com/2017/02/28/il-nome-valle-del-lucido/), [Visit Tuscany: Equi Terme](https://www.visittuscany.com/en/towns-and-villages/equi-terme/), and the valley study in [*ARQ*](https://arqarqt.revistas.csic.es/index.php/arqarqt/article/download/39/36/37).
 
@@ -228,5 +231,6 @@ The `docs/` folder explains how the game works:
 - [docs/audio.md](docs/audio.md): how the game sounds and why: data flow, the acoustics, every sound, the calibration, the audition page and tests
 - [docs/map.md](docs/map.md): the map pipeline, the file format and the data’s limits
 - [docs/gameplay.md](docs/gameplay.md): on foot, vehicles, traffic, pedestrians, score and tuning
+- [docs/weather.md](docs/weather.md): the game clock, the sun and the moon, the climate model and its sources, the weather, the grip it costs, and how it looks and sounds
 
 [AGENTS.md](AGENTS.md) routes coding agents to [CODING_STANDARDS.md](CODING_STANDARDS.md), the workflow every change follows, and to the checks for each part of the game in [docs/standards/](docs/standards/).

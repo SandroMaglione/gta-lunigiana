@@ -1,12 +1,13 @@
 /**
- * People on foot: footsteps on whatever is underfoot, at the cadence of their speed, and their
- * voices when they take fright. Steps follow the distance a person actually moved (positions, not
- * velocity), so a teleport or getting out of a car fires no burst; the listener's own steps come
- * from right under the ears.
+ * People on foot: footsteps on whatever is underfoot (crunching where snow lies on it), at the
+ * cadence of their speed, and their voices when they take fright. Steps follow the distance a person
+ * actually moved (positions, not velocity), so a teleport or getting out of a car fires no burst; the
+ * listener's own steps come from right under the ears.
  *
  * @module audio/director/people
  */
 import { surfaceAt } from "../../sim/map/surface.ts"
+import { snowCoverAt } from "../../sim/sky/local.ts"
 import { hash01 } from "../../tools/geometry.ts"
 import { EAR_HEIGHT } from "../acoustics.ts"
 import { stepRate, WALK_DB } from "../synth/steps.ts"
@@ -24,6 +25,8 @@ const SHUFFLE = 0.5
 const SHOUT_NEAR = 15, CUE_GAP = 4
 /** Under this voice a fleeing pedestrian screams, else shouts. */
 const SCREAMER = 0.45
+/** A step crunches in the snow where it covers this much of the ground or more. */
+const SNOWY = 0.5
 
 interface Walker {
   x: number
@@ -70,9 +73,9 @@ export const makePeople = () => {
         walker.phase += (moved * stepRate(speed)) / Math.max(SHUFFLE, speed)
         if (walker.phase < 1) continue
         walker.phase %= 1
-        const run = speed > RUN
-        const at = p.player ? { x: ears.x, y: ears.y, z: ears.z - EAR_HEIGHT } : { x: p.x, y: p.y, z: groundAt(p.x, p.y) + HEIGHT.person }
-        const sound = { kind: "step", surface: surfaceAt(p.x, p.y), run } as const
+        const run = speed > RUN, z = p.player ? ears.z - EAR_HEIGHT : groundAt(p.x, p.y)
+        const at = p.player ? { x: ears.x, y: ears.y, z } : { x: p.x, y: p.y, z: z + HEIGHT.person }
+        const sound = { kind: "step", surface: surfaceAt(p.x, p.y), run, snow: snowCoverAt(heard.weather.snowLine, p.x, p.y, z) >= SNOWY } as const
         frame.play(sound, frame.path(p.player ? undefined : `person:${p.id}`, at, LEVELS.step, { quiet: run ? 0 : WALK_DB }))
       }
       // Gone (despawned, or the listener in a car): a person seen again starts afresh.

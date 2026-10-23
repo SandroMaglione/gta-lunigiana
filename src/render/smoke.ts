@@ -2,8 +2,9 @@
  * Tyre smoke and dust: one InstancedMesh of low-poly puffs for the whole map, spawned from the
  * sim's Skid events in proportion to how far past its grip and how fast each tyre slides. Burnt
  * rubber is white-grey on asphalt and stone, dust tan on gravel and dirt, dark brown on leaves, and
- * grass hardly smokes. A puff grows, rises, drifts and shrinks away over 1–2 s of sim time, so the
+ * grass hardly smokes; on snow it is white spray. A puff grows, rises, drifts and shrinks away over 1–2 s of sim time, so the
  * smoke hangs still while the game is paused. When every puff is in the air, the puffs owed meanwhile are dropped.
+ * Drawn after the tyre marks (render order 1).
  *
  * @module render/smoke
  */
@@ -15,6 +16,7 @@ import { paint } from "./geometry.ts"
 import { yOf } from "./ground.ts"
 import type { SkidValue } from "./marks.ts"
 import { PALETTE } from "./palette.ts"
+import { weatherMaterial } from "./sky/surface.ts"
 
 /** What a sliding tyre throws up on each surface: its colour, and puffs per second per m/s of slip at a full slide. */
 export const PUFF = {
@@ -26,11 +28,17 @@ export const PUFF = {
   leaves: { hex: PALETTE.woodBrown, rate: 1 }
 } as const satisfies Record<Surface, { readonly hex: number; readonly rate: number }>
 
+/** What a tyre throws up from snow (Skid.snow 1): white spray. */
+const SPRAY = new Color(PALETTE.snowFlake)
+/** Draw order among the transparent effects: after the marks. */
+const SMOKE_ORDER = 1
+
 /** Floats per puff: spawn point (three space), drift and rise (m/s), birth and life (sim s), peak radius (m), yaw. */
 const STRIDE = 10
 
 const shape = paint(new IcosahedronGeometry(1, 0), 0xffffff) // tinted per puff by its instance colour
-const material = new MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.6, depthWrite: false })
+// Lit like the people and cars: shaded by the clouds, not snowed on.
+const material = weatherMaterial(new MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.6, depthWrite: false }), "actor")
 const matrix = new Matrix4(), at = new Vector3(), turn = new Quaternion(), size = new Vector3(), up = new Vector3(0, 1, 0), tint = new Color()
 
 /** Every puff in the air. Host state for the page's life: nothing loads a save in the browser. */
@@ -52,6 +60,7 @@ export class Smoke {
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage)
     this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(DynamicDrawUsage)
     this.mesh.frustumCulled = false // spread over the whole map, and the bounds would change every frame
+    this.mesh.renderOrder = SMOKE_ORDER
   }
 
   /** One step of a sliding tyre. */
@@ -88,6 +97,6 @@ export class Smoke {
       Math.cos(heading) * drift, -Math.sin(heading) * drift, 0.5 + 0.4 * r(),
       skid.step * STEP.dt, 1 + r(), 0.4 + 0.4 * r(), r() * 2 * Math.PI
     ], i * STRIDE)
-    this.mesh.setColorAt(i, tint.setHex(PUFF[skid.surface].hex))
+    this.mesh.setColorAt(i, tint.setHex(PUFF[skid.surface].hex).lerp(SPRAY, skid.snow))
   }
 }

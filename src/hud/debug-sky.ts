@@ -1,0 +1,217 @@
+/**
+ * The debug menu's Time and Weather areas, through the sky store (`hud/sky.ts`) that `gta.sky` shares:
+ * the clock's rate, the time of day, the date, sunrise and sunset; a regime held or left to chance
+ * (Auto) and "Settle now"; and live readouts of the sun, the moon and the weather at the player,
+ * refreshed each frame while the menu is open and never announced (no live region). Every regime's
+ * name and description comes from `REGIME_SPECS` (src/sim/sky/regimes.ts).
+ *
+ * @module hud/debug-sky
+ */
+import type { SkyViewModel } from "../sim/index.ts"
+import { ORIGIN } from "../sim/map/kinds.ts"
+import { moonAt, moonPhase } from "../sim/sky/astro.ts"
+import { civilFromDays, DAY, romeTime } from "../sim/sky/calendar.ts"
+import { NO_SNOW } from "../sim/sky/climate.ts"
+import { SECONDS_RANGE } from "../sim/sky/clock.ts"
+import { sunOver, sunTimes } from "../sim/sky/day.ts"
+import { conditionsAt, windAt } from "../sim/sky/local.ts"
+import { describeWeather } from "../sim/sky/readout.ts"
+import { type Regime, REGIME_SPECS, REGIMES } from "../sim/sky/regimes.ts"
+import { clockText } from "./clock.ts"
+import type { Area, Make } from "./debug.ts"
+import { dateText, parseDate, type SkyStore } from "./sky.ts"
+import { set } from "./title.ts"
+
+/** The clock's rates the menu offers, game seconds per step (60 steps a real second), with their names and what they do. */
+export const RATES = [
+  { rate: 0, label: "Stopped", description: "The clock stands still, and with it the sun, the moon and the weather's changes; a storm still flashes." },
+  { rate: 1, label: "Normal (1 min/s)", description: "A game minute each real second: a day in 24 real minutes." },
+  { rate: 10, label: "×10", description: "Ten game minutes each real second: a day in 2.4 real minutes." },
+  { rate: 60, label: "×60", description: "A game hour each real second: a day in 24 real seconds." }
+] as const
+
+/** The compass points, clockwise from north. */
+const POINTS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const
+
+/** The compass point the wind of velocity (x east, y north) blows from: the air moving toward the north-east comes from the south-west. */
+export const compass = (x: number, y: number): (typeof POINTS)[number] => {
+  const bearing = (Math.atan2(-x, -y) * 180) / Math.PI
+  return POINTS[(Math.round(bearing / 45) + 8) % 8]!
+}
+
+/** The wind of velocity `wind` (m/s, x east, y north) and gust factor `gust` as the menu reads it: "from SW 5.0 m/s, gusts 8.5". */
+export const windText = (wind: { readonly x: number; readonly y: number }, gust: number): string => {
+  const speed = Math.hypot(wind.x, wind.y)
+  return speed < 0.05 ? "calm" : `from ${compass(wind.x, wind.y)} ${speed.toFixed(1)} m/s, gusts ${(speed * gust).toFixed(1)}`
+}
+
+/** `seconds` of game time as hours and minutes: "1 h 20 min", "45 min". */
+export const spanText = (seconds: number): string => {
+  const minutes = Math.max(0, Math.round(seconds / 60)), hours = Math.floor(minutes / 60)
+  return hours === 0 ? `${minutes} min` : `${hours} h ${minutes % 60} min`
+}
+
+/** Whether the HUD's weather word names `mm` mm/h falling, as drizzle or more: the sim's own `describeWeather` asked, so the two never part. */
+const named = (mm: number): boolean => describeWeather({ cloud: 0, storm: 0, wind: 0 }, { rain: mm, snow: 0, fog: 0 }) !== "Clear"
+
+/**
+ * Rain and snow falling (mm/h, liquid-equivalent) as the menu reads them, from the HUD's drizzle on: "rain 3.0 mm/h", "rain 0.4 +
+ * snow 1.2 mm/h", "rain 0.03 mm/h" (to the hundredth under 0.1), or "" when too little falls for the HUD to name it.
+ */
+export const fallingText = (rain: number, snow: number): string => {
+  if (!named(rain + snow)) return ""
+  // A part that would print as 0.00 is left out.
+  const parts = ([[rain, "rain"], [snow, "snow"]] as const).filter(([mm]) => mm >= 0.005)
+  return `${parts.map(([mm, kind]) => `${kind} ${mm.toFixed(mm < 0.1 ? 2 : 1)}`).join(" + ")} mm/h`
+}
+
+/** The snow line as the menu reads it: its height, or none while it stands above the map. */
+export const snowLineText = (snowLine: number): string => (snowLine >= NO_SNOW ? "none" : `${Math.round(snowLine)} m`)
+
+/** A list of readouts named by `names`: the list and the value cell of each. */
+const readouts = <K extends string>(make: Make, names: Readonly<Record<K, string>>) => {
+  const list = make("dl", { className: "debug-readouts" }), values = {} as Record<K, HTMLElement>
+  for (const key of Object.keys(names) as Array<K>) {
+    values[key] = make("dd", { textContent: "—" })
+    list.append(make("div", {}, make("dt", { textContent: names[key] }), values[key]))
+  }
+  return { list, values }
+}
+
+/** The first and last dates the clock can show (`SECONDS_RANGE`), as date input bounds. */
+const FIRST = dateText(civilFromDays(SECONDS_RANGE.min / DAY)), LAST = dateText(civilFromDays(SECONDS_RANGE.max / DAY - 1))
+
+/** The Time area: the rate, the time of day and the date the store shows, sunrise and sunset, and the sun and the moon now. */
+export const timeArea = (make: Make, sky: SkyStore): Area => {
+  const rates = RATES.map(({ rate, label, description }) => {
+    const button = make("button", { type: "button", id: `debug-time-rate-${rate}`, textContent: label, title: description })
+    button.addEventListener("click", () => sky.setRate(rate))
+    return { rate, button }
+  })
+  // On every change the store makes, and each frame: the host sets the rate too (it holds the clock behind the title card).
+  const showRate = () => {
+    const now = sky.rate()
+    for (const { rate, button } of rates) if (button.ariaPressed !== String(rate === now)) button.ariaPressed = String(rate === now)
+  }
+  sky.subscribe(showRate)
+  showRate()
+  const slider = make("input", { id: "debug-time-of-day", type: "range", min: "0", max: String(DAY / 60 - 1), step: "1" })
+  // Not a live region: it changes every game minute.
+  const shown = make("output", { ariaLive: "off" })
+  const about = make("p", { id: "debug-time-of-day-about", textContent: "Rome's wall clock on the date below, in minutes." })
+  slider.setAttribute("aria-describedby", about.id)
+  slider.addEventListener("input", () => {
+    slider.ariaValueText = clockText(Number(slider.value) * 60)
+    sky.setTime(Number(slider.value) * 60)
+  })
+  const date = make("input", { id: "debug-time-date", type: "date", min: FIRST, max: LAST, required: true })
+  date.addEventListener("change", () => {
+    const day = parseDate(date.value)
+    if (day !== undefined) sky.setDate(day)
+  })
+  const sunrise = make("button", { type: "button", id: "debug-time-sunrise" }), sunset = make("button", { type: "button", id: "debug-time-sunset" })
+  // The sim's own sunrise and sunset (`sunTimes`), which move with the date.
+  const goTo = (which: "sunrise" | "sunset") => {
+    const times = sunTimes(sky.now().seconds)
+    if (times !== undefined) sky.setSeconds(times[which])
+  }
+  sunrise.addEventListener("click", () => goTo("sunrise"))
+  sunset.addEventListener("click", () => goTo("sunset"))
+  const { list, values } = readouts(make, { sun: "Sun", moon: "Moon" })
+  let day = ""
+  const live = () => {
+    showRate()
+    const { seconds, local } = sky.now(), minute = local.hour * 60 + local.minute, focused = slider.ownerDocument.activeElement
+    set(shown, clockText(minute * 60))
+    // A focused control is the player's: moved under a drag or the arrow keys, it would fight them.
+    if (focused !== slider && slider.value !== String(minute)) {
+      slider.value = String(minute)
+      slider.ariaValueText = clockText(minute * 60)
+    }
+    if (dateText(local) !== day) {
+      day = dateText(local)
+      const times = sunTimes(seconds), at = (t: number | undefined) => {
+        if (t === undefined) return "—"
+        const rome = romeTime(t)
+        return clockText(rome.hour * 3600 + rome.minute * 60)
+      }
+      set(sunrise, `Sunrise ${at(times?.sunrise)}`)
+      set(sunset, `Sunset ${at(times?.sunset)}`)
+    }
+    if (focused !== date && date.value !== day) date.value = day
+    const sun = sunOver(seconds), moon = moonAt(seconds, ORIGIN.lat, ORIGIN.lon), phase = moonPhase(sun, moon)
+    set(values.sun, `elevation ${sun.elevation.toFixed(1)}°, azimuth ${Math.round(sun.azimuth)}°`)
+    set(values.moon, `elevation ${moon.elevation.toFixed(1)}°, ${Math.round(phase.illuminated * 100)} % lit, ${phase.waxing ? "waxing" : "waning"}`)
+  }
+  const knob = (...nodes: Array<Node>) => make("div", { className: "debug-knob" }, ...nodes)
+  return {
+    title: "Time",
+    nodes: [
+      make("div", { className: "debug-choices" }, ...rates.map(({ button }) => button)),
+      knob(make("label", { htmlFor: slider.id, textContent: "Time of day" }), shown, slider, about),
+      knob(make("label", { htmlFor: date.id, textContent: "Date" }), date),
+      make("div", { className: "debug-choices" }, sunrise, sunset),
+      list
+    ],
+    first: rates[0]!.button,
+    live
+  }
+}
+
+/**
+ * The Weather area's regime line for the game's `weather`, the regime the store holds it at (null: Auto) and the one it moves toward
+ * (`SkyStore.heading`): the regime and its next draw or its hold, or, while the game has not taken what the store sent (the full map
+ * or the settings pause it), what it takes on resume.
+ */
+export const regimeText = (weather: Pick<SkyViewModel["weather"], "regime" | "forced" | "left">, pinned: Regime | null, heading: Regime): string => {
+  const label = REGIME_SPECS[heading].label
+  if (pinned !== (weather.forced ? weather.regime : null) || heading !== weather.regime) return `${label}, ${pinned === null ? "left to chance" : "held"} (on resume)`
+  return weather.forced ? `${label}, held` : `${label}, next draw in ${spanText(weather.left)}`
+}
+
+/** What "Auto" does. */
+const AUTO = "The weather left to chance: each regime lasts its while, then the month's odds draw the next."
+
+/** The Weather area: the regime held (or Auto), "Settle now", and the weather now at the player (where `here` stands, z m a.s.l., when there is a player). */
+export const weatherArea = (make: Make, sky: SkyStore, here: () => { readonly x: number; readonly y: number; readonly z: number } | undefined): Area => {
+  const choices = [null, ...REGIMES].map((regime) => {
+    const button = make("button", {
+      type: "button", id: `debug-weather-${regime ?? "auto"}`,
+      textContent: regime === null ? "Auto" : REGIME_SPECS[regime].label, title: regime === null ? AUTO : REGIME_SPECS[regime].description
+    })
+    button.addEventListener("click", () => sky.force(regime))
+    return { regime, button }
+  })
+  const showRegime = () => {
+    for (const { regime, button } of choices) button.ariaPressed = String(regime === sky.regime())
+  }
+  sky.subscribe(showRegime)
+  showRegime()
+  const settle = make("button", { type: "button", id: "debug-weather-settle", textContent: "Settle now" })
+  const about = make("p", {
+    id: "debug-weather-settle-about",
+    textContent: "Jumps the weather to where its regime settles: every value at its target, the roads soaked or dry, snow down to the freezing level."
+  })
+  settle.setAttribute("aria-describedby", about.id)
+  settle.addEventListener("click", () => sky.settle())
+  const { list, values } = readouts(make, { regime: "Regime", air: "Air here", ground: "Ground", snowLine: "Snow line", wind: "Wind here", sky: "Sky" })
+  const live = () => {
+    const { seconds, weather } = sky.now()
+    set(values.regime, regimeText(weather, sky.regime(), sky.heading()))
+    set(values.snowLine, snowLineText(weather.snowLine))
+    const at = here()
+    if (at === undefined) return
+    const { x, y, z } = at, conditions = conditionsAt(seconds, weather, x, y, z)
+    const falling = fallingText(conditions.rain, conditions.snow)
+    set(values.air, `${conditions.celsius.toFixed(1)} °C at ${Math.round(z)} m${falling === "" ? "" : `, ${falling}`}`)
+    set(values.ground, `wet ${conditions.wet.toFixed(2)}, snow ${conditions.snowCover.toFixed(2)}`)
+    set(values.wind, windText(windAt(weather, z), weather.gust))
+    set(values.sky, `cloud ${weather.cloud.toFixed(2)}, fog here ${conditions.fog.toFixed(2)}, storm ${weather.storm.toFixed(2)}`)
+  }
+  return {
+    title: "Weather",
+    nodes: [make("div", { className: "debug-choices" }, ...choices.map(({ button }) => button)), make("div", { className: "debug-settle" }, settle, about), list],
+    first: choices[0]!.button,
+    live
+  }
+}

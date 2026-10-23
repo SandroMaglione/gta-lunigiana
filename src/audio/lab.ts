@@ -7,7 +7,9 @@
  * all" renders every voice and shot offline at a few representative params (the crashes over a
  * matrix of bodies, targets and speeds, the scrape along every material, each engine at its redline
  * under full load, where its trim is calibrated) and tabulates peak, RMS, spectral centroid and
- * NaNs; `window.lab.renderAll()` returns the same rows, for CDP checks.
+ * NaNs; `window.lab.renderAll()` returns the same rows, for CDP checks. Thunder is heard from its
+ * own `distance` and `ears` height (its render holds the air), aloft (over no ground, as the
+ * director hears it), from its first sound, under its cap.
  *
  * @module audio/lab
  */
@@ -16,13 +18,16 @@ import { VEHICLE_MODELS, VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { AMBIENT_DB, CABIN, type Cabin, dbToGain, EAR_HEIGHT, gainToDb } from "./acoustics.ts"
 import { makeKit } from "./buffers.ts"
 import { hear, type Hearing } from "./director/hearing.ts"
-import { BEDS, ENGINE, type Level, LEVELS, OWN_ENGINE_DB, WATER_R_MIN, windDb } from "./director/levels.ts"
+import { BEDS, ENGINE, type Level, LEVELS, MOST_DB, OWN_ENGINE_DB, rainDb, roofDb, WATER_R_MIN, windDb } from "./director/levels.ts"
 import { type Emitter, makeEmitter } from "./emitter.ts"
 import { measure } from "./measure.ts"
 import { makeMixer, type Mixer } from "./mixer.ts"
 import { crashQuiet } from "./synth/crash/index.ts"
 import { engineQuiet } from "./synth/engine.ts"
 import { clunkQuiet } from "./synth/impacts.ts"
+import { VALLEY_GUSTS } from "./synth/nature.ts"
+import { rainQuiet } from "./synth/rain.ts"
+import { IN_CLOUD, LONGEST, thunderQuiet } from "./synth/thunder.ts"
 import { VEHICLE_SHOTS, VEHICLE_VOICES } from "./synth/vehicles.ts"
 import { WORLD_SHOTS, WORLD_VOICES } from "./synth/world.ts"
 import type { Continuous, Kit, Material, OneShot, Shot, Shots, Surface, Voice, VoiceFactory, Voices, Zone } from "./types.ts"
@@ -48,7 +53,10 @@ const WATER_DB = { fountain: 65, stream: 61, river: 76 } as const satisfies Reco
  */
 type Calibration = Level & { readonly wet?: number; readonly under?: number; readonly quiet?: number }
 
-/** `sound`'s calibration: the beds and the own engine (from the driver's seat, through no cabin) sound at the ears. */
+/** How far a thunder is heard from, m: its strike point, or an in-cloud flash's start, by ears `ears` m over the ground under it. */
+const rangeOf = (sound: Extract<OneShot, { readonly kind: "thunder" }>): number => Math.hypot(sound.distance, (sound.bolt ? 0 : IN_CLOUD) - sound.ears)
+
+/** `sound`'s calibration: the beds and the own engine and the roof's drumming (from the driver's seat, through no cabin) sound at the ears. */
 const sourceOf = (sound: Sound): Calibration =>
   sound.kind === "engine" ? (sound.inside ? { db: OWN_ENGINE_DB, rMin: 1, wet: 0 } : { ...ENGINE[sound.model], quiet: engineQuiet(sound.model, sound.rpm, sound.load) })
   : sound.kind === "crash" ? { ...LEVELS.crash, quiet: crashQuiet(sound) }
@@ -56,6 +64,9 @@ const sourceOf = (sound: Sound): Calibration =>
   : sound.kind === "water" ? { db: WATER_DB[sound.body], rMin: WATER_R_MIN }
   : sound.kind === "wind" ? { db: windDb(sound.strength), rMin: 1, wet: 0, under: BEDS.wind - windDb(sound.strength) }
   : sound.kind === "crickets" ? { db: BEDS.crickets, rMin: 1, wet: 0 }
+  : sound.kind === "rain" ? { db: rainDb(sound.rate), rMin: 1, wet: 0, under: rainQuiet(sound.rate) }
+  : sound.kind === "roof" ? { db: roofDb(sound.rate), rMin: 1, wet: 0, under: rainQuiet(sound.rate) }
+  : sound.kind === "thunder" ? { ...LEVELS.thunder, quiet: thunderQuiet(rangeOf(sound)) }
   : LEVELS[sound.kind]
 
 /** The listener's side of the page's controls: the source `r` m away towards `side` (−1 screen-left … 1 screen-right), their cabin and street. */
@@ -66,16 +77,20 @@ const EARS = { x: 0, y: 0, z: EAR_HEIGHT, vx: 0, vy: 0, right: SCREEN_RIGHT } as
 
 /** How `sound` reaches the listener at `where`, and its calibration. */
 const heard = (sound: Sound, where: Where): { readonly hearing: Hearing; readonly source: Calibration } => {
-  const source = sourceOf(sound), r = source.wet === undefined ? where.r : 0, ahead = Math.sqrt(1 - where.side * where.side)
+  const source = sourceOf(sound), thunder = sound.kind === "thunder" ? rangeOf(sound) : undefined
+  const r = thunder ?? (source.wet === undefined ? where.r : 0), ahead = Math.sqrt(1 - where.side * where.side)
   const at = { x: r * (where.side * SCREEN_RIGHT.x + ahead * SCREEN_UP.x), y: r * (where.side * SCREEN_RIGHT.y + ahead * SCREEN_UP.y), z: EAR_HEIGHT }
-  // The game plays the listener's own engine through no cabin (the synth makes its own).
-  const own = sound.kind === "engine" && sound.inside
+  // The game plays the listener's own engine and the roof's drumming through no cabin (the synths make their own).
+  const own = (sound.kind === "engine" && sound.inside) || sound.kind === "roof"
   const hearing = hear({
-    ears: EARS, source: at, db: source.db, rMin: source.rMin, height: EAR_HEIGHT, quiet: source.quiet, delta: 0, forest: 0, ambient: AMBIENT_DB,
-    street: where.street, cabin: own ? undefined : where.cabin
+    ears: EARS, source: at, db: source.db, rMin: source.rMin, height: EAR_HEIGHT, aloft: source.aloft, quiet: source.quiet, delta: 0, forest: 0,
+    ambient: AMBIENT_DB, street: where.street, cabin: own ? undefined : where.cabin
   })
-  const placement = { ...hearing.placement, gain: hearing.placement.gain * dbToGain(source.under ?? 0), wet: source.wet ?? hearing.placement.wet }
-  return { hearing: { ...hearing, placement }, source }
+  // A one-shot's direct sound under its cap, as the director plays it; thunder's air is in its render, so only the cabin closes it.
+  const most = isShot(sound) ? MOST_DB[sound.kind] : undefined
+  const gain = Math.min(hearing.placement.gain * dbToGain(source.under ?? 0), dbToGain(most ?? Infinity))
+  const placement = { ...hearing.placement, gain, cutoff: thunder === undefined ? hearing.placement.cutoff : (where.cabin?.cutoff ?? 20000), wet: source.wet ?? hearing.placement.wet }
+  return { hearing: { ...hearing, placement, delay: thunder === undefined ? hearing.delay : 0 }, source }
 }
 
 const SURFACES = Object.keys({ asphalt: 0, stone: 0, gravel: 0, dirt: 0, grass: 0, leaves: 0 } satisfies Record<Surface, 0>)
@@ -91,12 +106,13 @@ const OPTIONS: Readonly<Record<string, ReadonlyArray<string>>> = {
   struck: ZONES,
   against: [...MATERIALS, ...VEHICLE_MODELS],
   body: Object.keys({ fountain: 0, stream: 0, river: 0 } satisfies Record<WaterBody, 0>),
-  species: Object.keys({ robin: 0, tit: 0, blackbird: 0, chaffinch: 0 } satisfies Record<Extract<OneShot, { readonly kind: "bird" }>["species"], 0>)
+  species: Object.keys({ robin: 0, tit: 0, blackbird: 0, chaffinch: 0, owl: 0 } satisfies Record<Extract<OneShot, { readonly kind: "bird" }>["species"], 0>)
 }
 /** Slider [min, max, step] per numeric param, or per `kind.param` where kinds differ. */
 const RANGES: Readonly<Record<string, readonly [number, number, number] | undefined>> = {
   "tyres.speed": [0, 45, 0.5], "scrape.speed": [0, 20, 0.5], "crash.speed": [0, 60, 0.5], "thud.speed": [0, 20, 0.5], "clunk.speed": [0, 6, 0.1],
-  rpm: [0, 7000, 10], slip: [0, 20, 0.1], mass: [0.1, 30, 0.05], pitch: [350, 900, 1]
+  rpm: [0, 7000, 10], slip: [0, 20, 0.1], mass: [0.1, 30, 0.05], pitch: [350, 900, 1], rate: [0, 60, 0.5], celsius: [-5, 30, 0.5],
+  "thunder.distance": [30, 15000, 10], "thunder.ears": [-400, 1000, 0.1], "thunder.seed": [1, 1000, 1]
 }
 const UNIT_RANGE = [0, 1, 0.01] as const
 
@@ -113,8 +129,10 @@ const HELD = {
   siren: { kind: "siren" },
   beeper: { kind: "beeper" },
   water: { kind: "water", body: "stream", flow: 0.6 },
-  wind: { kind: "wind", strength: 0.6, forest: 0.3 },
-  crickets: { kind: "crickets", density: 0.7 }
+  wind: { kind: "wind", strength: 0.6, forest: 0.3, gusts: VALLEY_GUSTS },
+  crickets: { kind: "crickets", density: 0.7, celsius: 15 },
+  rain: { kind: "rain", rate: 4, forest: 0.3, built: 0.2, water: 0 },
+  roof: { kind: "roof", rate: 4 }
 } as const satisfies { readonly [K in Continuous["kind"]]: Extract<Continuous, { readonly kind: K }> }
 
 /** The crash's params flat, one control each: `against` is a wall's material or the model of the car hit, on its `struck` zone. */
@@ -147,14 +165,18 @@ const PLAYED = {
   door: { kind: "door", model: "panda", open: false },
   ignition: { kind: "ignition", model: "panda" },
   honk: { kind: "honk", model: "panda" },
-  step: { kind: "step", surface: "stone", run: false },
+  step: { kind: "step", surface: "stone", run: false, snow: false },
   scream: { kind: "scream", voice: 0.3 },
   shout: { kind: "shout", voice: 0.3 },
   groan: { kind: "groan", voice: 0.3 },
   bell: { kind: "bell", pitch: 600 },
   bird: { kind: "bird", species: "robin" },
-  bark: { kind: "bark", big: true }
+  bark: { kind: "bark", big: true },
+  thunder: { kind: "thunder", distance: 1500, ears: EAR_HEIGHT, bolt: true, seed: 1 }
 } as const satisfies { readonly [K in OneShot["kind"]]: Extract<Form, { readonly kind: K }> }
+
+/** Whether `sound` is a one-shot (`PLAYED` has a panel for every one-shot kind). */
+const isShot = (sound: Sound): sound is OneShot => sound.kind in PLAYED
 
 /** Some sounds of every kind of `S`: a new kind fails to compile until "render all" plays it. */
 type Each<S extends Sound> = { readonly [K in S["kind"]]: ReadonlyArray<Extract<S, { readonly kind: K }>> }
@@ -191,8 +213,14 @@ const VOICE_RENDERS = {
   siren: [{ kind: "siren" }],
   beeper: [{ kind: "beeper" }],
   water: [{ kind: "water", body: "fountain", flow: 0.5 }, { kind: "water", body: "stream", flow: 0.6 }, { kind: "water", body: "river", flow: 1 }],
-  wind: [{ kind: "wind", strength: 0.3, forest: 0 }, { kind: "wind", strength: 1, forest: 1 }],
-  crickets: [{ kind: "crickets", density: 0.3 }, { kind: "crickets", density: 1 }]
+  // The valley's usual gusts, and squalls on a ridge.
+  wind: [{ kind: "wind", strength: 0.3, forest: 0, gusts: VALLEY_GUSTS }, { kind: "wind", strength: 1, forest: 1, gusts: VALLEY_GUSTS }, { kind: "wind", strength: 1, forest: 0.3, gusts: 1 }],
+  // A mild evening; the cold, where a held voice still chirps at its slowest.
+  crickets: [{ kind: "crickets", density: 0.3, celsius: 15 }, { kind: "crickets", density: 1, celsius: 22 }, { kind: "crickets", density: 1, celsius: 5 }],
+  // A shower on open ground, rain in the woods, a steady rain on a river (its plinks at their loudest), a downpour on a village by the
+  // river; a downpour on open ground peaks near 0.5.
+  rain: ([[1, 0, 0, 0], [10, 1, 0, 0], [6, 0, 0, 1], [60, 0, 1, 1], [60, 0, 0, 0]] as const).map(([rate, forest, built, water]) => ({ kind: "rain", rate, forest, built, water }) as const),
+  roof: [{ kind: "roof", rate: 1 }, { kind: "roof", rate: 10 }, { kind: "roof", rate: 60 }]
 } satisfies Each<Continuous>
 const SHOT_RENDERS = {
   // A Panda into a house wall (a bump to a heavy hit), car–car pairs, each other target, a side hit, a wreck, the laden truck nudging
@@ -220,25 +248,23 @@ const SHOT_RENDERS = {
   door: [{ kind: "door", model: "panda", open: true }, { kind: "door", model: "panda", open: false }, { kind: "door", model: "truck", open: false }],
   ignition: VEHICLE_MODELS.map((model) => ({ kind: "ignition", model }) as const),
   honk: [{ kind: "honk", model: "panda" }, { kind: "honk", model: "truck" }],
-  step: [
-    { kind: "step", surface: "stone", run: true },
-    { kind: "step", surface: "asphalt", run: false },
-    { kind: "step", surface: "gravel", run: true },
-    { kind: "step", surface: "grass", run: false }
-  ],
+  step: ([["stone", true, false], ["asphalt", false, false], ["gravel", true, false], ["grass", false, false], ["grass", false, true]] as const)
+    .map(([surface, run, snow]) => ({ kind: "step", surface, run, snow }) as const),
   scream: [{ kind: "scream", voice: 0.2 }, { kind: "scream", voice: 0.8 }],
   shout: [{ kind: "shout", voice: 0.2 }, { kind: "shout", voice: 0.8 }],
   groan: [{ kind: "groan", voice: 0.2 }, { kind: "groan", voice: 0.8 }],
   bell: [{ kind: "bell", pitch: 400 }, { kind: "bell", pitch: 800 }],
-  bird: (["robin", "tit", "blackbird", "chaffinch"] as const).map((species) => ({ kind: "bird", species }) as const),
-  bark: [{ kind: "bark", big: true }, { kind: "bark", big: false }]
+  bird: (["robin", "tit", "blackbird", "chaffinch", "owl"] as const).map((species) => ({ kind: "bird", species }) as const),
+  bark: [{ kind: "bark", big: true }, { kind: "bark", big: false }],
+  // A bolt's crack and boom 300 m away, one rumbling from 2 and 8 km, an in-cloud flash overhead.
+  thunder: ([[300, true], [2000, true], [8000, true], [0, false]] as const).map(([distance, bolt], i) => ({ kind: "thunder", distance, ears: EAR_HEIGHT, bolt, seed: i + 1 }) as const)
 } satisfies Each<OneShot>
 
 const RATE = 48000
 /** Voices settle (fade in) for `settle` s, are measured for `seconds`, then stopped: they must be silent `fade` s later, when the speaker frees their emitter. */
 const VOICE_RENDER = { settle: 0.5, seconds: 2, fade: 0.5 } as const
-/** Room for the longest shot: a bell rings 10 s. */
-const SHOT_SECONDS = 12
+/** Room for the longest shot: a thunder rolls up to `LONGEST` (20 s). */
+const SHOT_SECONDS = LONGEST + 2
 /** Below this peak a render counts as silent (−80 dBFS); above `CLIP`, as clipping. */
 const SILENT = 1e-4, CLIP = 0.95
 /** An engine at the redline under full load, heard outside, peaks at the nominal 0.5 within this (its `TRIM` is off otherwise). */
@@ -316,7 +342,7 @@ const byId = <T extends HTMLElement = HTMLElement>(id: string): T => document.ge
 const renderAll = async (): Promise<ReadonlyArray<Row>> => {
   const kit = makeKit(new OfflineAudioContext({ length: 1, sampleRate: RATE }))
   const rows: Array<Row> = []
-  // One at a time: a dozen 12 s stereo renders at once would hold hundreds of MB.
+  // One at a time: a dozen 22 s stereo renders at once would hold hundreds of MB.
   for (const sound of Object.values(VOICE_RENDERS).flat()) rows.push(await renderVoice(kit, sound))
   for (const sound of Object.values(SHOT_RENDERS).flat()) rows.push(await renderShot(kit, sound))
   const table = byId("renders")

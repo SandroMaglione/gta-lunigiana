@@ -1,7 +1,7 @@
 /**
  * Ribbons along map polylines (roads, water, rail), the bridge decks under them and station
  * platforms, as pieces the streamed world draws chunk by chunk. Ribbons are densified so they
- * follow the terrain facets and go in the decal layer.
+ * follow the terrain facets and go in the decal layer, rivers in the water layer.
  *
  * @module render/lines
  */
@@ -26,6 +26,8 @@ interface RibbonSpec {
   readonly offset?: number
   /** Dash length (m): draw every other `dash` metres. */
   readonly dash?: number
+  /** The sink layer it goes in: `decal` (roads, rail) unless `water`. */
+  readonly layer?: "decal" | "water"
 }
 
 const { minX, minY, maxX, maxY } = MAP.bounds
@@ -47,7 +49,7 @@ const throughApron = (pts: ReadonlyArray<number>, z: ReadonlyArray<number>): { p
 }
 
 /**
- * Adds segments k0..k1 of a ribbon to the decal layer of the chunks they cross. Their neighbours
+ * Adds segments k0..k1 of a ribbon to its layer of the chunks they cross. Their neighbours
  * are densified too, for the mitres, and their quads go wherever `at` puts them; the arc length
  * (dashes) still counts from the start of the line.
  */
@@ -96,7 +98,7 @@ const ribbon = (at: SinkAt, spec: RibbonSpec, k0: number, k1: number): void => {
     if (spec.dash !== undefined && Math.floor((ss[i]! + ss[i + 1]!) / 2 / spec.dash) % 2 === 1) continue
     const [lx0, ly0, lh0, rx0, ry0, rh0] = edges[i]!, [lx1, ly1, lh1, rx1, ry1, rh1] = edges[i + 1]!
     // Right edge forward, then left edge back: counter-clockwise seen from above.
-    at((xs[i]! + xs[i + 1]!) / 2, (ys[i]! + ys[i + 1]!) / 2).decal.quad(
+    at((xs[i]! + xs[i + 1]!) / 2, (ys[i]! + ys[i + 1]!) / 2)[spec.layer ?? "decal"].quad(
       [rx0, rh0, -ry0], [rx1, rh1, -ry1], [lx1, lh1, -ly1], [lx0, lh0, -ly0], spec.hex)
   }
 }
@@ -175,8 +177,8 @@ const roads = (): Array<Piece> => MAP.roads.flatMap((road) => {
 const water = (): Array<Piece> => MAP.water.map((w) => {
   const line = throughApron(w.pts, w.z)
   return strips(line, [
-    { ...line, width: w.w, hex: PALETTE.waterShallow, y: (_x, _y, z) => yOf(z) + 0.02 },
-    ...(w.w >= 8 ? [{ ...line, width: w.w * 0.45, hex: PALETTE.waterDeep, y: (_x: number, _y: number, z: number) => yOf(z) + 0.04 }] : [])
+    { ...line, width: w.w, hex: PALETTE.waterShallow, layer: "water", y: (_x, _y, z) => yOf(z) + 0.02 },
+    ...(w.w >= 8 ? [{ ...line, width: w.w * 0.45, hex: PALETTE.waterDeep, layer: "water" as const, y: (_x: number, _y: number, z: number) => yOf(z) + 0.04 }] : [])
   ])
 })
 

@@ -10,7 +10,7 @@
 import { staticGrid } from "../../sim/collide.ts"
 import { heightAt, MAP, type Water } from "../../sim/map/index.ts"
 import { segDist2 } from "../../tools/geometry.ts"
-import { AMBIENT_DB, lineLevel, spreading, type LineSegment } from "../acoustics.ts"
+import { lineLevel, NIGHT_DB, spreading, type LineSegment } from "../acoustics.ts"
 import { smoothstep } from "../buffers.ts"
 
 /** A body of water heard from a point: its nearest point (z the water surface) and level there, dB(A). */
@@ -47,8 +47,8 @@ const WIDEST = 14, CALM_FLOW = 0.4
 const FOUNTAIN_DB = 65
 /** The Cascata di Equi on the Torrente Fagli, dB(A) at 1 m: hard-coded, only the raw OSM has it. */
 const CASCATA = { key: "water:Cascata di Equi", x: 1835, y: 530, z: 259, level: 80 } as const
-/** Bodies fainter than this at the listener are left out: the hard cull of the masking rule. */
-const FLOOR = AMBIENT_DB - 15
+/** Bodies fainter than this at the listener are left out: the hard cull of the masking rule at its stillest, a still night's floor. */
+const FLOOR = NIGHT_DB - 15
 /** The farthest a body is looked for, m. */
 const FARTHEST = 400
 

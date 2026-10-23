@@ -34,6 +34,10 @@ export const HANDLING = {
     group: "Tyres", label: "Off-road grip loss", kind: "share", min: 0, max: 1, step: 0.05,
     description: "How much stone, gravel, dirt, grass and leaves differ from asphalt in grip, sliding and rolling drag. 1 is real; 0 drives every surface like asphalt."
   },
+  weatherGrip: {
+    group: "Tyres", label: "Weather grip loss", kind: "share", min: 0, max: 1, step: 0.05,
+    description: "How much wet ground and snow cover take away from the tyres' grip. 1 is real: a wet road keeps about 0.72 of its dry grip and packed snow about 0.27, so stops are longer and corners slower; 0 drives as on a dry day whatever the weather."
+  },
   power: {
     group: "Engine and brakes", label: "Engine power", kind: "scale", min: 0.5, max: 4, step: 0.05,
     description: "Multiplies every engine's torque and power. Higher accelerates harder where the tyres can take it (else the driven wheels spin), climbs steeper hills and reaches a higher top speed; the truck's limiter still holds it to 90 km/h."
@@ -95,7 +99,7 @@ export type HandlingValue = Readonly<Record<HandlingKey, number>>
 
 /** Every vehicle as its data says: multipliers and shares at 1, the aids each vehicle's own (off), no assist a real car lacks. */
 export const REAL_HANDLING = {
-  grip: 1, looseGround: 1, power: 1, brakes: 1, drag: 1, abs: 0, stability: 0, selfRighting: 0, traction: 0,
+  grip: 1, looseGround: 1, weatherGrip: 1, power: 1, brakes: 1, drag: 1, abs: 0, stability: 0, selfRighting: 0, traction: 0,
   steering: 1, steeringRate: 1, weightTransfer: 1, antiRoll: 1, stiffness: 1, damping: 1
 } as const satisfies HandlingValue
 
@@ -110,22 +114,22 @@ export interface Preset {
 export const HANDLING_PRESETS = {
   simulation: {
     label: "Simulation",
-    description: "Every vehicle as its real data says. Cars slide on gravel and grass, wheels lock and spin without driver aids, and the Ape and the laden truck roll over in sharp turns.",
+    description: "Every vehicle as its real data says. Cars slide on gravel, grass, wet roads and snow, wheels lock and spin without driver aids, and the Ape and the laden truck roll over in sharp turns.",
     values: REAL_HANDLING
   },
   balanced: {
     label: "Balanced",
-    description: "Realistic with the rough edges filed off: a little more grip, power and braking, ABS and traction control on every vehicle, half the grip lost off the road. Cars stay upright in corners; the Ape still tips in a hard handbrake turn, and the laden truck at full lock from about 84 km/h.",
+    description: "Realistic with the rough edges filed off: a little more grip, power and braking, ABS and traction control on every vehicle, half the grip lost off the road and a little more than half lost in the wet and on snow. Cars stay upright in corners; the Ape still tips in a hard handbrake turn, and the laden truck at full lock from about 84 km/h.",
     values: {
-      grip: 1.1, looseGround: 0.5, power: 1.15, brakes: 1.15, drag: 0.9, abs: 1, stability: 0, selfRighting: 0, traction: 1,
+      grip: 1.1, looseGround: 0.5, weatherGrip: 0.6, power: 1.15, brakes: 1.15, drag: 0.9, abs: 1, stability: 0, selfRighting: 0, traction: 1,
       steering: 1, steeringRate: 1.4, weightTransfer: 0.8, antiRoll: 1.3, stiffness: 1.1, damping: 1.2
     }
   },
   arcade: {
     label: "Arcade",
-    description: "Pure fun: huge grip everywhere, off the road too, rocket acceleration, very short stops and razor-sharp steering, with a stability assist that keeps you pointed where you steer (a handbrake turn still swings you round). Nothing rolls over in a corner, and a vehicle left on its side or roof rolls back onto its wheels.",
+    description: "Pure fun: huge grip everywhere, off the road too, rain and snow taking little of it, rocket acceleration, very short stops and razor-sharp steering, with a stability assist that keeps you pointed where you steer (a handbrake turn still swings you round). Nothing rolls over in a corner, and a vehicle left on its side or roof rolls back onto its wheels.",
     values: {
-      grip: 2, looseGround: 0, power: 2.5, brakes: 2.5, drag: 0.6, abs: 1, stability: 1, selfRighting: 1, traction: 1,
+      grip: 2, looseGround: 0, weatherGrip: 0.3, power: 2.5, brakes: 2.5, drag: 0.6, abs: 1, stability: 1, selfRighting: 1, traction: 1,
       steering: 2, steeringRate: 3, weightTransfer: 0.4, antiRoll: 2.5, stiffness: 1.5, damping: 1.8
     }
   }

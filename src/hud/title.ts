@@ -2,9 +2,9 @@
  * The title card (markup in index.html) as the loading screen: a line that the game is in early
  * development, a bar and the name of the step running while the map downloads and the game
  * builds, an error with a retry if that fails, and "Press any key" ("Tap to play" in mobile mode)
- * once the first frame is drawn.
+ * once the first frame is drawn. The game clock stands still behind it (`holdClock`).
  * It imports nothing, so `boot.ts` can show it before the game modules (and the map they read)
- * load. Also holds the DOM lookup the HUD shares.
+ * load. Also holds the DOM lookup and the text setter the HUD shares.
  *
  * @module hud/title
  */
@@ -34,7 +34,8 @@ const paint = (): Promise<void> =>
     setTimeout(done, 100)
   })
 
-const set = (node: HTMLElement, text: string) => {
+/** Sets `node`'s text, touching the DOM only when it changes. */
+export const set = (node: HTMLElement, text: string): void => {
   if (node.textContent !== text) node.textContent = text
 }
 
@@ -69,10 +70,11 @@ export const loadFailed = (document: Document, error: unknown): void => {
 
 /**
  * Swaps the bar for "Press any key" ("Tap to play" in mobile mode) and hides the card on the first
- * key press, or click or tap on it, after that. On the click, not the press: hidden on the press,
- * the card would let the tap's click land on whatever lies under it (the minimap opens the map).
+ * key press, or click or tap on it, after that, then calls `dismissed`. On the click, not the
+ * press: hidden on the press, the card would let the tap's click land on whatever lies under it
+ * (the minimap opens the map).
  */
-export const titleReady = (window: Window): void => {
+export const titleReady = (window: Window, dismissed: () => void): void => {
   const document = window.document, title = element(document, "title")
   element(document, "title-load").hidden = true
   element(document, "title-go").hidden = false
@@ -80,7 +82,19 @@ export const titleReady = (window: Window): void => {
     title.hidden = true
     window.removeEventListener("keydown", dismiss)
     title.removeEventListener("click", dismiss)
+    dismissed()
   }
   window.addEventListener("keydown", dismiss)
   title.addEventListener("click", dismiss)
+}
+
+/**
+ * Stands the game clock still behind the title card, so a new game starts at its start time (08:00)
+ * when the player dismisses the card: `send`s rate 0 now, and returns what sends rate 1 (a game
+ * minute a real second), for `titleReady`. Only the clock waits; the traffic and the people move on
+ * behind the card. Call it after setup, whose ApplyClock is then already listening.
+ */
+export const holdClock = (send: (request: { readonly rate: number }) => void): (() => void) => {
+  send({ rate: 0 })
+  return () => send({ rate: 1 })
 }

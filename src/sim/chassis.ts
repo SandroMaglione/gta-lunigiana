@@ -12,7 +12,7 @@ import { HANDLING_KEYS, type HandlingValue, REAL_HANDLING, tuned } from "./handl
 import { atGrade, groundZ } from "./map/ground.ts"
 import type { Surface } from "./map/surface.ts"
 import type { ChassisValue, PoseValue } from "./schema.ts"
-import { type Grip, gripsFor } from "./tyres.ts"
+import { gripsFor, type SurfaceGrip } from "./tyres.ts"
 import { VEHICLE_MODELS, VEHICLES, type VehicleModel, type VehicleSpec } from "./vehicles.ts"
 
 /** Gravity, m/s². */
@@ -61,8 +61,9 @@ export interface Rig {
   readonly partner: ReadonlyArray<number>
   /** The body box's eight corners (body frame): the underbody's four, then the roof's four. */
   readonly corners: ReadonlyArray<Offset>
-  /** Each surface's grip, loose ground's loss scaled by the handling. */
-  readonly grips: Readonly<Record<Surface, Grip>>
+  /** Each surface's grip dry and wet, loose ground's loss scaled by the handling, and the share of the weather's loss of grip that counts (1 real). */
+  readonly grips: Readonly<Record<Surface, SurfaceGrip>>
+  readonly weatherGrip: number
   /** Share of a tyre force's lever about the centre of mass that tilts the body (1 real: the weight transfer). */
   readonly transfer: number
   /** Multipliers of the steering lock at speed and of the steering's speed. */
@@ -107,7 +108,7 @@ const rig = (model: VehicleModel, handling: HandlingValue): Rig => {
     ix: (m * (w * w + h * h)) / 12, iy: (m * (l * l + h * h)) / 12, iz: (m * (l * l + w * w)) / 12,
     wheelbase, rear,
     lock: Ops.atan(wheelbase / Math.sqrt(Math.max(0.25, spec.turnRadius * spec.turnRadius - rear * rear))),
-    corners, grips: gripsFor(handling.looseGround), transfer: handling.weightTransfer, steering: handling.steering, steeringRate: handling.steeringRate,
+    corners, grips: gripsFor(handling.looseGround), weatherGrip: handling.weatherGrip, transfer: handling.weightTransfer, steering: handling.steering, steeringRate: handling.steeringRate,
     stability: handling.stability, selfRighting: handling.selfRighting
   }
 }

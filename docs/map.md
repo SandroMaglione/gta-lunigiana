@@ -59,18 +59,18 @@ edge.
 
 ### 2. Projection and play area (`geometry.ts`)
 
-Equirectangular around `ORIGIN` (lat 44.16175, lon 10.13), with `M_PER_DEG` = 111115.37 m per
-degree of latitude and 79987.94 m per degree of longitude. x = east, y = north, in metres, rounded
-to 0.1 m. The play area `BOUNDS` is x −2900…4900 m, y −6100…3900 m (7.8 × 10 km; lat
-44.1069–44.1968, lon 10.0937–10.1913): the whole catchment of the Lucido, ridge to ridge, from its
-mouth in the Aulella below Gragnola up both branches. Up the Vinca branch: the SP59, Vinca and its
-valley to Foce di Vinca, the Garnerone and Foce di Giovo, with Monte Sagro, Monte Borla and their
-quarries on the ridge. Up the Equi branch: Equi Terme, the Solco di Equi and its quarries, Pizzo
-d'Uccello and Ugliancaldo. West of the Lucido: Tenerano and the SP10, Viano, Pieve di Viano,
-Colognola, Campiglione and Vezzanello; Monzone, Aiola, Codiponte and Casciana in the middle. Being
-a rectangle, the area also takes in some of the Aulella side (Argigliano), the Bardine side and the
-Carrara side of the ridge (Campocecina). Lines are clipped with Liang–Barsky and rings with
-Sutherland–Hodgman.
+Equirectangular around `ORIGIN` (lat 44.16175, lon 10.13; defined in `src/sim/map/kinds.ts`, where
+the sky takes it from too), with `M_PER_DEG` = 111115.37 m per degree of latitude and 79987.94 m per
+degree of longitude. x = east, y = north, in metres, rounded to 0.1 m. The play area `BOUNDS` is x
+−2900…4900 m, y −6100…3900 m (7.8 × 10 km; lat 44.1069–44.1968, lon 10.0937–10.1913): the whole
+catchment of the Lucido, ridge to ridge, from its mouth in the Aulella below Gragnola up both
+branches. Up the Vinca branch: the SP59, Vinca and its valley to Foce di Vinca, the Garnerone and
+Foce di Giovo, with Monte Sagro, Monte Borla and their quarries on the ridge. Up the Equi branch:
+Equi Terme, the Solco di Equi and its quarries, Pizzo d'Uccello and Ugliancaldo. West of the Lucido:
+Tenerano and the SP10, Viano, Pieve di Viano, Colognola, Campiglione and Vezzanello; Monzone, Aiola,
+Codiponte and Casciana in the middle. Being a rectangle, the area also takes in some of the Aulella
+side (Argigliano), the Bardine side and the Carrara side of the ridge (Campocecina). Lines are
+clipped with Liang–Barsky and rings with Sutherland–Hodgman.
 
 ### 3. Features (`features.ts`)
 

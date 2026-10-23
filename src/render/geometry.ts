@@ -1,17 +1,31 @@
 /**
- * Geometry plumbing shared by the world and actor builders. Everything is non-indexed with exactly
- * `position`, `normal` and `color` (linear), so any two pieces merge into one draw call and get
- * faceted normals.
+ * Geometry plumbing and the lit materials shared by the world and actor builders. Everything is
+ * non-indexed with exactly `position`, `normal` and `color` (linear), so any two pieces merge into
+ * one draw call and get faceted normals; only the tree shapes add `canopy` (`trees.ts`: the crown
+ * that sways). Each material is a surface-weather variant with its own program (`render/sky/surface`).
  *
  * @module render/geometry
  */
 import { BufferGeometry, Color, Float32BufferAttribute, MeshLambertMaterial } from "three"
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js"
 
-/** The material every opaque static or actor mesh shares: vertex colours, flat Lambert. */
-export const solidMaterial = new MeshLambertMaterial({ vertexColors: true, flatShading: true })
-/** Ground decals: pulled towards the camera in depth so they never fight what they lie on. */
-export const decalMaterial = new MeshLambertMaterial({ vertexColors: true, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
+import { weatherMaterial } from "./sky/surface.ts"
+
+/** Vertex colours, flat Lambert: the look of every lit mesh. */
+const flat = (): MeshLambertMaterial => new MeshLambertMaterial({ vertexColors: true, flatShading: true })
+/** Flat Lambert pulled towards the camera in depth, so a decal never fights what it lies on. */
+const decal = (): MeshLambertMaterial => new MeshLambertMaterial({ vertexColors: true, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
+
+/** The terrain, buildings, bridges and platforms: snow, wet ground and cloud shadows (`render/sky/surface`). */
+export const solidMaterial = weatherMaterial(flat(), "solid")
+/** Ground decals (roads, rail): half-cleared snow, wet ground and puddles that mirror the sky, cloud shadows. */
+export const decalMaterial = weatherMaterial(decal(), "road")
+/** Rivers and streams, a decal of their own: never snowed on or darkened by rain, ringed by raindrops, cloud shadows. */
+export const waterMaterial = weatherMaterial(decal(), "water")
+/** The trees (instanced): snow on the canopies' tops, wet, cloud shadows, canopies swaying by whole texels in the wind. */
+export const treeMaterial = weatherMaterial(flat(), "tree")
+/** People and vehicles: cloud shadows only (no snow on a passer-by's head or a car's roof). */
+export const actorMaterial = weatherMaterial(flat(), "actor")
 
 const linearCache = new Map<number, readonly [number, number, number]>()
 /** Linear RGB of an sRGB hex colour (vertex colours are linear). */
@@ -81,8 +95,12 @@ type Point3 = readonly [number, number, number]
 export interface Sink {
   /** Opaque world geometry (terrain-like depth). */
   readonly solid: Triangles
-  /** Ground decals (roads, water, rail) drawn with a polygon offset over what they cover. */
+  /** Ground decals (roads, rail) drawn with a polygon offset over what they cover. */
   readonly decal: Triangles
+  /** Rivers and streams: decals with their own material (`waterMaterial`), so no snow lies on them. */
+  readonly water: Triangles
+  /** Things that shine at night (window panes, lantern glass): dark glass by day, their vertex colour lit at night (`glowMaterial`). */
+  readonly glow: Triangles
   /** Ready-made solid pieces (extrusions) merged with `solid`. */
   readonly pieces: Array<BufferGeometry>
 }

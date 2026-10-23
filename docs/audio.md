@@ -1,15 +1,16 @@
 # Audio
 
 Every sound in the game is synthesised at run time with Web Audio; there are no sample files.
-Vehicles, people, the wind, crickets, birds, dogs, church bells and running water all make sound,
-and each one reaches the player's ears through a model of outdoor acoustics. A sound gets quieter
-and duller with distance, is muffled by houses, hills and woods, shifts in pitch when it moves,
-arrives late from far away, and fades out under the background noise. That last step is what lets
-the player hear only what is near.
+Vehicles, people, the wind, the rain, thunder, crickets, songbirds and owls, dogs, church bells and
+running water all make sound, and each one reaches the player's ears through a model of outdoor
+acoustics. A sound gets quieter and duller with distance, is muffled by houses, hills, woods and
+snow, shifts in pitch when it moves, arrives late from far away, and fades out under the
+background noise. That last step is what lets the player hear only what is near. The valley sounds
+as the game's clock and weather say: still at night, roaring in a downpour, hushed under snow.
 
 Audio is host code beside render and the HUD (`src/audio`). The simulation never imports it; the
-audio reads three of its events (`Impact`, `Skid`, `Honk`) and its components. No sound has a
-gameplay effect.
+audio reads four of its events (`Impact`, `Skid`, `Honk`, `Lightning`), its components, the game
+clock and the weather. No sound has a gameplay effect.
 
 ## Data flow
 
@@ -17,14 +18,16 @@ gameplay effect.
 VehiclePhysics, Contacts ──Impact──┐
 VehiclePhysics ─────────────Skid───┤
 TrafficAI ──────────────────Honk───┤
-components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/Hear) ──Heard──► director
+AdvanceWeather ────────Lightning───┤
+components, Time, GameClock,       │
+Weather, Input (horn) ─────────────┴─► audio schedule (Lunigiana/Hear) ──Heard──► director
                                                                                      │
-                                       hold / play / flush, each with a Placement    │
+                                 hold / play / stop / flush, each with a Placement   │
                                                                                      ▼
           speakers ◄── mixer (reverb, limiter) ◄── emitters ◄── synths ◄── Speaker (Web Audio)
 ```
 
-1. **Simulation events** (`src/sim/schema.ts`). Three events carry moments that leave no trace in
+1. **Simulation events** (`src/sim/schema.ts`). Four events carry moments that leave no trace in
    the world's state:
    - `Impact` (`hit`, `x`, `y`, `speed`, `mass`, `car`, `other?`, `face?`): a vehicle hit something
      this step, with the mass behind it in tonnes (the vehicle's, or the reduced mass of two).
@@ -43,12 +46,18 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      mass 1/(1/m₁ + 1/m₂), at the contact point (`car` and `other` follow query order, not who
      struck whom). It emits `person` for each knockdown: the car's speed before a pin stops it, the
      car's mass, at the person.
-   - `Skid` (`car`, `wheel`, `x`, `y`, `z`, `slip`, `amount`, `surface`, `step`): a tyre slid this
-     step, sideways past its grip, spinning or locked: `slip` its sliding speed in m/s, `amount`
-     0…1 how far past its grip (0.25 an ABS stop at the limit, 1 sliding, locked or spinning), on
-     `surface`. The render lays tyre marks from it too.
+   - `Skid` (`car`, `wheel`, `x`, `y`, `z`, `slip`, `amount`, `surface`, `snow`, `step`): a tyre
+     slid this step, sideways past its grip, spinning or locked: `slip` its sliding speed in m/s,
+     `amount` 0…1 how far past its grip (0.25 an ABS stop at the limit, 1 sliding, locked or
+     spinning), on `surface`, `snow` 0…1 how snow-covered the ground is there. The audio ignores
+     `snow`; the render lays tyre marks and smoke from it too (slush ruts and white spray on snow).
    - `Honk` (`car`, `model`, `x`, `y`): `TrafficAI` emits it once per stuck episode, when a driver
      has been held up for `HONK_STEPS` (1.5 s; see [gameplay.md](gameplay.md#traffic-ai)).
+   - `Lightning` (`x`, `y`, `bolt`, `power`, `seed`, `step`): `AdvanceWeather` emits it for each
+     flash of a thunderstorm ([weather.md](weather.md)): a ground strike at (x, y) when `bolt`,
+     else a flash in the cloud above it (which may lie off the map), `power` 0…1, and `seed`, the
+     integer that draws both the bolt the render shows and the channel the thunder is rendered
+     from.
    - The `horn` binding (H) is read only by the audio schedule.
 
    Events are not saved: snapshots hold components and resources only. Emitting them changes
@@ -71,7 +80,8 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      slid, and the surface under the one furthest past;
    - `people`: everyone on foot (pedestrians, and the player when not driving), with their
      fleeing and knocked-down flags;
-   - `happenings`: the `Impact` and `Honk` events since its last run, impacts first. Each impact
+   - `happenings`: the `Impact`, `Honk` and `Lightning` events since its last run, impacts
+     first, then honks, then lightning (`x`, `y`, `bolt`, `power`, `seed`). Each impact
      carries the `body` of the vehicle `car` (and `otherBody` of `other`, for a `car` hit): its
      model, and the zone of its L × W box the contact point lies on, by the face it is nearest in
      proportion (front when along/L exceeds |across|/W, rear when −along/L does, else the side: a
@@ -80,7 +90,12 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
      no airbag, the glass goes), the nose the front, the tail the rear. They come from every
      vehicle, parked ones too (a struck parked car is not in `vehicles`); an impact whose vehicle
      has despawned since is dropped;
-   - `horn`: whether the horn key is held.
+   - `horn`: whether the horn key is held;
+   - `sky` (`skyAt` from the `GameClock`): the game time in Unix UTC seconds, the Rome calendar day
+     (days since 1 January 1970 there), the hour and minute there, and the sun's elevation over the
+     map in degrees;
+   - `weather`: a copy of the `Weather` resource, which the director turns into the weather at the
+     ears.
 
    It hands that to the `Audio` service and writes nothing (`src/render/index.test.ts` checks it).
    It does no acoustics. Once a system has run, it receives every event of the update steps
@@ -91,25 +106,30 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
    - places the ears 1.6 m above the ground under the listener (a bridge deck, not the river under
      it), or in a car 1.6 m above the level it stands on (`Chassis.z` − `cg`, so they fly with it),
      and notes the cabin around them;
+   - works out the weather at the ears with the sim's own `conditionsAt` (at the ground under
+     them): the air's temperature, the rain and snow falling (mm/h), the ground's wetness and snow
+     cover, the fog ([Day, night and weather](#day-night-and-weather));
    - asks the world part for the masking floor and how enclosed the street is (`world.ts`), and
      every 1 s or 10 m looks up the rock faces that echo;
-   - lets its vehicle (`vehicles.ts`), people (`people.ts`) and world (`world.ts`) parts place
-     their sounds through the acoustic chain (`hearing.ts`);
-   - plays one-shots at once (with their echoes; a crash's direct sound at most 8 dB over gain 1,
-     `CRASH_MOST_DB`), and keeps the loudest offered continuous voices of each kind up to its cap
-     (`frame.ts`);
+   - lets its vehicle (`vehicles.ts`), people (`people.ts`), world (`world.ts`) and thunder
+     (`thunder.ts`) parts place their sounds through the acoustic chain (`hearing.ts`);
+   - plays one-shots at once (with their echoes; the direct sound of a crash at most 8 dB over
+     gain 1 and of a thunder 2 dB, `MOST_DB`), and keeps the loudest offered continuous voices of
+     each kind up to its cap (`frame.ts`);
    - re-measures a few stale obstacle paths (`occluder.ts`) and flushes the speaker.
 
-   Time is the speaker's clock. Before the AudioContext exists it reads 0: the director still
-   tracks who sits where, but measures and plays nothing. A frame longer than 0.25 s counts as a
-   stall, not as time passing.
+   Time is the speaker's clock. Before the AudioContext exists it reads 0 and the frame is not
+   `live`: the director still tracks who sits where, but measures and plays nothing, thunders no
+   flash and rings no bell. A frame longer than 0.25 s counts as a stall, not as time passing.
 4. **The speaker** (`src/audio/speaker.ts`) plays the requests with Web Audio. `hold(key, sound,
    at)` keeps one live voice per key, built from the `Voices` table on the first frame it is held
    and updated every frame after; at `flush` every voice not held since the last flush fades out
    and is freed. `play(sound, at, delay)` schedules a one-shot from the `Shots` table. At most 32
    one-shots play (or wait to) at once: a new one replaces the quietest if it is louder, else it is
-   dropped. A synth that throws is logged once and that kind is muted for the session; the game
-   loop never sees the error.
+   dropped. `stop(sound)` fades out every play of that params object, its echoes included, with a
+   0.25 s time constant (`STOP_FADE`: a tail under a louder sound ebbs away, 35 dB a second); the
+   director stops a thunder so. A synth that throws is logged once and that kind is muted for the
+   session; the game loop never sees the error.
 5. **Emitters and the mixer.** Each voice or one-shot plays through its own emitter
    (`emitter.ts`): a lowpass (Butterworth, at the placement's cutoff), the placement gain, a
    stereo pan, and a send to the shared reverb. A started `ConstantSourceNode` carries the Doppler
@@ -135,28 +155,36 @@ components, Time, Input (horn) ────┴─► audio schedule (Lunigiana/H
     the hardest crush each of its zones took, is kept for the 256 most recently crashed;
   - people: per person on foot, the last position, the step phase, the mood and the last voice
     cue. A person not heard in a frame (despawned, or the player now in a car) is dropped;
-  - the valley: the water and dogs near the ears (looked up again every 0.25 s or 2 m), the eased
-    street, the loudest water heard last frame, the last bell ring and its strokes to come;
+  - the valley: the water, dogs and owls near the ears (looked up again every 0.25 s or 2 m), the
+    eased street, the loudest water heard last frame, each owl's last call, the last bell ring
+    (the game's day and hour) and its strokes to come;
+  - the thunders: each flash on its way (where it struck, the ground under it, the speaker time of
+    the flash, its level, and its render once made) until its sound arrives, and those still
+    rolling, until they end;
   - the occluder: the obstacles of each source's path, forgotten 2 s after nobody asks for them;
   - the echoes around the ears, looked up again every 1 s or 10 m.
 - **The speaker:** the live voices by key, the one-shots playing, and the kinds muted after a
   failure.
 - **Static data** never changes once built. The bells are found at load; the ambience grid, the
-  water reaches and the dogs in the first `hear`, during the audio tick after `setup` (≈ 155 ms in
-  Node, ≈ 100 of it the cover raster, which the browser has already built for the renderer); the
-  road-surface index on the first footstep or tyre, unless the physics built it first. The
-  land-cover raster and `surfaceAt` are the sim's (`src/sim/map/cover.ts` and `surface.ts`), built
-  once and shared with the tyres' grip and the renderer.
-- **Randomness** in the director (birds, dogs) and the synths (variants, jitter) is `Math.random`:
-  `?seed=N` replays the world, not the birds. The crash renderer takes its random source as a
-  parameter (the game passes `Math.random`), so its tests seed it and every render is reproducible.
+  water reaches, the dogs and the owls in the first `hear`, during the audio tick after `setup`
+  (≈ 155 ms in Node, ≈ 100 of it the cover raster, which the browser has already built for the
+  renderer; the 209 owls take 0.7 ms once the raster exists); the road-surface index on the first
+  footstep or tyre, unless the physics built it first. The land-cover raster and `surfaceAt` are
+  the sim's (`src/sim/map/cover.ts` and `surface.ts`), built once and shared with the tyres' grip
+  and the renderer.
+- **Randomness** in the director (birds, owls, dogs) and the synths (variants, jitter) is
+  `Math.random`: `?seed=N` replays the world, not the birds. The owls draw after the dogs and only
+  at night, so a day's draws come in the order they always did. The crash renderer takes its random
+  source as a parameter (the game passes `Math.random`), so its tests seed it and every render is
+  reproducible; a thunder's channel is drawn from its flash's `seed`, so one flash always thunders
+  alike.
 
 ## How sound travels
 
 `hearing.ts` runs one chain per source, every loss in dB relative to the source's level at 1 m,
 summed and converted once:
 
-- level at the ears = level at 1 m − spreading − ground − foliage − diffraction − cabin;
+- level at the ears = level at 1 m − spreading − ground − snow − foliage − diffraction − cabin;
 - gain = `mixGain(level at 1 m, losses)` × `audibility(level at the ears, floor)` (the beds and
   water, whose level is known at the ears, are compressed at that level: see
   [Calibration and mix](#calibration-and-mix));
@@ -168,7 +196,8 @@ Distances are three-dimensional. The ears are 1.6 m above the ground; sources st
 height above theirs: a vehicle's voices at its centre of mass (`Chassis.z`: at rest the Panda's
 0.56 m up, the truck's 1.7 m, and in the air wherever it flies), a vehicle's one-shots 0.8 m over
 the contact point, a person 1 m, water 2 m (lifted out of its carved bed), a bell at its tower's
-top, a bird 6–12 m up a tree, a dog 0.5 m.
+top, a bird 6–12 m up a tree, an owl 8 m, a dog 0.5 m, a thunder where its render starts over the
+ground under the flash (an in-cloud flash's channel about 4 km up, `IN_CLOUD`).
 
 Each class of sound behaves differently:
 
@@ -178,8 +207,10 @@ Each class of sound behaves differently:
 | Vehicle one-shots: crash, clunk, thud, door, ignition, honk | point | no | past 40 m | crashes from 6 m/s, honks | yes, except the player's own crashes, clunks, doors and starter |
 | People: steps, scream, shout, groan | point | no | past 40 m | screams, shouts | yes, except the player's own steps |
 | Water | line (rivers, streams), point (fountains, the Cascata di Equi) | no | no (continuous) | no | yes |
-| Birds, dogs, bells | point | no | past 40 m | barks, bells | yes |
-| Wind, crickets | a bed at the ears, centred | no | no | no | no (through the cabin only) |
+| Birds, owls, dogs, bells | point | no | past 40 m | barks, bells | yes |
+| Thunder | a point aloft, its channel kilometres above every ridge and roof: no ground or snow loss | no | yes, in the director, from its first sound; at once within 40 m | yes | no (through the cabin only) |
+| Wind, rain, crickets | a bed at the ears, centred | no | no | no | no (through the cabin only) |
+| Rain on the roof | at the seat, centred | no | no | no | no, nor the cabin: the roof drums inside |
 
 ### Point and line sources
 
@@ -196,7 +227,8 @@ Each class of sound behaves differently:
   calm reaches, the 8 m torrents ≈ 64, the 4 m named streams ≈ 55, the unnamed 2 m gullies ≈ 40.
   Drinking fountains, taps and the Fontana di Aiola lavoir are point sources of 65 dB(A) at 1 m,
   and the Cascata di Equi (hard-coded at (1835, 530): only the raw OSM has it) one of 80. Bodies
-  within 400 m are looked up; those under 20 dB(A) at the ears, even in the clear, are left out.
+  within 400 m are looked up; those under 13 dB(A) at the ears, even in the clear, are left out:
+  the cull at the still night's floor (`NIGHT_DB` − 15), so a stream does not vanish at night.
 
 ### Air absorption
 
@@ -214,6 +246,10 @@ absorption reaches 3 dB (ISO 9613-1, 15 °C, 70 % relative humidity), log-log be
 - **Foliage** (ISO 9613-2 Annex A, at 1 kHz): the metres of forest on the straight path (sampled
   every 8 m on the cover raster) cost nothing under 10 m, 1 dB for 10–20 m, then 0.06 dB per
   metre, at most 12 dB.
+- **Snow** (`snowLoss` in `acoustics.ts`): fresh snow is soft, porous ground, over which a pulse
+  falls as r^−1.6 against r^−1.2 over summer ground (Albert, CRREL), so a snow cover adds
+  cover · min(12, 8·log10 r) dB. The cover at the ears stands for the whole path. A source aloft
+  (thunder) takes neither the ground effect nor this.
 
 ### Buildings and terrain
 
@@ -246,7 +282,8 @@ within 1 m. A car at 12 m/s coming straight at the player sounds 62 cents sharp;
 
 One-shots farther than 40 m start r/c later: 0.29 s from 100 m, 0.88 s from 300 m. Nearer, the lag
 (under about 120 ms) goes unnoticed, so they play at once (ITU-R BT.1359). Continuous voices are
-never delayed.
+never delayed. Thunder waits in the director instead, seconds to tens of seconds, and is placed
+only when its sound arrives, wherever the listener has moved meanwhile ([Thunder](#thunder)).
 
 ### Inside a vehicle
 
@@ -259,25 +296,37 @@ Sounds of the player's own car are heard from inside it:
 - the horn (in the grille) and the siren (on the roof) pass the whole cabin, like any outside sound;
 - its crashes, scrapes, doors, starter and the thud of a person it hits pass none, but their
   street reverb and their echoes come back from outside and pass the whole cabin;
-- the tyres, the truck's beeper and the beds pass the whole cabin.
+- the rain drums on its roof and windscreen (`roof`), heard from the seat through no cabin, while
+  the rain bed outside passes the whole cabin;
+- the tyres, the truck's beeper, the beds and thunder pass the whole cabin.
 
 ### Masking and proximity
 
-Every sound is heard against a floor: the energy sum of the wind bed, which is never stiller than
-the rural daytime background (35 dB(A), `AMBIENT_DB`), and the loudest water heard in the last
-frame (occlusion included, so a river behind houses masks only as loud as it sounds). What masks
-is what plays: the background is the wind bed, not a silent number. A sound at most 5 dB under the
-floor plays at full gain. Below that it fades linearly in dB, and 15 dB under the floor it is
-culled: a one-shot is dropped, a voice is no longer held and fades out. The margin is there because
-a narrow-band sound stays detectable 5–10 dB under a broadband dB(A) floor.
+Every sound is heard against a floor: the energy sum of the wind bed, the rain and the loudest water
+heard in the last frame, each as it plays at the ears (occlusion included, so a river behind houses
+masks only as loud as it sounds; inside a car, the wind and the rain bed through the cabin, and the
+roof's drumming). The wind bed is never stiller than the rural background: 35 dB(A) by day
+(`AMBIENT_DB`), falling to 28 at night (`NIGHT_DB`) as the sun sinks from 0° to 10° under the
+horizon (`floorDb` in `director/sky.ts`). What masks is what plays: the background is the wind bed,
+not a silent number, so from a closed car in a calm street the floor is 20 dB(A), and a downpour
+drowns a car at full load 300 m across a meadow that the dry day lets through. A sound at most 5 dB
+under the floor plays at full gain. Below that it fades linearly in dB, and 15 dB under the floor it
+is culled: a one-shot is dropped, a voice is no longer held and fades out. The margin is there
+because a narrow-band sound stays detectable 5–10 dB under a broadband dB(A) floor.
 
-The wind's strength rises with altitude, from 0.15 on the valley floor to 0.85 at 1,000 m
-(a smoothstep from 150 m), up to 0.15 more on open ground, and 0.3 less in a street, but never
-under 0.24 (`STILL` in `director/world.ts`), where it is the 35 dB(A) background itself: leaves and
-the far valley, heard even in a sheltered street. Its level is 60 + 40·log10(strength) dB(A): 35
-in Monzone's streets, about 40–43 on open ground on the valley floor, 57–60 on the ridges.
+The wind's strength comes from the place and the weather. In the valley's usual wind (3 m/s at
+10 m, `USUAL_WIND`) it rises with altitude, from 0.15 on the valley floor to 0.85 at 1,000 m (a
+smoothstep from 150 m), up to 0.15 more on open ground, and 0.3 less in a street; the weather's
+valley wind scales that by wind / 3 m/s (`windFactor`). It is never under the floor's stillest,
+0.24 by day and 0.16 at night (the 35 and 28 dB(A) backgrounds themselves: leaves and the far
+valley, heard even in a sheltered street), and at most 1.33, a gale's bed at `GALE_DB`
+(65 dB(A)). Its level is 60 + 40·log10(strength) dB(A): in the usual wind 35 in Monzone's streets,
+about 40–43 on open ground on the valley floor, 57–60 on the ridges. The voice plays at most its
+full strength 1, and past it the bed's gain carries the gale, so the usual wind keeps the voice it
+was tuned with.
 
-Over flat, open ground with nothing in the way, at the 35 dB(A) floor:
+Over flat, open ground with nothing in the way, at the day's 35 dB(A) floor (at night's 28 every
+radius is about 2.2 times longer: 7 dB more of spreading):
 
 | Source (dB(A) at 1 m) | Full level up to | Silent beyond |
 |---|---|---|
@@ -298,9 +347,9 @@ in the mix long before they are culled.
 
 At most this many continuous voices of each kind play, the loudest at the ears first:
 
-| `engine` | `tyres` | `scrape` | `horn` | `siren` | `beeper` | `water` | `wind` | `crickets` |
-|---|---|---|---|---|---|---|---|---|
-| 8 | 4 | 2 | 3 | 2 | 2 | 4 | 1 | 1 |
+| `engine` | `tyres` | `scrape` | `horn` | `siren` | `beeper` | `water` | `wind` | `crickets` | `rain` | `roof` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 8 | 4 | 2 | 3 | 2 | 2 | 4 | 1 | 1 | 1 | 1 |
 
 An engine ranks, and is masked, at its gain law's level for its revs and load (`engineQuiet`): an
 idling one 11 dB under one at the redline under full load, so a car revving 100 m away keeps its
@@ -312,7 +361,8 @@ earshot ring (`TOWERS`).
 ### Echoes
 
 Loud impulsive one-shots answer off rock faces (`echoesAt` in `places.ts`): crashes from 6 m/s,
-honks, barks, shouts, screams and bells. The search runs along 16 directions from 40 to 400 m in
+honks, barks, shouts, screams, bells and thunder (its echoes worked out from its capped direct
+sound, and stopped with it). The search runs along 16 directions from 40 to 400 m in
 8 m steps and takes the first face the listener can see (rising above every sight line before it)
 that climbs at least 50°, the slope the terrain paints as bare rock, and stands at least 10 m above
 the ears. A gentler slope, grassed or wooded, mirrors sound up into the sky and scatters back too
@@ -358,8 +408,11 @@ wet = street² · 10^(8/20) · √(r / 10), with r clamped to 2.5–40 m
   as good as dry.
 - **Cabin and beds.** Inside a vehicle the send is a quarter (the cabin's own noise masks the
   tail). The tail comes back from outside, so a sound of the player's own car that skips the
-  cabin sends that much less again (15 dB in the closed cabins, 6 dB in the Ape). The wind and
-  cricket beds are diffuse already and send nothing.
+  cabin sends that much less again (15 dB in the closed cabins, 6 dB in the Ape). The wind, rain
+  and cricket beds are diffuse already and send nothing, nor do the roof's drumming and thunder,
+  whose render holds the valley's roll.
+- **Snow.** Under a full snow cover the send is halved (`REVERB.snow`, 0.5 × the cover): the
+  street's floor no longer reflects (fresh snow's noise reduction coefficient is near 0.9).
 
 Held voices glide their send as the street eases, so walking into a village fades the reverb in.
 
@@ -371,6 +424,53 @@ view's quarter turns, so a car on the right of the screen is heard on the right 
 camera looks; an echo pans toward its face the same way. A turn moves the pan at once: held voices
 glide to it with a 50 ms time constant, about as fast as the camera eases through the turn (83 ms).
 There is no front and back.
+
+## Day, night and weather
+
+The valley sounds as the game clock and the weather at the ears say: `Heard` carries the sky (the
+Rome day and time, the sun's elevation) and a copy of the `Weather`, and each frame the director
+works out the weather at the ears with the sim's `conditionsAt`. The laws are plain functions in
+`director/sky.ts`; under the defaults the director's tests use (a 10:10 sun 22° up, dry, the
+usual wind) each is the identity, so a dry morning in the usual wind sounds as it did before the
+weather.
+
+- **The floor** falls from the day's 35 dB(A) to the night's 28 as dusk ends, the sun 0° to 10°
+  under the horizon: night stills the valley, so steps carry farther. Water is left out only under
+  13 dB(A) at the ears, the night floor's cull (`NIGHT_DB` − 15), so a stream does not vanish at
+  night.
+- **The wind** blows as the weather does: its strength × the weather's valley wind / 3 m/s, never
+  stiller than the floor, up to a gale's 65 dB(A) on a ridge. Its gustiness is the weather's gust
+  factor − 1 (`gustsOf`): 1.5, open ground's usual, gives the voice's usual 0.5, and 2 and over
+  squalls. Snow on the ground stills 0.7 of its leaves (`SNOW_LEAVES`).
+- **Rain** of 0.1 mm/h or more at the ears (`RAINING`: a drizzle finer than that is not heard)
+  plays a bed at its rate, on the ground's shares of leaves, roofs and paving, and water (a river
+  or a fountain within 5–40 m, or the puddles of a wet village: the wetness × the built share); in
+  a car it also drums on the roof ([Rain](#rain)). Snow falls silent: only the liquid rate plays,
+  so sleet plays its rain.
+- **Snow** on the ground hushes the valley: up to 12 dB more loss on the way, the street's reverb
+  halved, the leaves stiller; a step crunches where the snow covers half the ground or more.
+- **Songbirds** sing by the sun (`birdActivity`): robins from 7° under the horizon, the rest by 3°
+  under; a dawn chorus 2.5 times the day's song from −1° to +5°, back to the day's by +15° (Thomas
+  et al. 2002); a last round at dusk, 1.3 times, all roosting under −6°; none at night; heavy rain
+  silences them (0.5–8 mm/h).
+- **Owls**: the tawny owl calls once the sun is 2–6° under (10–20 minutes after sunset) until as
+  long before sunrise (`owlActivity`), and rain silences it (0.5–4 mm/h). There are 209 territories,
+  one in 70 % of the map's 500 m squares with woods, each 8 m up a tree in forest; those within
+  600 m call, each resting 30 s after a call, then calling about once in 20 s.
+- **Crickets** sing where open ground outweighs buildings, in air of 10 °C or more at the ears
+  (chirping faster as it warms) and dry. They follow the temperature and the rain, not the hour,
+  so an October evening's cooling slows them and its night silences them.
+- **Bells** strike the game clock's hours in Rome time, hours only, from 07:00 to 21:00: the night
+  is silent from 22:00 to 07:00, as Tuscany's parishes keep it. Each ring sounds once per game day
+  and hour (keyed `day:hour`, so a clock set back rings again), and a new ring takes over what is
+  left of the last. A ring waits for the audio context: a new game's 08:00, held behind the title
+  card, strikes eight times once the card is dismissed. Frames that skip minute 0 (the dev menu's
+  fast rates) miss the ring.
+
+Measured in the game (headless Chrome, the spawn, a clear settled sky): the wind bed sat at
+35.0 dB(A) at 10:00 and 28.0 at 02:00; songbirds called 7 times in 63 s at 10:00 and never in 93 s
+at 02:00; 21:00 rang 9 strokes from each tower in earshot, 22:00 none; a new game's first 40 s
+after the card rang 32 strokes from 3 pitches.
 
 ## Sound catalogue
 
@@ -387,8 +487,10 @@ Continuous voices (held every frame they play):
 | `siren` | `synth/horns.ts`: the Italian *bitonale*, 466 and 622 Hz for 0.75 s each (D.M. 20/03/1979) | toggled by H in the Giulia the player drives; it stops when they get out | 117 (2.5 m) |
 | `beeper` | `synth/horns.ts`: a 1 kHz tone, 0.5 s on and 0.5 s off | a running truck reverses (faster than 0.3 m/s backwards) | 100 (2 m) |
 | `water` | `synth/water.ts`: bubbles ringing at their Minnaert frequency (van den Doel's model, `synth/bubbles.ts`), a pink-noise bed, and in rivers a boulder rumble and a slow surge. `body` is `river` (OSM rivers, and water 8 m wide or more), `stream` or `fountain`; `flow` comes from width and grade | the 4 loudest bodies within 400 m | from the water's level at the ears (above) |
-| `wind` | `synth/nature.ts`: a brown-noise band breathing with gusts, a whistle on strong gusts, leaves in proportion to the forest around | always, one bed | 60 at the ears at strength 1, never under 35 |
-| `crickets` | `synth/nature.ts`: six Italian tree crickets (*Oecanthus pellucens*) on a 2.6 kHz carrier, 0.59 echemes (chirps) a second (Dolbear's law at the game's fixed 15 °C October afternoon) | open ground outweighs buildings around the ears (`open − built` > 0) | 42 at the ears at density 1 |
+| `wind` | `synth/nature.ts`: a brown-noise band breathing with gusts, a whistle on strong gusts, leaves in proportion to the forest around (stilled by snow on the ground). `gusts` 0…1 deepens the swells from half to 0.95 of its level and quickens them from half to twice the pace; the valley's usual is 0.5 (`VALLEY_GUSTS`) | always, one bed | 60 at the ears at strength 1, never under the floor (35 by day, 28 at night), up to 65 in a gale (`GALE_DB`) |
+| `rain` | `synth/rain.ts`: a pink hiss, the drops near the ears coloured by what they land on, a runoff roar in heavy rain, bubbles on water ([Rain](#rain)); `rate` mm/h, and the ground's `forest`, `built` and `water` shares | rain at the ears of 0.1 mm/h or more (`RAINING`) | `rainDb`: 64 at the ears in a 60 mm/h downpour (`BEDS.rain`, estimated), 43 at 1 mm/h, 50 at 4, 55 at 10, 62 at 40 |
+| `roof` | `synth/rain.ts`: the drops ringing the roof panel's and the windscreen's modes, a dense patter, the roar of a sheet of water | rain at the ears while the listener sits in a car | `roofDb`: 66 at the ears at 60 mm/h (estimated), 45 at 1 mm/h, 52 at 4, 57 at 10, 64 at 40, heard through no cabin |
+| `crickets` | `synth/nature.ts`: six Italian tree crickets (*Oecanthus pellucens*) on a 2.6 kHz carrier, chirping at the rate Dolbear's law gives for `celsius`, the air at the ears (once a second at 22 °C; `chirpRate` never slower than the 10 °C rate, so a voice held in the cold still chirps) | open ground outweighs buildings around the ears (`open − built` > 0), in air of 10 °C or more (`echemeRate` > 0) and dry (under 0.1 mm/h) | 42 at the ears at density 1 |
 
 The scrape is built from what the wall is made of. Each material has a surface: 32 m of wall
 ridden at 10 m/s (3.2 s), rendered in plain TypeScript the first time that material is scraped
@@ -425,18 +527,19 @@ One-shots:
 
 | Kind | Made of | Plays when | Level |
 |---|---|---|---|
-| `crash` | `synth/crash/`: rendered on demand from its exact params (pure TypeScript, a few ms; an echo replays the same render): each body's crunch, the parts that break and fall, what it hit: a wall's or the ground's material, or the other car's shell ([Crashes](#crashes)) | a `wall`, `car` or `ground` Impact of 1.5 m/s or more, but an underbody one under 5 m/s (a clunk). One hit spans a few steps: within 0.1 s of a car's crash or clunk only a 1.5× harder hit plays again. Its params (below): the closing speed, the mass behind it (t), both bodies and their wear, the wall's or the ground's material, the surface debris lands on | 115 (2 m) for the reference crash; the render plays its own level under or over that. Its direct sound plays at most 8 dB over gain 1 (`CRASH_MOST_DB`) |
+| `crash` | `synth/crash/`: rendered on demand from its exact params (pure TypeScript, a few ms; an echo replays the same render): each body's crunch, the parts that break and fall, what it hit: a wall's or the ground's material, or the other car's shell ([Crashes](#crashes)) | a `wall`, `car` or `ground` Impact of 1.5 m/s or more, but an underbody one under 5 m/s (a clunk). One hit spans a few steps: within 0.1 s of a car's crash or clunk only a 1.5× harder hit plays again. Its params (below): the closing speed, the mass behind it (t), both bodies and their wear, the wall's or the ground's material, the surface debris lands on | 115 (2 m) for the reference crash; the render plays its own level under or over that. Its direct sound plays at most 8 dB over gain 1 (`MOST_DB.crash`) |
 | `clunk` | `synth/impacts.ts`: the bump stops' rubber thump (110 → 55 Hz, the truck's a third lower), the suspension's steel clunking at about 330 and 760 Hz, loose trim ticking; three variants each, light and heavy | an underbody `ground` Impact of 1.5–5 m/s: the suspension bottoming out over a hump or on a light landing, several a second on a rough road, a landing's few steps merged like a crash's | 85 (1.5 m) at 5 m/s, 20 dB under a Panda's crash at that speed, 6 dB less per halving of speed down to 14 dB under; estimated, not measured against a recording |
 | `thud` | a low thump and a cloth swish, full level from 12 m/s | a `person` Impact (a knockdown) | 85 (1 m) |
 | `groan` | `synth/voices.ts`, a formant voice | 0.25 s after a thud, from the person hit | 72 (1 m) |
 | `door` | per model: opening (latch clicks, the seal), closing (thump, latch, panel ring) | the player gets in (open, then close 0.7 s later) or out (at their new spot) | 82 (1 m) |
 | `ignition` | the starter whirring with a dip at each compression, then the engine catching: the engine voice blipped 70 % of the way from idle to the gearbox's `launch` revs at 70 % load for 0.12 s, settling back with a 0.25 s time constant | the player gets into a car whose engine was off; the engine voice takes over after `CRANK` (Panda 0.8 s, Ape 0.4 s, truck 1.5 s, Giulia 0.6 s). Carjacking a running car plays doors only | 85 (1 m) |
 | `honk` | one long or two short presses of the model's horn | a `Honk` event | 116 (2 m) |
-| `step` | `synth/steps.ts`: heel then ball, per surface (asphalt, stone, gravel, dirt, grass, leaves) and gait, four variants each, played ±8 % in rate and ±2 dB | everyone on foot, at 2 steps a second at a 2.2 m/s walk and 3 at a 5.5 m/s sprint, counted from the distance actually moved (none while down, none for a jump of more than 3 m in a frame); a run above 3.5 m/s. The player's steps come from under the ears | 62 (0.5 m) for a running step on stone; walking 4 dB under |
+| `step` | `synth/steps.ts`: heel then ball, per surface (asphalt, stone, gravel, dirt, grass, leaves) and gait, plus a snow crunch (`snow`, the `SNOW` tread: 56 sets baked, 48 before), four variants each, played ±8 % in rate and ±2 dB | everyone on foot, at 2 steps a second at a 2.2 m/s walk and 3 at a 5.5 m/s sprint, counted from the distance actually moved (none while down, none for a jump of more than 3 m in a frame); a run above 3.5 m/s; crunching where snow covers half the ground or more (`snowCoverAt`). The player's steps come from under the ears | 62 (0.5 m) for a running step on stone; walking 4 dB under |
 | `scream`, `shout` | `synth/voices.ts`: a sawtooth glottis on a pitch contour, breath noise, three vowel formants and a fast roughness; each person keeps one voice (sex and pitch from their id) | a pedestrian starts to flee (scared by a fast car, or back on their feet after a knockdown) screams or shouts "Ehi!"; a carjacked driver within 15 m shouts. At most one cue per person per 4 s | scream 100 (1 m), shout 88 (1 m) |
-| `bell` | `synth/nature.ts`: a bell's inharmonic partials (hum, prime, tierce, quint, nominal...), each split to beat; four primes rendered, any pitch resampled from the nearest | the computer's local clock: the hours (1–12 strokes, 2.5 s apart) on the hour and one stroke on the half hour, from the 4 loudest towers in earshot, each starting up to 6 s late | 118 (5 m) |
-| `bird` | `synth/nature.ts`: autumn calls of the robin, great tit, blackbird ("chink" or "seee") and chaffinch ("pink"), 35/30/20/15 % | from a tree 15–70 m away: 0.3 calls a second in full forest, plus 0.05 near houses | 85 (1 m) |
+| `bell` | `synth/nature.ts`: a bell's inharmonic partials (hum, prime, tierce, quint, nominal...), each split to beat; four primes rendered, any pitch resampled from the nearest | the game clock, in Rome time: the hours only (1–12 strokes, 2.5 s apart) from 07:00 to 21:00, from the 4 loudest towers in earshot, each starting up to 6 s late ([Day, night and weather](#day-night-and-weather)) | 118 (5 m) |
+| `bird` | `synth/nature.ts`: autumn calls of the robin, great tit, blackbird ("chink" or "seee") and chaffinch ("pink"), 35/30/20/15 %; the tawny owl (`owl`): the male's hoot sequence, about 6 s, or in 30 % of calls the female's "kewick" (0.46 s) | songbirds from a tree 15–70 m away: 0.3 calls a second in full forest, plus 0.05 near houses, by the sun and the rain (`birdActivity`); owls at night from their woods ([Day, night and weather](#day-night-and-weather)) | songbirds 85 (1 m); the owl 90 (1 m, `OWL`, estimated) |
 | `bark` | `synth/nature.ts`: two to five barks of a big or a small dog through a formant tract | 225 farm dogs (about one in eight barns, sheds, houses and farm buildings with open ground and no paving 5 m out): those within 200 m bark every 45 s on average, four times as often while the player runs or drives within 30 m | 96 (1 m) |
+| `thunder` | `synth/thunder.ts`: rendered on demand in plain TypeScript from the flash's `distance` (horizontal), the ears' height over its ground (`ears`), `bolt` and `seed`: a near bolt's crack and boom, a far one's low rumble, an in-cloud flash's rumble with no crack, at most 20 s ([Thunder](#thunder)) | each `lightning` happening heard at all, once its sound reaches the ears | 154 (300 m, aloft): 88 at 1 km and 66 at 5 km after its render's own air (`thunderQuiet`), 20 dB less per decade of `power` down to 0.3. Its direct sound plays at most 2 dB over gain 1 (`MOST_DB.thunder`) |
 
 A crash's params say what met: `body` is the Impact's `car` (query order, not necessarily the one
 that struck; model and zone), `against` either the wall's or the ground's `material` or the other
@@ -638,23 +741,106 @@ browser shows long tasks.
 The bells are the tallest church or tower of each district, 27 in all. A tower of 10 m or less
 rings an 800 Hz prime; taller towers ring lower, down to 400 Hz at 30 m.
 
+### Rain
+
+Rain is two voices in `synth/rain.ts`, both following the drops' kinetic energy: a bed all around
+the listener outside (`rain`), and the drumming on the roof of the car the listener sits in
+(`roof`).
+
+- **The level law** (`rainQuiet`): both voices play under their nominal peak, a 60 mm/h downpour
+  (`DOWNPOUR`), by the drops' kinetic energy against a downpour's, KE = R·(11.9 + 8.7·log10 R)
+  J/m²/h with R held to 0.1–76 mm/h (Wischmeier and Smith; it saturates past 76): 21.4 dB under at
+  1 mm/h, 13.8 at 4, 9.0 at 10 and 2.0 at 40, 12 dB a decade. `rainDb` and `roofDb` put that at
+  the ears (the catalogue's levels).
+- **Outside**: a bright pink hiss; the drops near the ears as ticks coloured by what they land on
+  (leaves ring near 4 kHz, roofs and paving tock at 1.8 kHz and 600 Hz, open ground ticks above
+  900 Hz), in the shares given and adding in power, so a forest's edge is as loud as either side; a
+  low roar of runoff in heavy rain; bubbles where it falls on water (Medwin and Nystuen 1992); and
+  a ±1 dB swell of wind-blown sheets. A shower is separate ticks over a faint hiss; as the rate
+  grows they fuse into the roar. On water the plinks rise over a steady rain's drops (+1.7 to
+  +2.4 dB at 8 kHz at 4–8 mm/h), the loudest never louder than a downpour's, and the roar takes
+  them from 20 mm/h.
+- **On the roof**: each drop rings the roof panel's and the windscreen's modes (a texture rendered
+  in plain TypeScript on first use, 3.5–6.7 ms), so the cabin drums low and tonal, then roars: a
+  centroid near 0.6 kHz and 97–99 % of the energy under 1 kHz, against 4.3–8.2 kHz and 20–44 %
+  for the drops outside.
+- Measured offline (Node with `node-web-audio-api`, four renders each): the outside voice keeps
+  within 1.5 dB of its law on every ground at every rate, and the roof within 0.7 dB; a downpour
+  peaks 0.46–0.60 outside and 0.45 on the roof; a shower's crest is 22.5 dB.
+
+### Thunder
+
+Thunder is rendered in plain TypeScript from Few's "string of pearls" (1969, `synth/thunder.ts`)
+and held in the director until its sound reaches the listener (`director/thunder.ts`).
+
+- **The render**: the lightning channel is a tortuous chain of straight segments (5–70 m long,
+  turning about 16° at each: Hill 1968), and every 2 m of it sends one N-wave, heard after its own
+  travel time, 1/r fainter. Segments across the line of sight add up into claps and the rest smears
+  into rumble, so a near bolt cracks (its foot, a run of short N-waves) and booms, a far one only
+  rumbles, low and slow to swell, and an in-cloud flash has no foot to crack. One lowpass for the
+  air closes as the render goes on, and a Schroeder reverb rolls it round the valley. The loudest
+  clap peaks at the nominal 0.5 before the air; `thunderQuiet`, 11.5·log10(range / 300 m) past
+  300 m (3.5 dB per doubling), is how much quieter the air leaves it, within 2 dB of A-weighted
+  renders past 2 km. A render lasts at most 20 s (`LONGEST`).
+- **What it is rendered from**: `distance`, horizontal, to the strike point or to the point under
+  an in-cloud flash; `ears`, the ears' height over the ground under the flash (1.6 m on level
+  ground, hundreds on a ridge over a valley strike, where the trunk passing at the ears' height is
+  heard first); `bolt`; and `seed`, the flash's, which draws the channel.
+- **Rate and cost**: one render per params object (an echo replays it), at 16 kHz for a bolt within
+  1 km, and at 8 kHz past it and for every in-cloud flash, whose channel starts 3 km up (the air
+  leaves nothing above 700 Hz at the ground, 900 Hz on a summit 1.8 km over it). A 300 m bolt
+  renders in 3.3 ms in Chrome (median; 4.4 for nine in ten, 10.4 at most) and 14.5 ms with the CPU
+  throttled four times.
+- **The queue**: on each `lightning` happening while the context runs, the director makes the
+  sound, drops the flash if it would not be heard even now (masked, or too far), and queues it.
+  From the next frame on it renders one queued thunder a frame, oldest first, so the flash's own
+  frame, where the bolt is drawn, renders nothing: in Chrome the director's flash frame took at
+  most 0.1 ms, the frame after it 3.2 ms (median; 14.7 at most).
+- **Arrival**: its first sound is due at the flash's time + range / c − `lead` (the render's first
+  sound leaves `lead` s before its strike point's), or at once within 40 m, and it is placed 0.1 s
+  ahead of that from where the listener then is: get into the Panda meanwhile and it comes through
+  the cabin; drive toward it and it comes sooner.
+- **Placement**: a clear path, no obstacle walked; aloft, no ground or snow loss; quiet
+  `thunderQuiet(range)`. It pans 0.6 of a point source's (the channel fills the sky), its lowpass
+  is only the cabin's (its air is in the render), it sends no reverb, and its direct sound plays at
+  most 2 dB over gain 1 (`MOST_DB.thunder`), so its crack peaks at −9 dBFS into the limiter
+  centred, −6.0 at the widest pan.
+- **At most two roll at once**: one playing over another plays 1/√2 (3 dB) under its own level; a
+  third louder than the quieter of the two stops it (`Speaker.stop`) and takes its place, else it
+  is dropped. In a real storm (three seeds × 240 s) no more than two ever sounded at once.
+- **Echoes**: the rock faces in sight answer it, at least 10 dB under its capped direct sound, and
+  stop with it; the render's roll holds the rest of the valley's returns.
+
+Measured: in the game, bolts started within 0.03 s of range / c − `lead` at 332, 474 and 2,610 m,
+and within 0.09 s at 2,515 m; with the geometry known exactly, within 0.001 s over 21 thunders from
+300 m to 3 km. No thunder started late.
+
 ## Calibration and mix
 
 `src/audio/director/levels.ts` is the mix's one calibration table:
 
-- `ENGINE`, `OWN_ENGINE_DB` and `LEVELS`: each kind's level at 1 m and size, as in the catalogue.
+- `ENGINE`, `OWN_ENGINE_DB`, `LEVELS` and `OWL`: each kind's level at 1 m and size, as in the
+  catalogue (`LEVELS.thunder` also stands `aloft`: 154 dB(A), `rMin` 300 m, no ground effect).
   Every synth peaks near 0.5 (−6 dBFS) at the loudest params it is meant for and scales itself
   with its physical params: an engine idles 17–26 dB (RMS) under full load at the redline, tyres
   follow the rolling law, a crash its speed. The level in the table is the one at that peak.
-- `BEDS`: the wind and cricket beds at the ears at full strength and density. `windDb` (here),
-  `cricketsQuiet` (`synth/nature.ts`), `WALK_DB` (`synth/steps.ts`), `engineQuiet`
-  (`synth/engine.ts`, the engine's gain law: 11 dB under at idle, none at the redline under full
-  load), `clunkQuiet` (`synth/impacts.ts`) and `crashQuiet` (`synth/crash/index.ts`, the crash's
-  level law: 18 dB under at a 2 m/s bump, none at the 15 m/s reference, 6 dB over from about
-  30 m/s, 2 dB more for a ringing guard rail or sheet wall): how far the wind, crickets,
-  walking-step, engine, clunk and crash synths play under (or over) that, so masking counts the
-  sound actually played. All but `windDb` live beside the synths they describe, derived from the
-  same numbers.
+- `BEDS`: the wind and cricket beds at the ears at full strength and density (60 and 42 dB(A)),
+  and the rain's in a 60 mm/h downpour (64); `GALE_DB` (65), the loudest the wind bed plays;
+  `ROOF_DB` (66, behind `roofDb`), the roof's drumming in a downpour. `windDb`, `rainDb` and
+  `roofDb` (here), `cricketsQuiet` (`synth/nature.ts`), `rainQuiet` (`synth/rain.ts`, the drops'
+  kinetic energy), `thunderQuiet` (`synth/thunder.ts`, the air on its way), `WALK_DB`
+  (`synth/steps.ts`), `engineQuiet` (`synth/engine.ts`, the engine's gain law: 11 dB under at
+  idle, none at the redline under full load), `clunkQuiet` (`synth/impacts.ts`) and `crashQuiet`
+  (`synth/crash/index.ts`, the crash's level law: 18 dB under at a 2 m/s bump, none at the 15 m/s
+  reference, 6 dB over from about 30 m/s, 2 dB more for a ringing guard rail or sheet wall): how far
+  the wind, rain, crickets, thunder, walking-step, engine, clunk and crash synths play under (or
+  over) that, so masking counts the sound actually played. All but `windDb`, `rainDb` and
+  `roofDb` live beside the synths they describe, derived from the same numbers.
+- `MOST_DB`: the most a one-shot's direct sound plays over gain 1, its echoes keeping the way's
+  own level. A crash at 8 dB, where the limiter takes a few dB of a 15 m/s crash's peak (nearer, at
+  about 25 dB over, it took 20 dB off the hit and gave the sub-hits back as loud as the hit: an
+  echo); thunder at 2 dB, because its loud part lasts seconds, so its crack stays under the
+  limiter's −6 dBFS going in.
 
 **Engine trims.** Each model's `TRIM` (`synth/engine.ts`) is 1 / its own peak at the redline under
 full load, measured on the audition page: "Render all" plays every model at {rpm: redline, load: 1}
@@ -666,8 +852,8 @@ Idle plays under the redline by (RMS) 20.4 dB on the Panda, 25.8 on the Ape (its
 and its lowpass closing to 2.5 kHz), 17.0 on the truck (its clatter) and 22.1 on the Giulia.
 - `HEIGHT`, `WATER_R_MIN`: source heights and the water's 1 m clamp.
 - `CAPS`, `KEEP_DB`, `TOWERS`: the voice caps and their hysteresis.
-- `DELAY_FROM` (40 m), `REVERB`, `ECHO_MIN_DB` and `echoes(sound)`: delay, the reverb send and
-  echoes.
+- `DELAY_FROM` (40 m), `REVERB` (with `snow`, the share of the send a full snow cover takes),
+  `ECHO_MIN_DB` and `echoes(sound)`: delay, the reverb send and echoes.
 
 `mixGain` (`acoustics.ts`) turns a level into a gain. Real levels span 54 dB from a running step
 to a horn, too much for a game mix, so only the source levels are compressed, around 120 dB(A) by 0.6;
@@ -682,7 +868,11 @@ A number in the table moves one kind against the others and nothing else.
 The beds and water are known by their level at the ears, so that level is what is compressed:
 
 - the wind at its strength, 60 + 40·log10(strength) dB(A). Its voice (body and leaves alike follow
-  strength²) already plays that far under its nominal by itself, so the bed's gain gives back what the compression leaves of it;
+  strength²) already plays that far under its nominal by itself, so the bed's gain gives back what
+  the compression leaves of it; past strength 1 the voice stays at full and the bed's gain carries
+  a gale up to `GALE_DB`;
+- the rain at `rainDb`, its voice already `rainQuiet` under its nominal, likewise; the roof at
+  `roofDb`, at the seat through no cabin;
 - water at the line-source level `places` finds at the ears, with only the obstacles and the cabin
   as losses, so a river 200 m away is not compressed as if it were a louder source 1 m away.
 
@@ -722,7 +912,27 @@ before the pan, and a panned one lower):
 - the player's own clunk plays 10.3 dB over gain 1 (no cabin, from the seat) and peaks, into the
   limiter, at −8.1 dBFS bottoming out at 1.5 m/s, −5.6 at 2 m/s, −2.1 at 3 m/s and +2.1 just under
   a crash's 5 m/s (its buffer's 0.5 peak × the speed's gain × the director's × the master's 0.8),
-  so from about 2 m/s the limiter takes it, and the rest of the mix dips for its 0.25 s release.
+  so from about 2 m/s the limiter takes it, and the rest of the mix dips for its 0.25 s release;
+- a settled storm at the spawn (5 mm/h) reads a median of −29.5 dBFS (loudest −23.9), about
+  10 dB over a dry day, as `rainDb` says it should.
+
+The weather's sounds stay under the limiter. Below, the peaks per channel going into it (after the
+0.8 master) and the most it took (`DynamicsCompressorNode.reduction`, sampled every 1,024 samples).
+"Replayed" means the real director's plays and holds, recorded in the game, rendered offline
+through the real voices, emitters, mixer and limiter:
+
+| Scene | How | Peaks in, L / R | Limiter took at most |
+|---|---|---|---|
+| the spawn in a settled storm (5 mm/h), 60 s: 9 thunders, 9 echoes, 1 cut short (seed 1) | live | −8.0 / −7.9 dBFS | 0.00 dB |
+| under the west flank's rock (782 m): 40 mm/h, a 12 m/s gale with gusts of 2.3, a bolt 150–390 m off every 5 s and in-cloud flashes | replayed | −3.5 / −5.4 dBFS | 0.67 dB (0.33 % of blocks over 0.5 dB, none over 1) |
+| the same without thunder echoes | replayed | −5.3 / −6.2 dBFS | 0.06 dB |
+| the same with a bolt every 2 s | replayed | | 0.54 dB |
+| inside the Panda, 60 mm/h | replayed | | 0.35 dB |
+| the weather and the valley alone (rain, roof, wind, thunder, crickets, water, birds, bells), 60 s of storm, seeds 2 and 3 | replayed | −7.0 and −8.7 dBFS | 0.00 dB |
+
+The knee starts at −9 dBFS and the threshold is −6, so the rain's loudest ticks reach the knee and
+are never limited. The larger takes in a storm come from traffic, as before the weather (see
+[Known limits and tuning](#known-limits-and-tuning)).
 
 ## Controls
 
@@ -743,7 +953,7 @@ driving.
   only the context, the noise kit and the mixer. The kit's samples take ≈ 17 ms in Node; ≈ 7 of
   them are the gust signal, which turns each sine by a rotation per sample instead of calling
   `Math.sin` (three times slower). Each one-shot then pre-renders its buffers in tasks of its own:
-  the crash its noise loops, the footsteps their 48 variants one bake at a time (a bake builds its
+  the crash its noise loops, the footsteps their 56 variants one bake at a time (a bake builds its
   whole graph before it renders, so baking all at once built some 1,200 noise bursts in one task).
   A later gesture resumes a context the browser has left suspended or interrupted (Safari,
   Firefox).
@@ -771,9 +981,17 @@ own emitter and mixer:
   ground, or a model for a car, struck on its `struck` zone) and the `surface`. Each
   panel shows how its sound is heard at that spot: the level at 1 m (at the ears for the beds) and
   at the listener (an engine `engineQuiet`, a clunk `clunkQuiet`, a crash `crashQuiet` under it),
-  the gain, pan, lowpass, reverb send and delay. The first press starts the audio.
+  the gain, pan, lowpass, reverb send and delay. The new kinds' controls: the rain's and the
+  roof's `rate` (0–60 mm/h) and the rain's ground shares, the wind's `gusts`, the crickets'
+  `celsius` (−5 to 30 °C), the owl among the birds, the step's `snow`, and the thunder's
+  `distance` (30 m to 15 km), `ears` (−400 to 1,000 m), `bolt` and `seed` (1–1,000). Thunder is
+  heard from its own distance (the slant range to its channel for an in-cloud flash), at once,
+  aloft, with only the cabin's lowpass (its air is in its render). Every one-shot's direct gain is
+  shown and played under its `MOST_DB` cap, as the game plays it. The first press starts the
+  audio.
 - **Render all** (also `window.lab.renderAll()`, which returns the rows) renders every voice and
-  shot offline at 48 kHz at a few representative params (88 renders, about 3 s) and tabulates peak,
+  shot offline at 48 kHz at a few representative params (104 renders: 51 voices and 53 shots, each
+  shot given 22 s, room for a 20 s thunder; 5.3–5.5 s in headless Chrome) and tabulates peak,
   RMS (dBFS), spectral centroid (`measure.ts`), NaNs and length. It flags silence (peak under
   1e-4), clipping (over 0.95), an engine at the redline under full load peaking outside 0.42–0.6
   ("off nominal": its trim needs measuring again), NaNs, and any sound left after a voice's stop
@@ -786,8 +1004,13 @@ own emitter and mixer:
   wrecked at 40, the laden truck into a house at 2 and 12 and a Panda landing hard on the road and
   rolling onto it at 8, each drawn anew on every run (a fresh params object, so the crash's
   per-object memo never replays an earlier run); the scrape plays along every material at 12 m/s,
-  along masonry at 4 and along the guard rail at 2.5, where it squeals. An engine with `inside`
-  ticked plays through no cabin, as the game plays the listener's own (the synth makes its cabin).
+  along masonry at 4 and along the guard rail at 2.5, where it squeals. The weather's rows: the
+  wind's squalls (strength 1, gusts 1); the crickets at 5 °C, their slowest chirp; the rain at
+  1 mm/h on open ground, 10 in the woods, 6 on a river (its plinks at their loudest), 60 on a
+  village by the river and 60 on open ground; the roof at 1, 10 and 60 mm/h; the owl; a step in
+  snow; and thunder from bolts 300 m, 2 km and 8 km away and an in-cloud flash overhead. An engine
+  with `inside` ticked plays through no cabin, as the game plays the listener's own (the synth
+  makes its cabin).
   Adding a kind fails to compile until the page has a panel and render rows for it. Two low peaks
   are by design: the wind swells with gusts over seconds, so at strength 1 a 2 s render peaks near
   0.2–0.3 while its 64 s gust loop reaches 0.45–0.65; and the blackbird's thin "seee" (30 % of its
@@ -795,7 +1018,8 @@ own emitter and mixer:
 
 The page places every sound with the director's own facts: the levels from `levels.ts` through
 `hear` in `hearing.ts`, the source at ear height over open, flat ground with nothing in the way, no
-Doppler, masked against 35 dB(A), and the wind bed compressed at its strength as `world.ts` does.
+Doppler, masked against the day's 35 dB(A), and the wind and rain beds and the roof compressed at
+their levels at the ears as `world.ts` does.
 Only water is a stand-in: a point source, the river (the Lucido) and the stream (a 4 m one) at their
 2 m bank level + 6 dB and the fountain at its 1 m level, where the game takes each body's
 line-source level at the listener.
@@ -807,17 +1031,19 @@ functions (`synth/world.test.ts` imports them to check).
 
 | File | Checks |
 |---|---|
-| `src/sim/index.test.ts`, `src/sim/walls.test.ts` | the events: a car driven into a building is a `wall` Impact as fast as the car was, where its nose meets the wall; rolled into it 45° and 60° off square, on the wall itself (within 5 cm) at its front end; a car rolling into a parked one a `car` Impact at the closing speed, the reduced mass and where the bumpers meet; a knockdown one `person` Impact faster than `KNOCK_SPEED`; a car pinning the player a `person` Impact as fast as the car was; a car blocked by a parked one honks once per stuck episode, `HONK_STEPS` before each time it backs up |
-| `src/audio/index.test.ts` | `Hear`: the listener on foot and at the wheel with the horn held, AI traffic running while standing, an untouched car heard only while it moves, rolls, pitches or bounces, impacts (with the struck vehicle's model and zone, the mass in tonnes as the sim gave it; none for a vehicle gone since) then honks each heard once, a ground hit's zone from its face, the revs and load `engineRevs` gives for the vehicle's chassis, speed and pedal, each vehicle's skids since the last frame (the most past grip, the fastest, the surface of the wheel furthest past), wheels down on the springs and not in the air, on a side or on the roof, the body down on the ground sliding on its roof or side and not on its wheels or in the air, an Ape rolling into a parked Panda front on rear, an Ape T-boning a parked Panda's front door on its side, a Panda rolling 50° off square into a house wall on its front |
+| `src/sim/index.test.ts`, `src/sim/walls.test.ts`, `src/sim/sky.test.ts` | the events: a car driven into a building is a `wall` Impact as fast as the car was, where its nose meets the wall; rolled into it 45° and 60° off square, on the wall itself (within 5 cm) at its front end; a car rolling into a parked one a `car` Impact at the closing speed, the reduced mass and where the bumpers meet; a knockdown one `person` Impact faster than `KNOCK_SPEED`; a car pinning the player a `person` Impact as fast as the car was; a car blocked by a parked one honks once per stuck episode, `HONK_STEPS` before each time it backs up; a forced thunderstorm throws `Lightning`, its bolts on the map, even with the clock stopped, the same in the same game |
+| `src/audio/index.test.ts` | `Hear`: the listener on foot and at the wheel with the horn held, AI traffic running while standing, an untouched car heard only while it moves, rolls, pitches or bounces, impacts (with the struck vehicle's model and zone, the mass in tonnes as the sim gave it; none for a vehicle gone since) then honks each heard once, a ground hit's zone from its face, the revs and load `engineRevs` gives for the vehicle's chassis, speed and pedal, each vehicle's skids since the last frame (the most past grip, the fastest, the surface of the wheel furthest past), wheels down on the springs and not in the air, on a side or on the roof, the body down on the ground sliding on its roof or side and not on its wheels or in the air, an Ape rolling into a parked Panda front on rear, an Ape T-boning a parked Panda's front door on its side, a Panda rolling 50° off square into a house wall on its front; the game clock's day, time and sun, a copy of the weather, and each `Lightning` since the last frame, once |
 | `src/render/index.test.ts` | every system of the render and audio schedules declares no writes |
 | `src/audio/acoustics.test.ts` | the laws: the line source against the exact table, the air cutoffs, Doppler, the pan, diffraction, ground, foliage, masking, the mix calibration |
 | `src/audio/occlusion.test.ts` | path differences on real map spots: a flat meadow, Monzone Alto's 30 m tower, a bell over its own walls, Monte San Giorgio between its flanks |
 | `src/sim/map/surface.test.ts` | the surfaces the tyres and the sounds share: carriageways by their OSM surface, the forest floor, a meadow; by level, the hillside over a tunnel and the deck only on the deck |
 | `src/audio/places.test.ts`, `src/audio/places/water.test.ts` | wall materials (a trunk, buildings by kind and style, the guard rail, the stone wall, a cliff, bare ground, a quarry's bank; the nearer of a trunk and a house wall 1.2–2.5 m apart wins; a bank with trees 1.5–3 m off it is earth), ambience shares, streets, echoes off the rock at Equi Terme, none on an open meadow nor at any Monzone street with no slope as steep as bare rock (50°) in sight, bells, dogs and birds, the Torrente Lucido from Monzone station, the Fontana di Aiola |
-| `src/audio/director/index.test.ts` | the director on a recording speaker at real map spots: proximity (in the open and behind a ridge), a building's muffling, Doppler, step cadence, travel delay, crash merging and scrapes, a house wall's material and cobbles in the crash and scrape params, a car crash's bodies the same from either car, a zone's wear carried to the next crash, a wall crash's debris surface read under the car, a scrape's material held through a brief other contact, a wall crash on foot muffled by the house in the way, a bump culled nearer than a crash, the engine's revs, load and variant passed on, engines ranked by their load, the tyres on the sim's skids (a standing burnout, the skid held over a frame with no step, silent in the air), a vehicle heard where its body is, a hard landing against the ground's material and not the nearest wall's and a body down on it grinding it (no hit needed), under a bridge the tyres and a landing on the riverbed's own surface and not the deck's, the own siren as loud in the air as on the ground (the ears ride in the car), cresting a hump as one clunk and a hard landing as a crash, echoes off a rock face and hidden in a street, the reverb dry in the open and wet in a walled street, nothing before the context, the cabin (the own crash open and at its cap, its tail and echoes through it), getting in and out, horn and siren, the bells, water and its masking, the valley's never-silent bed and the river 15 m away against behind the houses, voice caps and their hysteresis, flee cues |
-| `src/audio/director/hearing.test.ts`, `occluder.test.ts` | the reverb send: none in the open, in a street by distance (capped), gaps and the cabin, even for a sound of the own car that skips it; the obstacle cache's refresh and forgetting |
+| `src/audio/director/index.test.ts` (its kit, the map spots, `rig` and `world`, in `director/testing.ts`) | the director on a recording speaker at real map spots: proximity (in the open and behind a ridge), a building's muffling, Doppler, step cadence, travel delay, crash merging and scrapes, a house wall's material and cobbles in the crash and scrape params, a car crash's bodies the same from either car, a zone's wear carried to the next crash, a wall crash's debris surface read under the car, a scrape's material held through a brief other contact, a wall crash on foot muffled by the house in the way, a bump culled nearer than a crash, the engine's revs, load and variant passed on, engines ranked by their load, the tyres on the sim's skids (a standing burnout, the skid held over a frame with no step, silent in the air), a vehicle heard where its body is, a hard landing against the ground's material and not the nearest wall's and a body down on it grinding it (no hit needed), under a bridge the tyres and a landing on the riverbed's own surface and not the deck's, the own siren as loud in the air as on the ground (the ears ride in the car), cresting a hump as one clunk and a hard landing as a crash, echoes off a rock face and hidden in a street, the reverb dry in the open and wet in a walled street, nothing before the context, the cabin (the own crash open and at its cap, its tail and echoes through it, against a like crash outside: the same wall and ground), getting in and out, horn and siren, the bells on the game clock's hours (once a game day, not on the half hour, nor 22:00–06:00), water and its masking, the valley's never-silent bed and the river 15 m away against behind the houses, voice caps and their hysteresis, flee cues |
+| `src/audio/director/hearing.test.ts`, `occluder.test.ts` | the reverb send: none in the open, in a street by distance (capped), gaps and the cabin, even for a sound of the own car that skips it; a source aloft (thunder's channel) takes no ground effect, and snow on the ground up to 12 dB more and half the street's reverb; the obstacle cache's refresh and forgetting |
 | `src/audio/speaker.test.ts`, `mixer.test.ts`, `buffers.test.ts`, `measure.test.ts` | the one-shot cap, the speaker inert until a trusted gesture, the level meter, seamless noise loops, the gust signal against its closed-form sine sum, the render measurements |
-| `src/audio/synth/*.test.ts` | each engine's timbre from how it is built (pulses from cylinders and cycle, formants falling with displacement and the sub rising with each cylinder's size, a two-stroke brighter and rattling, a diesel's clatter, a turbo's whine only with a turbo, the Giulia's exhaust voiced darker than its size), the engine law (idle 11 dB under the redline, the cabin tone, every model at its trimmed peak, a variant's pitch and formants); the tyre law (a standing burnout and a locked wheel squeal, a creep barely past grip does not, the full slide at the Giulia's top speed); the scrape's surface loops (seamless, at their RMS, a stone every 0.3 m and a rail post every 2 m) and its speed law; step and cricket rates; bubbles at their Minnaert frequency; synth params clamped, NaN to silence |
+| `src/audio/director/weather.test.ts` | the weather and the hour at the director: the rain bed at the rate falling at the ears (none dry or in snow), a downpour masking a far car, the roof's drumming in the Panda with the bed through the cabin; thunder waiting its travel time (a bolt 3.4 km away about 10 s after the flash), rendered on a frame after its flash's, timed from the ears' height on a ridge, at once and capped within 40 m, narrower than a point, placed on arrival (through the cabin if the listener got in meanwhile, sooner when driving toward it), echoing off rock and cut short with them, never before the context runs, at most two at once in an approaching storm, quieter for a weaker flash and masked by a downpour; the wind (the tuned voice in the usual wind, stiller, gustier and a gale as the weather blows, masking through the cabin in a car); the night floor; the dawn chorus, dusk and rain silencing birds; the owl at night, once in 30 s; the 08:00 ring waiting for the context; crickets in warm, dry air only; snow's hush and crunch |
+| `src/audio/synth/thunder.test.ts` | the thunder renderer, bounds checked on seeds 1–96: finite, held to 0.5, at most 20 s, faded, the same for the same flash; a near bolt's crack and boom against a far one's rumble (centroid, onset, crack energy above 2 kHz, low share, length); an in-cloud flash with no crack; a third or more of the energy at 100–400 Hz within 2 km (phone speakers); `thunderQuiet` within 2 dB of A-weighted renders past 2 km; `lead`; the trunk first from a ridge over a valley bolt; one render per params object at 16 kHz for a bolt within 1 km and 8 kHz past it or in the cloud; a flash at no finite distance thundering as one overhead |
+| `src/audio/synth/*.test.ts` | each engine's timbre from how it is built (pulses from cylinders and cycle, formants falling with displacement and the sub rising with each cylinder's size, a two-stroke brighter and rattling, a diesel's clatter, a turbo's whine only with a turbo, the Giulia's exhaust voiced darker than its size), the engine law (idle 11 dB under the redline, the cabin tone, every model at its trimmed peak, a variant's pitch and formants); the tyre law (a standing burnout and a locked wheel squeal, a creep barely past grip does not, the full slide at the Giulia's top speed); the scrape's surface loops (seamless, at their RMS, a stone every 0.3 m and a rail post every 2 m) and its speed law; step and cricket rates (a cricket voice held in the cold still chirps at the 10 °C rate, never an Infinity-long wait); the rain law (the drops' kinetic energy, 12 dB a decade, a downpour at the nominal) and its layers (a shower's drops fusing into the hiss and the roar, surfaces adding in power, plinks on water never louder than a downpour's), the roof's drumming (countable drops in a shower, a roar in a downpour, low and tonal under 1 kHz); bubbles at their Minnaert frequency; synth params clamped, NaN to silence |
 | `src/audio/synth/crash/crash.test.ts` | the crash renderer over the design's matrix, each at the sim's mass (a Panda into a house at 2, 5, 12, 14 and 20 m/s, Panda–Panda 10, Panda–truck 12, an Ape into stone 8, the Giulia into the guard rail 12, a sheet wall 12, a tree 10, earth 8, a side hit 12, a 40 m/s wreck, the laden truck into a house at 2 and 12, a hard landing on the road at 6 and a roll onto it at 8, against a house wall at 6 and 10 and a side into it at 8), twenty seeds each (the bounds checked on seeds 1–80, twenty at a time), measured by `testing.ts` (the research's analysis tools, ported): finite, ≤ 1, ≤ 4 s, faded, finite from an 8 kHz device rate; noise that never repeats inside a render; deterministic per seed; the level law, its cap and the peaks following it within 2 dB (a bump, the rail, a sheet wall, Panda–Panda, the truck's nudge); the laden truck 7 dB over a Panda, its nudge like a Panda's 4 m/s bump, capped by 14 m/s, the barrier speeds of a Panda against it and of it; a landing breaking nothing; growth past the cap (tail, block, at most 3 sub-hits, 42 m/s against 60 audibly different); the critique's targets on the exterior crashes (medians: −10 dB at 150–450 ms, rise 8–25 ms, crest 9–15 dB, band flatness 0.35–0.6, 1–8 kHz kurtosis 2.8–4.5, 8 kHz −12…−25 dB, 16 kHz −22…−36, centroid 1.5–3.5 kHz through 600 ms; 97 % of renders with 63 Hz ≤ −5 dB and the loudest octave in 125 Hz–2 kHz); the tail's −20 dB at 0.25–2.5 s, later the harder the hit; a flat median spectrum (the truck within 8 dB); the long partials layer (each model's count at 0.6–4.3 kHz, η 0.001–0.01) and 1–3 of them clear in the render; the bump's 40–100 ms; the rail's tonal ring; the sheet wall's ring against masonry; the truck's bumper clang; the tree's faint rustle past 2 s and its tail under 3.5 kHz; earth the slowest, dullest; a car–car hit's clank against a house wall's dead mass; the road's thump on a landing and slap on a roll; sub-hits 13 dB and more under the hit; a greenhouse nudge's dull crack; a worn side breaking nothing again; the glass shower's 6–10 kHz centroid and grass swallowing it |
 
 ### In a browser
@@ -828,6 +1054,10 @@ functions (`synth/world.test.ts` imports them to check).
    `gta.audio.level()` returns the master's RMS in dBFS (−100 when silent). `gta.audio.speaker` is
    the speaker: wrap its `hold` and `play` to count requests or check placements.
 3. The Ritmo monitor (backslash) lists the audio schedule beside `update` and `render`.
+4. To hear the night or the weather, set them from the debug menu (P) or the console, after the
+   card is gone (the clock is held behind it): `gta.sky.setTime(2 * 3600)` for 02:00,
+   `gta.sky.force("storm"); gta.sky.settle()` for a thunderstorm at its height, and
+   `gta.sky.force(null)` to leave the weather to chance again.
 
 Measured in headless Chrome (`?seed=3`, keys sent over CDP, `gta.audio.level()` every 100 ms):
 standing at the spawn −40 to −42 dBFS, walking there with step peaks up to −20, 15 m from the
@@ -839,7 +1069,7 @@ throttle for 4 s a median of −13.4 to −13.7 and peaks −10.2 to −10.6 ove
 at the launch to 5419–5498, load 1 between shifts, to 13.6–14.6 m/s); in a parked Panda idling
 −30.5 (800 rpm), the same pull-away −14.4 and peaks −13.2 (1800 to 5714 rpm, to 13.8 m/s), a
 handbrake turn onto grass −9.9 (its tyres played at skid 1, sliding 27.9 m/s). On the
-audition page "Render all" gives 87 rows, none flagged.
+audition page "Render all" gives 104 rows in 5.3–5.5 s, none flagged.
 Crashes (a Panda driven by CDP keys into a house, a stone wall, a tree and a bank at 5–15 m/s and
 into parked cars at 9–15 m/s, `gta.audio.level()` and each channel's sample peak every 20 ms): the
 played speed is the car's at contact (wall hits within 0.3 m/s of it, an oblique tree hit 0.5 under;
@@ -853,7 +1083,11 @@ task, no console error, no non-finite placement.
 
 - **The loudest near sounds touch the limiter.** The player's own horn and siren pass the whole
   cabin, yet still play over gain 1, so the limiter takes a few dB while they sound (peaks near
-  −3.5 dBFS) and the rest of the mix dips that much with them.
+  −3.5 dBFS) and the rest of the mix dips that much with them. So do traffic passing close and
+  honks, with or without the weather: by the spawn in a storm an Ape at full throttle 2.5 m away
+  took 1.55 dB (1.19 dB on the same pass before the weather, revving less), a laden truck 3 m away
+  3.75 dB (3.67 before), and a truck's and a Panda's honks 12–15 m away up to 5.8 dB. The
+  weather's own sounds took none.
 - **Beds against traffic.** Compressing the beds at their level lifts a quiet valley more than a
   car 10 m away (whose 20 dB of spreading stays physical): a car cruising past 10 m away stands
   some 10 dB over a village street's bed on the meter and 6 dB over a meadow's, not the physical
@@ -879,9 +1113,41 @@ task, no console error, no non-finite placement.
 - **The reverb is the listener's street.** A source in a street heard from outside it plays dry:
   its street's tail, escaping through the street's mouth, is left out. Every street shares one
   reverb time; only the send scales.
-- **Bells follow the computer's clock**, not a game time of day. A ring that falls before the
-  audio starts is skipped.
-- **Fixed weather:** 15 °C, 70 % humidity, an October afternoon. No night, no wind direction.
+- **Bells at the dev menu's rates:** a new hour's ring cuts what is left of the last, and frames
+  that skip minute 0 (the fast rates) miss a ring.
+- **The air is fixed for sound:** its absorption and the speed of sound (340.4 m/s) stay at 15 °C
+  and 70 % humidity whatever the weather's temperature, and the wind does not bend sound, so a
+  sound carries as far upwind as downwind.
+- **Crickets follow the temperature and the rain only**, not the night: *Oecanthus* is nocturnal,
+  so in a warm valley they also sing by day above 10 °C.
+- **The wind's weather factor** is the valley wind over 3 m/s; the sim's altitude factor
+  (`windAt`) is left out, since the director's own altitude law already raises the wind on high
+  ground.
+- **The night floor shows only where the wind is stillest:** in sheltered streets and in calm,
+  clear weather. An open ridge in the usual wind stays at its wind's level.
+- **Owls are rare near villages**, masked there: none was heard at the spawn in 93 s, the two
+  within 600 m being 388 and 491 m off behind the village with the Lucido raising the floor. They
+  call in the woods (the director's tests); `OWL`, 90 dB(A), is an estimate.
+- **Thunder through a cabin** loses its 15 dB and 1.4 kHz like any outside sound, though a car body
+  passes its lows better.
+- **A flash not heard when it strikes is never thundered**, even if the listener then closes in.
+- **The snow cover at the ears stands for the whole path**: its loss and the halved reverb send
+  (thunder, aloft, is spared both).
+- **Rain falls under bridges and in tunnels:** nothing checks for a deck overhead. Snow falls
+  silent, and there is no wet-tyre hiss and no tyre on snow.
+- **Far thunder on phones:** in-cloud flashes keep 2.3–2.8 % of their energy above 180 Hz, an 8 km
+  bolt 0.9 %, as the air leaves them, so a phone's speaker plays them faint or not at all; bolts
+  within 2 km keep a third or more at 100–400 Hz. More upper partials would change the timbre on
+  every speaker and need judging by ear on a phone.
+- **Thunder renders on the main thread**, on the frame after its flash: in desktop Chrome that
+  frame's director took 3.2 ms (median, 14.7 at most); with the CPU throttled four times, as a
+  phone might be, 8.5 ms (median, 23.6 at most), every few seconds of a storm. ponytail: move the
+  render to a Worker.
+- **Estimated levels:** the rain bed's 64 dB(A) (noise charts: gentle rain under 40, heavy 60–70),
+  the roof's 66 (no in-car measurement found), thunder's 154 (anchored only on 88 dB(A) at 1 km)
+  and the owl's 90. The roof has no model, so the Ape's open cab drums like the Panda's (its 6 dB
+  cab lets the bed outside in louder anyway), and rain on water was tuned by measurement, not by
+  ear.
 - **Water** loudness comes from width and grade, not discharge; the Cascata di Equi is hard-coded.
 - **Stereo** is a pan along the screen's right axis, with no front or back; it follows the view's
   turns, not the camera's eased swing between them, and a one-shot or echo already on its way (a
@@ -926,29 +1192,34 @@ Where to tune:
 
 | Where | What |
 |---|---|
-| `src/audio/director/levels.ts` | every source level and size, heights, caps and hysteresis, the crash's gain cap, the bell towers, delay, the reverb send and the echo floor |
-| `src/audio/acoustics.ts` | `AMBIENT_DB`, `CABIN`, the mix rule (`L_REF`, `K`, `FULL_SCALE`), the air and diffraction tables |
+| `src/audio/director/levels.ts` | every source level and size (the owl's `OWL`, thunder's), the beds (`BEDS`, `GALE_DB`, the roof's `ROOF_DB`), heights, caps and hysteresis, the one-shots' gain caps (`MOST_DB`), the bell towers, delay, the reverb send (and the snow's share of it) and the echo floor |
+| `src/audio/acoustics.ts` | `AMBIENT_DB`, `NIGHT_DB`, `CABIN`, the snow's loss (`snowLoss`), the mix rule (`L_REF`, `K`, `FULL_SCALE`), the air and diffraction tables |
 | `src/audio/index.ts` | when a still vehicle is heard (`STILL`), when its wheels are off the ground (`AIRBORNE`), the zone of each face that strikes the ground |
 | `src/audio/director/vehicles.ts` | when tyres roll and how long a skid holds, the beeper sounds, a hit crashes, clunks or scrapes, hits merge; the ground's materials; the groan and door timings; how much of the cabin the own horn and siren pass |
 | `src/audio/director/people.ts` | jumps, running, the shout radius and the cue gap |
-| `src/audio/director/world.ts` | the wind law and its floor (`STILL`), the beds and water compressed at their level, birds, dogs, the bell strokes, how often water and dogs are looked up |
+| `src/audio/director/world.ts` | the wind law (`ALTITUDE`, `CALM`, `GALE`, `OPEN`, `STREETS`) and the snow's stilling of its leaves (`SNOW_LEAVES`), the beds and water compressed at their level, the rain's reach to water (`WATER_RAIN`), birds, owls (`OWL_MEAN`, `OWL_REST`), dogs, the bell hours (`BELL_HOURS`) and strokes, how often water, dogs and owls are looked up |
+| `src/audio/director/sky.ts` | the day's and the weather's laws: the floor by the sun (`floorDb`), the songbirds' and the owls' activity, the usual wind (`USUAL_WIND`) and gusts, the faintest rain heard (`RAINING`) |
+| `src/audio/director/thunder.ts` | how wide thunder pans (`WIDTH`), how many roll at once and how much quieter over another (`AT_ONCE`, `OVERLAP`), the power's law (`POWER_DB`, `WEAKEST`) |
 | `src/audio/director/occluder.ts` | the obstacle refresh rate, per-frame budget and forgetting |
 | `src/sim/map/surface.ts` | surfaces: the road surface names, the cover each surface is, the verge (shared with the tyres' grip) |
-| `src/audio/places.ts`, `src/audio/places/water.ts` | wall materials and their reach, ambience, street probes, the echo search and the rock's reflection loss, bells, dogs, bird trees; water power, fountains and the Cascata |
+| `src/audio/places.ts`, `src/audio/places/water.ts` | wall materials and their reach, ambience, street probes, the echo search and the rock's reflection loss, bells, dogs, bird trees, owl territories; water power, fountains and the Cascata |
 | `src/audio/synth/engine.ts` | how an engine's build sets its sound (`CYCLES`, the formant's size law, `timbreOf`), each model's measured `TRIM` and `EXHAUST` voicing, the variants' spread, the engine law |
 | `src/audio/synth/crash/` | the crash: its level law, the mass's 1/√ and timing (`hit.ts`), the crunch, partials, contact and the shells' clank (`render.ts`, with `SCALE`, the reference crash's output scale, and `SHELL`), each model (`bodies.ts`), each material and the road (`targets.ts`, with `ROAD`), what breaks and falls (`parts.ts`), grit, trains and landings by surface (`textures.ts`) |
 | `src/audio/mixer.ts`, `src/audio/speaker.ts` | master gain, limiter, the street reverb and its return; the one-shot cap |
-| `src/audio/synth/*.ts` | each synth's own table: horns, tyre grounds and the skid's fade-in, the clunk (`BOTTOMED`), the scrape's materials, treads, voices, calls, bubbles |
+| `src/audio/synth/*.ts` | each synth's own table: horns, tyre grounds and the skid's fade-in, the clunk (`BOTTOMED`), the scrape's materials, treads (the snow's `SNOW` too), voices, calls (the owl's too), bubbles, the rain's layers and surfaces (`RAIN_LAYERS`, `SURFACES`, `WATER`), the thunder's channel and roll (`CHANNEL`, `PEARL`, `ROLL`) |
 
 Sources for the numbers: ISO 9613-1 (air absorption) and ISO 9613-2 (ground effect, foliage),
 Maekawa's barrier chart (diffraction), Thomas et al. 2013 (reverb in streets and in the open),
 Picaut et al. 2005 (a street's reverb time), Huisman and Attenborough 1991 (forest reverb), Pieren
 and Wunderli 2011 (cliff echoes), Wunderli and Salomons 2009 (forest edges), ITU-R BT.1359 (audio
 lag), D.M. 20/03/1979 (the siren), CNOSSOS-EU (tyre rolling noise), van den Doel 2005 (bubbles),
-Farnell, *Designing Sound* (footsteps, wind), Peterson and Barney 1952 (vowel formants), Arnal et
-al. 2015 (the roughness of screams) and Dolbear's law (cricket rate). For crashes: crash-pulse
-durations (Locey et al. 2012, NHTSA fleet data), restitution (Cipriani 2002), crumpling's power law
-(Houle and Sethna 1996), modal synthesis and contact spectra (van den Doel and Pai; Chadwick, Zheng
-and James 2012), PhISEM grain streams (Cook, STK), tempered glass (UN R43 Annex 5; Nielsen et al.
-2009), the W-beam's bands (a highway guard rail's contact-mic recording) and 16 crash recordings
-measured for the critique (Freesound CC0/CC BY, BBC Sound Effects for analysis only).
+Farnell, *Designing Sound* (footsteps, wind, rain), Peterson and Barney 1952 (vowel formants), Arnal
+et al. 2015 (the roughness of screams) and Dolbear's law (cricket rate). For the weather: Few 1969
+and Hill 1968 (thunder's string of pearls and its channel), Wischmeier and Smith (rain's kinetic
+energy), Medwin and Nystuen 1992 (rain on water), Albert, CRREL (sound over snow), Thomas et al.
+2002 (the dawn chorus), and the BTO on the tawny owl's calls. For crashes: crash-pulse durations
+(Locey et al. 2012, NHTSA fleet data), restitution (Cipriani 2002), crumpling's power law (Houle and
+Sethna 1996), modal synthesis and contact spectra (van den Doel and Pai; Chadwick, Zheng and James
+2012), PhISEM grain streams (Cook, STK), tempered glass (UN R43 Annex 5; Nielsen et al. 2009), the
+W-beam's bands (a highway guard rail's contact-mic recording) and 16 crash recordings measured for
+the critique (Freesound CC0/CC BY, BBC Sound Effects for analysis only).

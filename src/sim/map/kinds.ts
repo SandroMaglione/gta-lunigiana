@@ -1,11 +1,15 @@
 /**
  * Map vocabulary shared by the build (src/tools) and the runtime map module:
- * road classes, building styles, area kinds and the tree-trunk wall size. Imports no data,
- * so the build can use it before monzone.bin exists. Game code imports these
- * through `./index.ts`.
+ * where the map lies on the Earth, road classes, building styles, area kinds and the tree-trunk
+ * wall size. Imports no data, so the build can use it before monzone.bin exists. Game code imports
+ * these through `./index.ts`, except the sky (`src/sim/sky`), which must not decode the map and
+ * takes `ORIGIN` from here.
  *
  * @module map/kinds
  */
+
+/** The map's origin, degrees (north, east): x and y count metres east and north of it, and the sun and moon are worked out for it. The build projects with it and writes it as `MAP.origin`. */
+export const ORIGIN = { lat: 44.16175, lon: 10.13 } as const
 
 /**
  * Highway classes the build emits, widest first. The build folds OSM `primary` (the SR445) into

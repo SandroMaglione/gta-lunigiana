@@ -12,7 +12,9 @@ import { graph, isDrivable, MAP, wallsNear } from "./map/index.ts"
 import { pointInRing } from "./collide.ts"
 import { distanceToEdge, laneOf, lanePoint, laneSide, roadOf, walkIndex } from "./route.ts"
 import { settle, uprightness } from "./chassis.ts"
-import { bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetHandling, setup, update, Vehicle } from "./index.ts"
+import {
+  bindings, CarInput, Chassis, Game, KeyboardInput, makeRuntime, Motion, Pose, type PoseValue, PrevPose, SetClock, SetHandling, SetWeather, setup, update, Vehicle
+} from "./index.ts"
 import { roadLevel } from "./map/ground.ts"
 import { parkedCar, pedestrian, trafficCar } from "./spawning.ts"
 import { PEDESTRIANS, PEOPLED, TRAFFIC } from "./systems/populate.ts"
@@ -375,14 +377,19 @@ test("determinism: the same scripted joyride replays bit for bit", () => {
     // A handling off its real values: the knobs are part of what replays.
     made.value.send(SetHandling, { key: "grip", value: 1.3 })
     made.value.send(SetHandling, { key: "weightTransfer", value: 0.5 })
+    // Ten game minutes a step: 100 game hours of weather, its regimes drawn from WeatherRng, wetting and drying the roads under the car.
+    made.value.send(SetClock, { rate: 600 })
     return { runtime: made.value, schedules: { update } }
   }, { schedule: "update", frames: 600, hostClock: HostClock.test() })
   assert.deepEqual(result, { ok: true, frames: 600 })
 })
 
-test("saves: a snapshot taken mid-joyride restores through JSON and plays on identically", () => {
+test("saves: a snapshot taken mid-joyride, in a thunderstorm, restores through JSON and plays on identically", () => {
   const a = start(joyride, joyrideCast)
   a.runtime.send(SetHandling, { key: "power", value: 1.5 })
+  // The clock fast and a storm over the map: the weather, its random stream and the storm cell are saved state too.
+  a.runtime.send(SetClock, { rate: 600 })
+  a.runtime.send(SetWeather, { regime: "storm", settle: true })
   const modes: Array<string> = []
   a.run(420, () => {
     const mode = a.view()!.mode
@@ -394,9 +401,12 @@ test("saves: a snapshot taken mid-joyride restores through JSON and plays on ide
   assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
   assert.deepEqual(b.view(), a.view())
   assert.deepEqual(b.world(), a.world())
-  a.run(120)
-  b.run(120)
+  const from = a.heard.lightning.length
+  a.run(1200)
+  b.run(1200)
   assert.deepEqual(b.world(), a.world())
+  assert.ok(b.heard.lightning.length > 0, "lightning after the restore")
+  assert.deepEqual(b.heard.lightning, a.heard.lightning.slice(from), "the same lightning")
 })
 
 test("contacts: sprinting into a parked car does not knock the player down", () => {

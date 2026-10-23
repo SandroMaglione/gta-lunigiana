@@ -9,7 +9,7 @@ import type { SkidValue } from "./marks.ts"
 import { PUFF, Smoke } from "./smoke.ts"
 
 const skid = (step: number, surface: Surface = "asphalt", slip = 10, amount = 1): SkidValue =>
-  ({ car: 1, wheel: 0, x: 0, y: 0, z: 300, slip, amount, surface, step })
+  ({ car: 1, wheel: 0, x: 0, y: 0, z: 300, slip, amount, surface, snow: 0, step })
 /** A fixed sequence: puffs land the same way every run. */
 const steady = () => 0.5
 
@@ -72,4 +72,14 @@ test("smoke is burnt-rubber grey on asphalt, dust is tan on dirt", () => {
     if (surface === "asphalt") assert.ok(hsl.s < 0.15 && hsl.l > 0.4, `asphalt smoke: saturation ${hsl.s}, lightness ${hsl.l}`)
     else assert.ok(hsl.s > 0.3 && hsl.h > 20 / 360 && hsl.h < 50 / 360, `dirt dust: hue ${hsl.h * 360}°, saturation ${hsl.s}`)
   }
+})
+
+test("on snow a sliding tyre throws up white spray; the smoke draws after the marks", () => {
+  const smoke = new Smoke(steady)
+  smoke.add({ ...skid(1, "asphalt", 60, 1), snow: 1 })
+  smoke.update(STEP.dt)
+  const color = new Color()
+  smoke.mesh.getColorAt(0, color)
+  assert.ok(Math.min(color.r, color.g, color.b) > 0.85 && Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b) < 0.1, `snow spray: ${color.toArray()}`)
+  assert.equal(smoke.mesh.renderOrder, 1)
 })

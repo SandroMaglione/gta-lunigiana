@@ -2,12 +2,12 @@
 // ring winding, point/segment distances and a bucketed segment index.
 
 import { segDist2 } from "../sim/collide.ts"
+import { ORIGIN } from "../sim/map/kinds.ts"
 
 export type P = readonly [number, number]
 /** A polyline vertex; `id` is the OSM node id, absent for points made by clipping. */
 export interface V { readonly x: number; readonly y: number; readonly id?: string }
 
-export const ORIGIN = { lat: 44.16175, lon: 10.13 }
 export const M_PER_DEG = { lat: 111115.37, lon: 79987.94 }
 /** Play area, local metres: lat 44.1069–44.1968, lon 10.0937–10.1913. The whole Lucido catchment, ridge to ridge, plus the Aulella side by Gragnola and Codiponte. */
 export const BOUNDS = { minX: -2900, minY: -6100, maxX: 4900, maxY: 3900 }

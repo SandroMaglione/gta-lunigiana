@@ -2,8 +2,9 @@
  * Tyre marks: one dynamic mesh for the whole map, a ring buffer of quads laid from the sim's Skid
  * events. Each wheel of each car draws a strip that joins its consecutive steps; a step without a
  * skid breaks it. The colour follows the surface (rubber on asphalt and stone, an earth rut on the
- * rest), the opacity how far past its grip the tyre slid, and a mark fades to nothing over `FADE`
- * seconds of sim time. When the buffer is full, the oldest quad is overwritten.
+ * rest; a dark slush rut where snow lies), the opacity how far past its grip the tyre slid, and a mark
+ * fades to nothing over `FADE` seconds of sim time. When the buffer is full, the oldest quad is
+ * overwritten. The first transparent effect drawn (render order 0: then smoke, bolts, rain and snow).
  *
  * @module render/marks
  */
@@ -17,6 +18,7 @@ import type { VehicleModel } from "../sim/vehicles.ts"
 import { linear } from "./geometry.ts"
 import { yOf } from "./ground.ts"
 import { PALETTE } from "./palette.ts"
+import { weatherMaterial } from "./sky/surface.ts"
 
 /** A Skid event. */
 export type SkidValue = Descriptor.Descriptor.Value<typeof Skid>
@@ -40,6 +42,16 @@ const MARK = {
   grass: { hex: PALETTE.woodBrown, alpha: 0.55 },
   leaves: { hex: PALETTE.woodBrown, alpha: 0.5 }
 } as const satisfies Record<Surface, { readonly hex: number; readonly alpha: number }>
+/** What a sliding tyre leaves in snow (Skid.snow 1): a dark rut of slush, plainer on the white. */
+const RUT = { hex: PALETTE.snowRut, alpha: 0.9 } as const
+/** Draw order among the transparent effects. */
+const MARKS_ORDER = 0
+
+/** The colour (linear) and full-slide opacity of `skid`'s mark: the surface's, turning to a slush rut with the snow on it. */
+const markOf = (skid: SkidValue): readonly [number, number, number, number] => {
+  const m = MARK[skid.surface], [r, g, b] = linear(m.hex), [sr, sg, sb] = linear(RUT.hex), k = skid.snow
+  return [r + (sr - r) * k, g + (sg - g) * k, b + (sb - b) * k, m.alpha + (RUT.alpha - m.alpha) * k]
+}
 
 /** A strip's end: the wheel's last skid and, once the strip has a direction, the edges (left x, y, right x, y) the next quad starts from. */
 interface Tip {
@@ -47,10 +59,10 @@ interface Tip {
   readonly edges?: readonly [number, number, number, number]
 }
 
-// Like decalMaterial, pulled towards the camera in depth; lit, so marks darken in shadow like the road.
-const material = new MeshLambertMaterial({
+// Like decalMaterial, pulled towards the camera in depth; lit, so marks darken in shadow (and under the clouds' shadows) like the road.
+const material = weatherMaterial(new MeshLambertMaterial({
   vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2
-})
+}), "actor")
 
 /** Every tyre mark on the map. Host state for the page's life: nothing loads a save in the browser. */
 export class Marks {
@@ -88,6 +100,7 @@ export class Marks {
     this.mesh.frustumCulled = false // spread over the whole map, and the bounds would change every frame
     this.mesh.receiveShadow = true
     this.mesh.matrixAutoUpdate = false
+    this.mesh.renderOrder = MARKS_ORDER
   }
 
   /** Quads drawn. */
@@ -153,8 +166,8 @@ export class Marks {
     const ya = yOf(drawnZ(a.x, a.y, a.z)) + LIFT, yb = yOf(drawnZ(b.x, b.y, b.z)) + LIFT
     // Three space is (east, up, −north).
     this.position.array.set([start[0], ya, -start[1], start[2], ya, -start[3], end[2], yb, -end[3], end[0], yb, -end[1]], q * 12)
-    const ma = MARK[a.surface], mb = MARK[b.surface], [ar, ag, ab] = linear(ma.hex), [br, bg, bb] = linear(mb.hex)
-    const aa = ma.alpha * a.amount, ba = mb.alpha * b.amount
+    const [ar, ag, ab, am] = markOf(a), [br, bg, bb, bm] = markOf(b)
+    const aa = am * a.amount, ba = bm * b.amount
     this.color.array.set([ar, ag, ab, aa, ar, ag, ab, aa, br, bg, bb, ba, br, bg, bb, ba], q * 16)
     this.base.set([aa, aa, ba, ba], q * 4)
     this.born[q] = b.step * STEP.dt

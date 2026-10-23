@@ -1,10 +1,11 @@
 /**
  * The audio schedule: once per animation frame it projects what can be heard into plain `Heard`
  * data (the player's ears; vehicles someone drives or that move, with the drivetrain's revs and load,
- * whether their wheels or their body are down and how their tyres skid; people on foot; the Impact and Honk events
- * since the last frame, each impact with the bodies it struck; the horn key) and hands it to the
- * `Audio` service. No acoustics here: the director behind the service decides what is loud enough
- * and where it sits.
+ * whether their wheels or their body are down and how their tyres skid; people on foot; the Impact,
+ * Honk and Lightning events since the last frame, each impact with the bodies it struck; the horn key;
+ * the game clock's day, time and sun, and a copy of the weather) and hands it to the `Audio` service.
+ * No acoustics here: the director behind the service decides what is loud enough and where it sits,
+ * and works out the weather at the ears.
  * Read-only towards the world, like render (render/index.test.ts checks every described schedule).
  *
  * @module audio
@@ -15,11 +16,14 @@ import { forwardSpeed } from "../sim/body.ts"
 import { hullDown, overturned } from "../sim/chassis.ts"
 import { engineRevs } from "../sim/drivetrain.ts"
 import {
-  CarInput, Chassis, Down, Driving, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle, View
+  CarInput, Chassis, Down, Driving, Game, GameClock, Honk, Impact, Input, Lightning, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle,
+  View, Weather
 } from "../sim/index.ts"
 import { groundZ } from "../sim/map/ground.ts"
+import { daysFromCivil, romeTime } from "../sim/sky/calendar.ts"
+import { sunOver } from "../sim/sky/day.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
-import type { Body, Happening, Heard, HeardPerson, HeardVehicle, Skidding, Zone } from "./types.ts"
+import type { Body, Happening, Heard, HeardPerson, HeardSky, HeardVehicle, Skidding, Zone } from "./types.ts"
 
 /** The host's ears: gets one `Heard` per frame while there is a player. */
 export const Audio = Descriptor.Service<{ readonly hear: (heard: Heard) => void }>()("Lunigiana/Audio")
@@ -39,6 +43,12 @@ const zoneOf = (model: VehicleModel, pose: { readonly x: number; readonly y: num
   const { length, width } = VEHICLES[model], dx = x - pose.x, dy = y - pose.y, fx = Math.cos(pose.angle), fy = Math.sin(pose.angle)
   const along = (dx * fx + dy * fy) / length, across = Math.abs(dy * fx - dx * fy) / width
   return along > across ? "front" : -along > across ? "rear" : "side"
+}
+
+/** The sky at game time `seconds` (Unix UTC): the Rome day and time of day, and the sun's elevation over the map. */
+export const skyAt = (seconds: number): HeardSky => {
+  const { year, month, day, hour, minute } = romeTime(seconds)
+  return { seconds, day: daysFromCivil(year, month, day), hour, minute, sun: sunOver(seconds).elevation }
 }
 
 const Hear = Game.System("Lunigiana/Hear", {
@@ -66,8 +76,11 @@ const Hear = Game.System("Lunigiana/Hear", {
       without: [Driving]
     })
   },
-  resources: { input: Game.System.readResource(Input), view: Game.System.readResource(View), time: Game.System.readResource(Time) },
-  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid) },
+  resources: {
+    input: Game.System.readResource(Input), view: Game.System.readResource(View), time: Game.System.readResource(Time),
+    clock: Game.System.readResource(GameClock), weather: Game.System.readResource(Weather)
+  },
+  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid), lightning: Game.System.readEvent(Lightning) },
   services: { audio: Game.System.service(Audio) }
 }, ({ queries, resources, events, services }) => {
   const found = queries.player.singleOptional()
@@ -122,14 +135,17 @@ const Hear = Game.System("Lunigiana/Hear", {
       if (body === undefined || (hit.hit === "car" && otherBody === undefined)) return []
       return [{ kind: "impact", ...hit, body, ...(otherBody === undefined ? {} : { otherBody }) }]
     }),
-    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk }))
+    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk })),
+    ...events.lightning.all().map(({ x, y, bolt, power, seed }) => ({ kind: "lightning" as const, x, y, bolt, power, seed }))
   ]
   services.audio.hear({
     listener: { x: pose.x, y: pose.y, vx: motion.vx, vy: motion.vy, car, turns: resources.view.get().turns },
     vehicles,
     people,
     happenings,
-    horn: resources.input.get().horn.held
+    horn: resources.input.get().horn.held,
+    sky: skyAt(resources.clock.get().seconds),
+    weather: { ...resources.weather.get() }
   })
 })
 
