@@ -5,15 +5,20 @@ import type { Surface } from "../../types.ts"
 import { tyreTargets } from "../tyres.ts"
 
 /** Tyres rolling at `speed` m/s, `skid` 0…1 past their grip and sliding at `slip` m/s. */
-const tyre = (speed: number, skid: number, slip: number, surface: Surface, heavy = false) => tyreTargets({ kind: "tyres", speed, skid, slip, surface, heavy })
+const tyre = (speed: number, skid: number, slip: number, surface: Surface, heavy = false) =>
+  tyreTargets({ kind: "tyres", speed, skid, slip, surface, heavy })
 
 test("rolling noise rises 30 dB per decade of speed and stops at a standstill", () => {
-  assert.ok(Math.abs(20 * Math.log10(tyre(30, 0, 0, "asphalt").roll / tyre(3, 0, 0, "asphalt").roll) - 30) < 1e-9)
+  assert.ok(
+    Math.abs(20 * Math.log10(tyre(30, 0, 0, "asphalt").roll / tyre(3, 0, 0, "asphalt").roll) - 30) <
+      1e-9,
+  )
   assert.equal(tyre(0, 0, 0, "asphalt").roll, 0)
 })
 
 test("a skid squeals on hard ground and sprays gravel on loose ground", () => {
-  for (const surface of ["asphalt", "stone"] as const) assert.ok(tyre(15, 0.8, 6, surface).squeal > tyre(15, 0, 0, surface).squeal, surface)
+  for (const surface of ["asphalt", "stone"] as const)
+    assert.ok(tyre(15, 0.8, 6, surface).squeal > tyre(15, 0, 0, surface).squeal, surface)
   for (const surface of ["gravel", "dirt", "grass", "leaves"] as const) {
     assert.equal(tyre(15, 0.8, 6, surface).squeal, 0, surface)
     assert.ok(tyre(15, 0.8, 6, surface).crunch > tyre(15, 0, 0, surface).crunch, surface)
@@ -23,7 +28,10 @@ test("a skid squeals on hard ground and sprays gravel on loose ground", () => {
 // Regression: the squeal came from sideways speed over ground speed, faded in from 8 km/h, so wheelspin and lock-ups were silent.
 test("a standing burnout squeals with no rolling noise, and sprays gravel; a locked wheel squeals in a straight line", () => {
   const burnout = tyre(0, 1, 8, "asphalt")
-  assert.ok(burnout.squeal > 0.5 * tyre(40, 1, 12, "asphalt").squeal && burnout.roll === 0, `${burnout.squeal}`)
+  assert.ok(
+    burnout.squeal > 0.5 * tyre(40, 1, 12, "asphalt").squeal && burnout.roll === 0,
+    `${burnout.squeal}`,
+  )
   assert.ok(tyre(0, 1, 8, "gravel").crunch > 0.5 * tyre(15, 1, 8, "gravel").crunch)
   assert.ok(tyre(15, 1, 15, "asphalt").squeal > tyre(15, 0, 0, "asphalt").squeal)
 })
@@ -46,7 +54,11 @@ test("the calibration case, the Giulia at top speed sliding fully at 12 m/s, squ
 })
 
 test("heavy tyres are 6 dB louder and darker", () => {
-  const light = tyre(15, 0.8, 6, "asphalt"), heavy = tyre(15, 0.8, 6, "asphalt", true)
-  assert.ok(Math.abs(heavy.roll / light.roll - 2) < 1e-9 && Math.abs(heavy.squeal / light.squeal - 2) < 1e-9)
+  const light = tyre(15, 0.8, 6, "asphalt"),
+    heavy = tyre(15, 0.8, 6, "asphalt", true)
+  assert.ok(
+    Math.abs(heavy.roll / light.roll - 2) < 1e-9 &&
+      Math.abs(heavy.squeal / light.squeal - 2) < 1e-9,
+  )
   assert.ok(heavy.rollHz < light.rollHz && heavy.pitch < light.pitch)
 })

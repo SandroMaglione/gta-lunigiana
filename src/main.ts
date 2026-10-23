@@ -14,7 +14,15 @@
 import { FixedLoop, Result } from "@typeonce/ritmo"
 import { BrowserHostClock, BrowserTickSource, Keyboard } from "@typeonce/ritmo-browser"
 import { Vec2 } from "@typeonce/ritmo-math"
-import { BasicShadowMap, DirectionalLight, HemisphereLight, Object3D, Scene, Vector3, WebGLRenderer } from "three"
+import {
+  BasicShadowMap,
+  DirectionalLight,
+  HemisphereLight,
+  Object3D,
+  Scene,
+  Vector3,
+  WebGLRenderer,
+} from "three"
 
 import { makeDirector } from "./audio/director/index.ts"
 import { Audio, audio } from "./audio/index.ts"
@@ -28,19 +36,50 @@ import { makeSettings } from "./hud/settings.ts"
 import { element, step, titleReady } from "./hud/title.ts"
 import { holdLandscape, makeTouchControls, withTouch } from "./hud/touch.ts"
 import { groundY, terrainY } from "./render/ground.ts"
-import { blend, Effects, makeEffects, makeRegistries, People, render, RenderClock, Vehicles } from "./render/index.ts"
+import {
+  blend,
+  Effects,
+  makeEffects,
+  makeRegistries,
+  People,
+  render,
+  RenderClock,
+  Vehicles,
+} from "./render/index.ts"
 import { PALETTE } from "./render/palette.ts"
-import { followSun, PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
+import {
+  followSun,
+  PixelView,
+  QUARTER,
+  turnToward,
+  WIDEST_ZOOM,
+  zoomFor,
+} from "./render/pipeline.ts"
 import { World } from "./render/world.ts"
+import {
+  bindings,
+  Game,
+  HandlingView,
+  KeyboardInput,
+  makeRuntime,
+  PlayerView,
+  SetHandling,
+  setup,
+  STEP,
+  update,
+} from "./sim/index.ts"
 import { mapCover } from "./sim/map/cover.ts"
 import { heightAt } from "./sim/map/index.ts"
-import { bindings, Game, HandlingView, KeyboardInput, makeRuntime, PlayerView, SetHandling, setup, STEP, update } from "./sim/index.ts"
 import { LOOK_AHEAD } from "./sim/view.ts"
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")
 if (canvas === null) throw new Error("index.html lacks canvas#game")
 
-const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" })
+const renderer = new WebGLRenderer({
+  canvas,
+  antialias: false,
+  powerPreference: "high-performance",
+})
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = BasicShadowMap
 renderer.setClearColor(PALETTE.forestDark)
@@ -72,7 +111,8 @@ const reach = () => Math.hypot(view.view.x, view.view.y) / 2 / WIDEST_ZOOM
 /** Milliseconds per frame spent building chunks (at least one chunk is built when any is missing). */
 const STREAM_BUDGET_MS = 4
 // The page's box, not the window: a phone held upright lays the page out sideways (hud.css).
-const resize = () => view.resize(document.body.clientWidth, document.body.clientHeight, devicePixelRatio)
+const resize = () =>
+  view.resize(document.body.clientWidth, document.body.clientHeight, devicePixelRatio)
 resize()
 /** A resize clears the canvas, and behind the settings nothing is drawn: draw the frozen scene again (set once the settings exist). */
 let redrawPaused = (): void => {}
@@ -92,26 +132,35 @@ const onDpr = () => {
 dpr.addEventListener("change", onDpr, { once: true })
 
 const keyboard = Keyboard.actions(window, bindings)
-const pad = document.documentElement.classList.contains("touch") ? makeTouchControls(document, canvas) : undefined
+const pad = document.documentElement.classList.contains("touch")
+  ? makeTouchControls(document, canvas)
+  : undefined
 const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch, pad.shown)
 const renderClock = { alpha: 0 }
 const { people, vehicles } = makeRegistries(scene)
 const effects = makeEffects(scene)
 // The speaker starts its AudioContext on the first key, click or tap from here on: pressed while loading, or the one that dismisses the title card.
-const speaker = makeSpeaker(window, { ...VEHICLE_VOICES, ...WORLD_VOICES } satisfies Voices, { ...VEHICLE_SHOTS, ...WORLD_SHOTS } satisfies Shots)
+const speaker = makeSpeaker(
+  window,
+  { ...VEHICLE_VOICES, ...WORLD_VOICES } satisfies Voices,
+  { ...VEHICLE_SHOTS, ...WORLD_SHOTS } satisfies Shots,
+)
 const director = makeDirector(speaker)
 const made = makeRuntime({
   // `?seed=123` replays a world; otherwise every load is a new one.
-  seed: Number(new URLSearchParams(location.search).get("seed") ?? Math.floor(Math.random() * 2 ** 32)) >>> 0,
+  seed:
+    Number(
+      new URLSearchParams(location.search).get("seed") ?? Math.floor(Math.random() * 2 ** 32),
+    ) >>> 0,
   services: Game.Runtime.services(
     Game.Runtime.service(KeyboardInput, controls),
     Game.Runtime.service(People, people),
     Game.Runtime.service(Vehicles, vehicles),
     Game.Runtime.service(RenderClock, renderClock),
     Game.Runtime.service(Effects, effects),
-    Game.Runtime.service(Audio, director)
+    Game.Runtime.service(Audio, director),
   ),
-  ...(import.meta.env.DEV ? { debug: { hostClock: BrowserHostClock.make(window) } } : {})
+  ...(import.meta.env.DEV ? { debug: { hostClock: BrowserHostClock.make(window) } } : {}),
 })
 if (!made.ok) throw new Error(`runtime: ${JSON.stringify(made.error)}`)
 const runtime = made.value
@@ -123,7 +172,10 @@ const handling = makeHandlingStore({
   read: () => runtime.inspect(HandlingView),
   set: (key, value) => runtime.send(SetHandling, { key, value }),
   // Read at each call: where the browser blocks storage, `localStorage` itself throws (the store catches it).
-  storage: { getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }
+  storage: {
+    getItem: (key) => localStorage.getItem(key),
+    setItem: (key, value) => localStorage.setItem(key, value),
+  },
 })
 const settings = makeSettings(document, handling)
 /** The full map and the settings pause the game. */
@@ -137,7 +189,13 @@ if (!listening.ok) throw new Error(`audio: ${JSON.stringify(listening.error)}`)
 await step(document, "Building the first view", 0.97)
 // Build everything the first frame shows now, so nothing pops in at the start.
 const spawn = runtime.inspect(PlayerView)
-if (spawn !== undefined) world.update(new Vector3(spawn.pose.x, groundY(spawn.pose.x, spawn.pose.y), -spawn.pose.y), spawn.turns * QUARTER, reach(), Infinity)
+if (spawn !== undefined)
+  world.update(
+    new Vector3(spawn.pose.x, groundY(spawn.pose.x, spawn.pose.y), -spawn.pose.y),
+    spawn.turns * QUARTER,
+    reach(),
+    Infinity,
+  )
 
 const camera = { x: 0, y: 0, elevation: 0, placed: false, zoom: 8 }
 // The view swings through each quarter turn, or jumps when the player asks for less motion.
@@ -157,15 +215,24 @@ const draw = (frame: FixedLoop.Frame): void => {
   const ease = camera.placed ? 1 - Math.exp(-5 * dt) : 1
   camera.x += (x + lead.x - camera.x) * ease
   camera.y += (y + lead.y - camera.y) * ease
-  camera.elevation += (groundY(x, y, camera.placed ? camera.elevation : undefined) - camera.elevation) * ease
+  camera.elevation +=
+    (groundY(x, y, camera.placed ? camera.elevation : undefined) - camera.elevation) * ease
   view.focus.set(camera.x, camera.elevation, -camera.y)
   const yaw = player.turns * QUARTER
   view.yaw = camera.placed && !reduceMotion.matches ? turnToward(view.yaw, yaw, dt) : yaw
   camera.placed = true
   const zoom = (camera.zoom = zoomFor(player.vehicle?.speed, camera.zoom))
-  view.texelsPerMetre += Math.abs(zoom - view.texelsPerMetre) < 0.01 ? zoom - view.texelsPerMetre : (zoom - view.texelsPerMetre) * (1 - Math.exp(-3 * dt))
+  view.texelsPerMetre +=
+    Math.abs(zoom - view.texelsPerMetre) < 0.01
+      ? zoom - view.texelsPerMetre
+      : (zoom - view.texelsPerMetre) * (1 - Math.exp(-3 * dt))
   toSun.copy(HOME_SUN).applyAxisAngle(Object3D.DEFAULT_UP, view.yaw)
-  followSun(sun, view.focus, toSun, view.shadowFit(toSun, (gx, gz) => terrainY(gx, -gz)))
+  followSun(
+    sun,
+    view.focus,
+    toSun,
+    view.shadowFit(toSun, (gx, gz) => terrainY(gx, -gz)),
+  )
   world.update(view.focus, view.yaw, reach(), STREAM_BUDGET_MS)
   view.render(scene)
   hud.update(player, x, y, angle, view.yaw)
@@ -190,7 +257,7 @@ const loop = FixedLoop.start({
     speaker.pause(paused())
     if (!paused()) draw(frame)
   },
-  onFailure: (failure) => console.error("loop stopped", failure)
+  onFailure: (failure) => console.error("loop stopped", failure),
 })
 if (!loop.ok) throw new Error(`loop: ${JSON.stringify(loop.error)}`)
 // Before titleReady: the key that dismisses the card finds it still up, so it opens nothing.
@@ -199,7 +266,7 @@ routeOverlayKeys(window, {
   open: () => ({ title: !title.hidden, map: hud.mapOpen(), settings: settings.open() }),
   toggleMap: hud.toggleMap,
   closeMap: hud.closeMap,
-  toggleSettings: settings.toggle
+  toggleSettings: settings.toggle,
 })
 if (pad !== undefined) holdLandscape(window)
 titleReady(window)
@@ -209,14 +276,27 @@ titleReady(window)
 if (import.meta.env.DEV) {
   Object.assign(window, {
     gta: {
-      renderer, view, scene, world, effects, heightAt, player: () => runtime.inspect(PlayerView), handling: () => runtime.inspect(HandlingView),
-      audio: { speaker, level: speaker.level, context: speaker.context }
-    }
+      renderer,
+      view,
+      scene,
+      world,
+      effects,
+      heightAt,
+      player: () => runtime.inspect(PlayerView),
+      handling: () => runtime.inspect(HandlingView),
+      audio: { speaker, level: speaker.level, context: speaker.context },
+    },
   })
   const debug = runtime.debug
-  const monitor = debug === undefined
-    ? Promise.resolve()
-    : import("@typeonce/ritmo-devtools").then(({ Monitor }) => void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }))
+  const monitor =
+    debug === undefined
+      ? Promise.resolve()
+      : import("@typeonce/ritmo-devtools").then(
+          ({ Monitor }) =>
+            void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }),
+        )
   // After the monitor: the menu's button is anchored beside the monitor's, which must come first in the page.
-  void monitor.then(() => import("./hud/debug.ts")).then(({ mountDebugMenu }) => mountDebugMenu({ window, store: handling }))
+  void monitor
+    .then(() => import("./hud/debug.ts"))
+    .then(({ mountDebugMenu }) => mountDebugMenu({ window, store: handling }))
 }

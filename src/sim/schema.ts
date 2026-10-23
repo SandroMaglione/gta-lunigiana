@@ -25,14 +25,19 @@ export const PrevPose = Descriptor.ConstructedComponent(PoseCodec)("Lunigiana/Pr
 export type PoseValue = Descriptor.Descriptor.Value<typeof Pose>
 /** World-frame velocity (m/s) and yaw rate (rad/s). */
 export const Motion = Descriptor.ConstructedComponent(
-  Decode.struct({ vx: Decode.number, vy: Decode.number, spin: Decode.number })
+  Decode.struct({ vx: Decode.number, vy: Decode.number, spin: Decode.number }),
 )("Lunigiana/Motion")
 
 /** The one human-controlled person. */
 export const Player = Descriptor.Tag("Lunigiana/Player")
 /** A person's look, as sRGB hex colours. */
 export const Person = Descriptor.ConstructedComponent(
-  Decode.struct({ skin: Decode.integer, hair: Decode.integer, shirt: Decode.integer, pants: Decode.integer })
+  Decode.struct({
+    skin: Decode.integer,
+    hair: Decode.integer,
+    shirt: Decode.integer,
+    pants: Decode.integer,
+  }),
 )("Lunigiana/Person", { immutable: true })
 /** A Person value. */
 export type Look = Descriptor.Descriptor.Value<typeof Person>
@@ -41,18 +46,24 @@ export type Look = Descriptor.Descriptor.Value<typeof Person>
  * `until`; `blocked` counts the steps it has been getting nowhere.
  */
 export const Pedestrian = Descriptor.ConstructedComponent(
-  Decode.struct({ mood: Decode.literal("walk", "flee"), until: Decode.integer, blocked: Decode.integer })
+  Decode.struct({
+    mood: Decode.literal("walk", "flee"),
+    until: Decode.integer,
+    blocked: Decode.integer,
+  }),
 )("Lunigiana/Pedestrian")
 /** Knocked to the ground until step `until` (player or pedestrian). */
-export const Down = Descriptor.ConstructedComponent(Decode.struct({ until: Decode.integer }))("Lunigiana/Down")
+export const Down = Descriptor.ConstructedComponent(Decode.struct({ until: Decode.integer }))(
+  "Lunigiana/Down",
+)
 
 /** A car, van or truck of one model and paint colour. */
 export const Vehicle = Descriptor.ConstructedComponent(
-  Decode.struct({ model: Decode.literal(...VEHICLE_MODELS), color: Decode.integer })
+  Decode.struct({ model: Decode.literal(...VEHICLE_MODELS), color: Decode.integer }),
 )("Lunigiana/Vehicle", { immutable: true })
 /** What the vehicle's driver is doing this step: throttle and steer in [-1, 1]. */
 export const CarInput = Descriptor.ConstructedComponent(
-  Decode.struct({ throttle: Decode.number, steer: Decode.number, handbrake: Decode.boolean })
+  Decode.struct({ throttle: Decode.number, steer: Decode.number, handbrake: Decode.boolean }),
 )("Lunigiana/CarInput")
 /**
  * A vehicle's body beyond its planar Pose and Motion: the elevation of its centre of mass (m a.s.l.)
@@ -62,9 +73,16 @@ export const CarInput = Descriptor.ConstructedComponent(
  */
 export const Chassis = Descriptor.ConstructedComponent(
   Decode.struct({
-    z: Decode.number, vz: Decode.number, pitch: Decode.number, pitchRate: Decode.number, roll: Decode.number, rollRate: Decode.number,
-    steer: Decode.number, gear: Decode.integer, shiftUntil: Decode.integer
-  })
+    z: Decode.number,
+    vz: Decode.number,
+    pitch: Decode.number,
+    pitchRate: Decode.number,
+    roll: Decode.number,
+    rollRate: Decode.number,
+    steer: Decode.number,
+    gear: Decode.integer,
+    shiftUntil: Decode.integer,
+  }),
 )("Lunigiana/Chassis")
 /** A Chassis value. */
 export type ChassisValue = Descriptor.Descriptor.Value<typeof Chassis>
@@ -76,7 +94,7 @@ export const Traffic = Descriptor.Tag("Lunigiana/Traffic")
  * centreline in metres (positive = right of travel).
  */
 export const Route = Descriptor.ConstructedComponent(
-  Decode.struct({ edge: Decode.integer, forward: Decode.boolean, side: Decode.number })
+  Decode.struct({ edge: Decode.integer, forward: Decode.boolean, side: Decode.number }),
 )("Lunigiana/Route")
 /** A Route value. */
 export type RouteValue = Descriptor.Descriptor.Value<typeof Route>
@@ -86,13 +104,19 @@ export type RouteValue = Descriptor.Descriptor.Value<typeof Route>
  * until which it reverses to get unstuck, and how many times it has had to.
  */
 export const Autopilot = Descriptor.ConstructedComponent(
-  Decode.struct({ next: Decode.integer, nextForward: Decode.boolean, stuck: Decode.integer, reverseUntil: Decode.integer, tries: Decode.integer })
+  Decode.struct({
+    next: Decode.integer,
+    nextForward: Decode.boolean,
+    stuck: Decode.integer,
+    reverseUntil: Decode.integer,
+    tries: Decode.integer,
+  }),
 )("Lunigiana/Autopilot")
 /** A vehicle the player has already entered once (it scored a theft). */
 export const Stolen = Descriptor.Tag("Lunigiana/Stolen")
 /** The player is in this vehicle. */
 export const Driving = Descriptor.ConstructedComponent(
-  Decode.struct({ vehicle: Decode.handle(Root, Vehicle) })
+  Decode.struct({ vehicle: Decode.handle(Root, Vehicle) }),
 )("Lunigiana/Driving")
 
 /** Simulation time. */
@@ -101,26 +125,44 @@ export const Time = Clock.resource("Lunigiana/Time", STEP)
 export const Rng = Descriptor.ConstructedResource(Random)("Lunigiana/Rng")
 /** Counters shown on the HUD. */
 export const Score = Descriptor.ConstructedResource(
-  Decode.struct({ stolen: Decode.integer, knocked: Decode.integer })
+  Decode.struct({ stolen: Decode.integer, knocked: Decode.integer }),
 )("Lunigiana/Score")
 /**
  * Net quarter turns of the camera to the left of its home seat (any integer, mod 4 is the heading;
  * see `screenAxes`). Saved: the on-foot keys depend on it.
  */
-export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))("Lunigiana/View")
+export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))(
+  "Lunigiana/View",
+)
 /**
  * Every vehicle's handling knobs (`HANDLING` in handling.ts): multipliers, shares and switches over the
  * vehicles' real data, at `DEFAULT_HANDLING` in a new game. Saved, so a run replays with the handling
  * it was played with; set only through `SetHandling`.
  */
-export const Handling = Descriptor.ConstructedResource(Decode.struct({
-  grip: Decode.number, looseGround: Decode.number, power: Decode.number, brakes: Decode.number, drag: Decode.number, abs: Decode.number,
-  stability: Decode.number, selfRighting: Decode.number,
-  traction: Decode.number, steering: Decode.number, steeringRate: Decode.number, weightTransfer: Decode.number, antiRoll: Decode.number,
-  stiffness: Decode.number, damping: Decode.number
-} satisfies Record<HandlingKey, typeof Decode.number>))("Lunigiana/Handling")
+export const Handling = Descriptor.ConstructedResource(
+  Decode.struct({
+    grip: Decode.number,
+    looseGround: Decode.number,
+    power: Decode.number,
+    brakes: Decode.number,
+    drag: Decode.number,
+    abs: Decode.number,
+    stability: Decode.number,
+    selfRighting: Decode.number,
+    traction: Decode.number,
+    steering: Decode.number,
+    steeringRate: Decode.number,
+    weightTransfer: Decode.number,
+    antiRoll: Decode.number,
+    stiffness: Decode.number,
+    damping: Decode.number,
+  } satisfies Record<HandlingKey, typeof Decode.number>),
+)("Lunigiana/Handling")
 /** A request to set one handling knob, sent by the host's handling store (the settings, the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
-export const SetHandling = Descriptor.Event<{ readonly key: HandlingKey; readonly value: number }>()("Lunigiana/SetHandling")
+export const SetHandling = Descriptor.Event<{
+  readonly key: HandlingKey
+  readonly value: number
+}>()("Lunigiana/SetHandling")
 
 /**
  * A vehicle hit something this step: a wall, another vehicle, a person (`other`, their entity ids)
@@ -158,7 +200,12 @@ export const Skid = Descriptor.Event<{
   readonly step: number
 }>()("Lunigiana/Skid")
 /** An AI driver held up for a while sounds the horn, once per stuck episode. Not saved; the audio schedule plays it. */
-export const Honk = Descriptor.Event<{ readonly car: number; readonly model: VehicleModel; readonly x: number; readonly y: number }>()("Lunigiana/Honk")
+export const Honk = Descriptor.Event<{
+  readonly car: number
+  readonly model: VehicleModel
+  readonly x: number
+  readonly y: number
+}>()("Lunigiana/Honk")
 
 /** Player controls. Keys are host detail, but they live here so `Controls` has one home. */
 export const bindings = {
@@ -172,26 +219,43 @@ export const bindings = {
   turnLeft: [Keyboard.code("KeyQ")],
   turnRight: [Keyboard.code("KeyE")],
   // Only the audio host hears it: no gameplay effect.
-  horn: [Keyboard.code("KeyH")]
+  horn: [Keyboard.code("KeyH")],
 } as const
 type Controls = Keyboard.Snapshot<typeof bindings>
 
 /** This step's controls, copied from the KeyboardInput service by InputCapture. Not saved. */
 export const Input = Descriptor.TransientResource<Controls>()("Lunigiana/Input")
 /** Any snapshot() source of Controls: live keyboard, scripted timeline, replay playback. */
-export const KeyboardInput = Descriptor.Service<InputCapture.Source<Controls>>()("Lunigiana/Keyboard")
+export const KeyboardInput =
+  Descriptor.Service<InputCapture.Source<Controls>>()("Lunigiana/Keyboard")
 
 export const Game = Schema.bind(
   Schema.fragment({
-    components: { Pose, PrevPose, Motion, Player, Person, Pedestrian, Down, Vehicle, CarInput, Chassis, Traffic, Route, Driving, Autopilot, Stolen },
+    components: {
+      Pose,
+      PrevPose,
+      Motion,
+      Player,
+      Person,
+      Pedestrian,
+      Down,
+      Vehicle,
+      CarInput,
+      Chassis,
+      Traffic,
+      Route,
+      Driving,
+      Autopilot,
+      Stolen,
+    },
     resources: { Time, Rng, Score, View, Handling, Input },
     events: { Impact, Honk, Skid, SetHandling },
     requires: [
       Schema.requires(Player, Pose, PrevPose, Motion, Person),
       Schema.requires(Pedestrian, Pose, PrevPose, Motion, Person, Route),
       Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput, Chassis),
-      Schema.requires(Traffic, Vehicle, Route, Autopilot)
-    ]
+      Schema.requires(Traffic, Vehicle, Route, Autopilot),
+    ],
   }),
-  Root
+  Root,
 )

@@ -8,14 +8,25 @@ import type { Surface } from "../../sim/map/surface.ts"
 import type { SkidValue } from "../marks.ts"
 import { PUFF, Smoke } from "../smoke.ts"
 
-const skid = (step: number, surface: Surface = "asphalt", slip = 10, amount = 1): SkidValue =>
-  ({ car: 1, wheel: 0, x: 0, y: 0, z: 300, slip, amount, surface, step })
+const skid = (step: number, surface: Surface = "asphalt", slip = 10, amount = 1): SkidValue => ({
+  car: 1,
+  wheel: 0,
+  x: 0,
+  y: 0,
+  z: 300,
+  slip,
+  amount,
+  surface,
+  step,
+})
 /** A fixed sequence: puffs land the same way every run. */
 const steady = () => 0.5
 
 /** Puff `i`'s position and scale. */
 const puff = (smoke: Smoke, i: number) => {
-  const m = new Matrix4(), at = new Vector3(), size = new Vector3()
+  const m = new Matrix4(),
+    at = new Vector3(),
+    size = new Vector3()
   smoke.mesh.getMatrixAt(i, m)
   m.decompose(at, new Quaternion(), size)
   return { at, size: size.x }
@@ -29,7 +40,10 @@ test("puffs come in proportion to how hard the tyre slides, and grass hardly smo
     return smoke.mesh.count
   }
   const full = count("asphalt", 10, 1)
-  assert.ok(Math.abs(full - PUFF.asphalt.rate * 10) <= 1, `${full} puffs from a second of a 10 m/s slide`)
+  assert.ok(
+    Math.abs(full - PUFF.asphalt.rate * 10) <= 1,
+    `${full} puffs from a second of a 10 m/s slide`,
+  )
   assert.ok(Math.abs(count("asphalt", 10, 0.5) - full / 2) <= 1, "half the amount, half the puffs")
   assert.ok(Math.abs(count("asphalt", 5, 1) - full / 2) <= 1, "half the slip, half the puffs")
   assert.ok(count("grass", 10, 1) < full / 4, "grass: little or none")
@@ -44,8 +58,13 @@ test("a puff grows, rises and shrinks away within two seconds of sim time", () =
     smoke.update(born + t)
     return smoke.mesh.count === 0 ? undefined : puff(smoke, 0)
   }
-  const early = at(0.02)!, peak = at(0.3)!, late = at(1)!
-  assert.ok(early.size < peak.size && late.size < peak.size, `sizes ${early.size}, ${peak.size}, ${late.size}`)
+  const early = at(0.02)!,
+    peak = at(0.3)!,
+    late = at(1)!
+  assert.ok(
+    early.size < peak.size && late.size < peak.size,
+    `sizes ${early.size}, ${peak.size}, ${late.size}`,
+  )
   assert.ok(peak.at.y > early.at.y && late.at.y > peak.at.y, "it rises")
   assert.equal(at(2), undefined, "gone after two seconds")
 })
@@ -65,11 +84,20 @@ test("smoke is burnt-rubber grey on asphalt, dust is tan on dirt", () => {
     const smoke = new Smoke(steady)
     smoke.add(skid(1, surface, 60, 1))
     smoke.update(STEP.dt)
-    const color = new Color(), hsl = { h: 0, s: 0, l: 0 }
+    const color = new Color(),
+      hsl = { h: 0, s: 0, l: 0 }
     smoke.mesh.getColorAt(0, color)
     assert.equal(color.getHex(), PUFF[surface].hex, surface)
     color.getHSL(hsl)
-    if (surface === "asphalt") assert.ok(hsl.s < 0.15 && hsl.l > 0.4, `asphalt smoke: saturation ${hsl.s}, lightness ${hsl.l}`)
-    else assert.ok(hsl.s > 0.3 && hsl.h > 20 / 360 && hsl.h < 50 / 360, `dirt dust: hue ${hsl.h * 360}°, saturation ${hsl.s}`)
+    if (surface === "asphalt")
+      assert.ok(
+        hsl.s < 0.15 && hsl.l > 0.4,
+        `asphalt smoke: saturation ${hsl.s}, lightness ${hsl.l}`,
+      )
+    else
+      assert.ok(
+        hsl.s > 0.3 && hsl.h > 20 / 360 && hsl.h < 50 / 360,
+        `dirt dust: hue ${hsl.h * 360}°, saturation ${hsl.s}`,
+      )
   }
 })

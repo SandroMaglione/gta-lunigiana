@@ -20,7 +20,9 @@ export const terrainNodeY = (i: number, j: number): number => yOf(terrainNodeZ(i
 export const terrainY = (x: number, y: number): number => yOf(terrainZ(x, y))
 
 /** Surface y of a road whose profile is `z` (m a.s.l.) at (x, y): at-grade roads never dip under the terrain mesh. */
-export const surfaceY = (z: number, x: number, y: number, lift: number, lifted: boolean): number => yOf(roadZ(z, x, y, lift, lifted))
+export const surfaceY = (z: number, x: number, y: number, lift: number, lifted: boolean): number =>
+  yOf(roadZ(z, x, y, lift, lifted))
 
 /** Where an actor at (x, y) stands in render y, keeping to the level nearest `near` (its previous render height); see `groundZ`. */
-export const groundY = (x: number, y: number, near?: number): number => yOf(groundZ(x, y, near === undefined ? undefined : near + ELEVATION_BASE))
+export const groundY = (x: number, y: number, near?: number): number =>
+  yOf(groundZ(x, y, near === undefined ? undefined : near + ELEVATION_BASE))

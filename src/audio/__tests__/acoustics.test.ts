@@ -2,25 +2,57 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { screenAxes } from "../../sim/view.ts"
-import { airCutoff, audibility, diffraction, doppler, foliageLoss, groundLoss, lineLevel, mixGain, panOf, sumDb } from "../acoustics.ts"
+import {
+  airCutoff,
+  audibility,
+  diffraction,
+  doppler,
+  foliageLoss,
+  groundLoss,
+  lineLevel,
+  mixGain,
+  panOf,
+  sumDb,
+} from "../acoustics.ts"
 import { LEVELS } from "../director/levels.ts"
 
 const near = (actual: number, expected: number, tolerance: number, what = "") =>
-  assert.ok(Math.abs(actual - expected) <= tolerance, `${what} ${actual} is not ${expected} ± ${tolerance}`)
+  assert.ok(
+    Math.abs(actual - expected) <= tolerance,
+    `${what} ${actual} is not ${expected} ± ${tolerance}`,
+  )
 
 test("a finite line source matches the exact table for a 200 m reach, opposite its midpoint", () => {
   const reach = [{ ax: -100, ay: 0, bx: 100, by: 0, lw: 0 }]
-  const table = [[1, -6.1], [5, -13.2], [20, -19.6], [50, -24.5], [64, -26.0], [200, -34.3], [1000, -48.0]] as const
+  const table = [
+    [1, -6.1],
+    [5, -13.2],
+    [20, -19.6],
+    [50, -24.5],
+    [64, -26.0],
+    [200, -34.3],
+    [1000, -48.0],
+  ] as const
   for (const [d, level] of table) near(lineLevel(reach, 0, d).level, level, 0.1, `d = ${d} m:`)
   // Incoherent pieces add up to the whole, and the nearest point is on the line.
-  const pieces = [{ ax: -100, ay: 0, bx: 30, by: 0, lw: 0 }, { ax: 30, ay: 0, bx: 100, by: 0, lw: 0 }]
+  const pieces = [
+    { ax: -100, ay: 0, bx: 30, by: 0, lw: 0 },
+    { ax: 30, ay: 0, bx: 100, by: 0, lw: 0 },
+  ]
   near(lineLevel(pieces, 10, 20).level, lineLevel(reach, 10, 20).level, 1e-9)
   assert.deepEqual(lineLevel(pieces, 10, 20), { ...lineLevel(pieces, 10, 20), x: 10, y: 0 })
   assert.equal(lineLevel([], 0, 0).level, -Infinity)
 })
 
 test("air absorption: the table's cutoffs, falling monotonically with distance, open within a few metres", () => {
-  for (const [r, f] of [[10, 15100], [25, 9100], [100, 4300], [500, 1500], [2000, 315]] as const) near(airCutoff(r), f, 1, `${r} m:`)
+  for (const [r, f] of [
+    [10, 15100],
+    [25, 9100],
+    [100, 4300],
+    [500, 1500],
+    [2000, 315],
+  ] as const)
+    near(airCutoff(r), f, 1, `${r} m:`)
   assert.equal(airCutoff(2), 20000)
   for (let r = 1; r < 3000; r *= 1.1) assert.ok(airCutoff(r * 1.1) <= airCutoff(r), `${r} m`)
 })
@@ -55,7 +87,10 @@ test("ground, foliage and masking follow ISO 9613-2 and the culling rule", () =>
   near(groundLoss(50, 1.5), 3.4, 0.05)
   near(groundLoss(200, 10), 2.9, 0.05)
   assert.deepEqual([5, 15, 100, 500].map(foliageLoss), [0, 1, 6, 12])
-  assert.deepEqual([40, 30, 25, 10].map((level) => audibility(level, 35)), [1, 1, 0.5, 0])
+  assert.deepEqual(
+    [40, 30, 25, 10].map((level) => audibility(level, 35)),
+    [1, 1, 0.5, 0],
+  )
 })
 
 test("mix calibration: a running step on stone from 1 m plays at gain 1, levels add as energy", () => {

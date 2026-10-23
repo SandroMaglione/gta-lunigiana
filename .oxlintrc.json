@@ -15,13 +15,33 @@
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
         "ritmo/no-infinity-in-simulation-data": "error",
-        "no-restricted-imports": ["error", { "patterns": [{ "group": ["**/render/**", "**/hud/**", "**/audio/**", "**/main.ts"], "message": "src/sim is headless: render/HUD/audio/host code imports the sim, never the reverse" }] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/render/**", "**/hud/**", "**/audio/**", "**/main.ts"],
+                "message": "src/sim is headless: render/HUD/audio/host code imports the sim, never the reverse"
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/audio/**"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [{ "group": ["**/hud/**", "**/main.ts"], "message": "src/audio is host code beside render: the HUD and main wire it, never the reverse" }] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/hud/**", "**/main.ts"],
+                "message": "src/audio is host code beside render: the HUD and main wire it, never the reverse"
+              }
+            ]
+          }
+        ]
       }
     }
   ]

@@ -15,14 +15,33 @@ import { forwardSpeed } from "../sim/body.ts"
 import { hullDown, overturned } from "../sim/chassis.ts"
 import { engineRevs } from "../sim/drivetrain.ts"
 import {
-  CarInput, Chassis, Down, Driving, Game, Honk, Impact, Input, Motion, Pedestrian, Person, Player, Pose, Skid, Time, Traffic, Vehicle, View
+  CarInput,
+  Chassis,
+  Down,
+  Driving,
+  Game,
+  Honk,
+  Impact,
+  Input,
+  Motion,
+  Pedestrian,
+  Person,
+  Player,
+  Pose,
+  Skid,
+  Time,
+  Traffic,
+  Vehicle,
+  View,
 } from "../sim/index.ts"
 import { groundZ } from "../sim/map/ground.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import type { Body, Happening, Heard, HeardPerson, HeardVehicle, Skidding, Zone } from "./types.ts"
 
 /** The host's ears: gets one `Heard` per frame while there is a player. */
-export const Audio = Descriptor.Service<{ readonly hear: (heard: Heard) => void }>()("Lunigiana/Audio")
+export const Audio = Descriptor.Service<{ readonly hear: (heard: Heard) => void }>()(
+  "Lunigiana/Audio",
+)
 
 /** Below this speed (m/s) and rate (rad/s), planar or of the body on its springs, a vehicle nobody drives is silent. */
 const STILL = 0.01
@@ -32,106 +51,196 @@ const AIRBORNE = 0.3
 /** The face of a body that struck the ground. */
 type Face = NonNullable<Descriptor.Descriptor.Value<typeof Impact>["face"]>
 /** The zone of the body a ground hit lands on, by the face that struck: the roof is heard as a side (no bumper, no airbag; the glass goes). */
-const FACE_ZONE = { under: "under", roof: "side", side: "side", front: "front", rear: "rear" } as const satisfies Record<Face, Zone>
+const FACE_ZONE = {
+  under: "under",
+  roof: "side",
+  side: "side",
+  front: "front",
+  rear: "rear",
+} as const satisfies Record<Face, Zone>
 
 /** Where (x, y) lies on a vehicle of `model` at `pose`: by the face of its L × W box it is nearest in proportion, the front, the rear or a side. */
-const zoneOf = (model: VehicleModel, pose: { readonly x: number; readonly y: number; readonly angle: number }, x: number, y: number): Zone => {
-  const { length, width } = VEHICLES[model], dx = x - pose.x, dy = y - pose.y, fx = Math.cos(pose.angle), fy = Math.sin(pose.angle)
-  const along = (dx * fx + dy * fy) / length, across = Math.abs(dy * fx - dx * fy) / width
+const zoneOf = (
+  model: VehicleModel,
+  pose: { readonly x: number; readonly y: number; readonly angle: number },
+  x: number,
+  y: number,
+): Zone => {
+  const { length, width } = VEHICLES[model],
+    dx = x - pose.x,
+    dy = y - pose.y,
+    fx = Math.cos(pose.angle),
+    fy = Math.sin(pose.angle)
+  const along = (dx * fx + dy * fy) / length,
+    across = Math.abs(dy * fx - dx * fy) / width
   return along > across ? "front" : -along > across ? "rear" : "side"
 }
 
-const Hear = Game.System("Lunigiana/Hear", {
-  queries: {
-    player: Game.Query({ selection: { pose: Game.Query.read(Pose), motion: Game.Query.read(Motion), driving: Game.Query.optional(Driving) }, with: [Player] }),
-    vehicles: Game.Query({
-      selection: {
-        pose: Game.Query.read(Pose),
-        motion: Game.Query.read(Motion),
-        vehicle: Game.Query.read(Vehicle),
-        input: Game.Query.read(CarInput),
-        chassis: Game.Query.read(Chassis),
-        traffic: Game.Query.optional(Traffic)
+const Hear = Game.System(
+  "Lunigiana/Hear",
+  {
+    queries: {
+      player: Game.Query({
+        selection: {
+          pose: Game.Query.read(Pose),
+          motion: Game.Query.read(Motion),
+          driving: Game.Query.optional(Driving),
+        },
+        with: [Player],
+      }),
+      vehicles: Game.Query({
+        selection: {
+          pose: Game.Query.read(Pose),
+          motion: Game.Query.read(Motion),
+          vehicle: Game.Query.read(Vehicle),
+          input: Game.Query.read(CarInput),
+          chassis: Game.Query.read(Chassis),
+          traffic: Game.Query.optional(Traffic),
+        },
+      }),
+      people: Game.Query({
+        selection: {
+          pose: Game.Query.read(Pose),
+          motion: Game.Query.read(Motion),
+          pedestrian: Game.Query.optional(Pedestrian),
+          down: Game.Query.optional(Down),
+          player: Game.Query.optional(Player),
+        },
+        with: [Person],
+        without: [Driving],
+      }),
+    },
+    resources: {
+      input: Game.System.readResource(Input),
+      view: Game.System.readResource(View),
+      time: Game.System.readResource(Time),
+    },
+    events: {
+      impacts: Game.System.readEvent(Impact),
+      honks: Game.System.readEvent(Honk),
+      skids: Game.System.readEvent(Skid),
+    },
+    services: { audio: Game.System.service(Audio) },
+  },
+  ({ queries, resources, events, services }) => {
+    const found = queries.player.singleOptional()
+    if (!found.ok || found.value === undefined) return
+    const me = found.value.data
+    const pose = me.pose.get(),
+      motion = me.motion.get()
+    const driving = me.driving.value()
+    const car = driving === undefined ? undefined : Game.Entity.id(driving.vehicle)
+    const { step } = resources.time.get()
+    // Each car's wheels sliding since the last frame: the most past grip, the fastest, and the surface under the one furthest past.
+    const skids = new Map<number, Skidding>()
+    for (const skid of events.skids.all()) {
+      const was = skids.get(skid.car)
+      skids.set(skid.car, {
+        amount: Math.max(skid.amount, was?.amount ?? 0),
+        slip: Math.max(skid.slip, was?.slip ?? 0),
+        surface: was === undefined || skid.amount > was.amount ? skid.surface : was.surface,
+      })
+    }
+    // Every vehicle's body, parked ones too: a struck parked car is not heard otherwise.
+    const bodies = new Map<
+      number,
+      {
+        readonly model: VehicleModel
+        readonly x: number
+        readonly y: number
+        readonly angle: number
       }
-    }),
-    people: Game.Query({
-      selection: {
-        pose: Game.Query.read(Pose),
-        motion: Game.Query.read(Motion),
-        pedestrian: Game.Query.optional(Pedestrian),
-        down: Game.Query.optional(Down),
-        player: Game.Query.optional(Player)
+    >()
+    const vehicles = queries.vehicles.each().flatMap(({ entity, data }): Array<HeardVehicle> => {
+      const at = data.pose.get(),
+        v = data.motion.get(),
+        chassis = data.chassis.get(),
+        { model } = data.vehicle.get()
+      bodies.set(entity.id, { model, ...at })
+      const mine = entity.id === car
+      const running = mine || data.traffic.present
+      const moving = v.vx * v.vx + v.vy * v.vy > STILL * STILL || v.spin !== 0
+      const shaking =
+        Math.max(Math.abs(chassis.vz), Math.abs(chassis.pitchRate), Math.abs(chassis.rollRate)) >
+        STILL
+      if (!running && !moving && !shaking) return []
+      const spec = VEHICLES[model],
+        revs = engineRevs(spec, chassis, forwardSpeed(v, at.angle), data.input.get().throttle, step)
+      const lift = chassis.z - groundZ(at.x, at.y, chassis.z - spec.cg) - spec.cg,
+        skid = skids.get(entity.id)
+      return [
+        {
+          id: entity.id,
+          model,
+          x: at.x,
+          y: at.y,
+          z: chassis.z,
+          angle: at.angle,
+          vx: v.vx,
+          vy: v.vy,
+          rpm: revs.rpm,
+          load: revs.load,
+          wheelsDown: !overturned(chassis) && lift < AIRBORNE,
+          hullDown: hullDown(model, at, chassis),
+          ...(skid === undefined ? {} : { skid }),
+          running,
+          mine,
+        },
+      ]
+    })
+    /** Vehicle `id`'s model and the zone of it a hit at (x, y) landed on (by the face that struck, for a ground hit); undefined once it is gone. */
+    const bodyAt = (id: number, x: number, y: number, face?: Face): Body | undefined => {
+      const found = bodies.get(id)
+      return found === undefined
+        ? undefined
+        : {
+            model: found.model,
+            zone: face === undefined ? zoneOf(found.model, found, x, y) : FACE_ZONE[face],
+          }
+    }
+    const people = queries.people.each().map(({ entity, data }): HeardPerson => {
+      const at = data.pose.get(),
+        v = data.motion.get()
+      return {
+        id: entity.id,
+        x: at.x,
+        y: at.y,
+        vx: v.vx,
+        vy: v.vy,
+        player: data.player.present,
+        fleeing: data.pedestrian.value()?.mood === "flee",
+        down: data.down.present,
+      }
+    })
+    const happenings: Array<Happening> = [
+      // A vehicle despawned since its hit is no longer heard.
+      ...events.impacts.all().flatMap((hit): Array<Happening> => {
+        const body = bodyAt(hit.car, hit.x, hit.y, hit.face),
+          otherBody =
+            hit.hit === "car" && hit.other !== undefined
+              ? bodyAt(hit.other, hit.x, hit.y)
+              : undefined
+        if (body === undefined || (hit.hit === "car" && otherBody === undefined)) return []
+        return [{ kind: "impact", ...hit, body, ...(otherBody === undefined ? {} : { otherBody }) }]
+      }),
+      ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk })),
+    ]
+    services.audio.hear({
+      listener: {
+        x: pose.x,
+        y: pose.y,
+        vx: motion.vx,
+        vy: motion.vy,
+        car,
+        turns: resources.view.get().turns,
       },
-      with: [Person],
-      without: [Driving]
+      vehicles,
+      people,
+      happenings,
+      horn: resources.input.get().horn.held,
     })
   },
-  resources: { input: Game.System.readResource(Input), view: Game.System.readResource(View), time: Game.System.readResource(Time) },
-  events: { impacts: Game.System.readEvent(Impact), honks: Game.System.readEvent(Honk), skids: Game.System.readEvent(Skid) },
-  services: { audio: Game.System.service(Audio) }
-}, ({ queries, resources, events, services }) => {
-  const found = queries.player.singleOptional()
-  if (!found.ok || found.value === undefined) return
-  const me = found.value.data
-  const pose = me.pose.get(), motion = me.motion.get()
-  const driving = me.driving.value()
-  const car = driving === undefined ? undefined : Game.Entity.id(driving.vehicle)
-  const { step } = resources.time.get()
-  // Each car's wheels sliding since the last frame: the most past grip, the fastest, and the surface under the one furthest past.
-  const skids = new Map<number, Skidding>()
-  for (const skid of events.skids.all()) {
-    const was = skids.get(skid.car)
-    skids.set(skid.car, {
-      amount: Math.max(skid.amount, was?.amount ?? 0), slip: Math.max(skid.slip, was?.slip ?? 0),
-      surface: was === undefined || skid.amount > was.amount ? skid.surface : was.surface
-    })
-  }
-  // Every vehicle's body, parked ones too: a struck parked car is not heard otherwise.
-  const bodies = new Map<number, { readonly model: VehicleModel; readonly x: number; readonly y: number; readonly angle: number }>()
-  const vehicles = queries.vehicles.each().flatMap(({ entity, data }): Array<HeardVehicle> => {
-    const at = data.pose.get(), v = data.motion.get(), chassis = data.chassis.get(), { model } = data.vehicle.get()
-    bodies.set(entity.id, { model, ...at })
-    const mine = entity.id === car
-    const running = mine || data.traffic.present
-    const moving = v.vx * v.vx + v.vy * v.vy > STILL * STILL || v.spin !== 0
-    const shaking = Math.max(Math.abs(chassis.vz), Math.abs(chassis.pitchRate), Math.abs(chassis.rollRate)) > STILL
-    if (!running && !moving && !shaking) return []
-    const spec = VEHICLES[model], revs = engineRevs(spec, chassis, forwardSpeed(v, at.angle), data.input.get().throttle, step)
-    const lift = chassis.z - groundZ(at.x, at.y, chassis.z - spec.cg) - spec.cg, skid = skids.get(entity.id)
-    return [{
-      id: entity.id, model, x: at.x, y: at.y, z: chassis.z, angle: at.angle, vx: v.vx, vy: v.vy, rpm: revs.rpm, load: revs.load,
-      wheelsDown: !overturned(chassis) && lift < AIRBORNE, hullDown: hullDown(model, at, chassis), ...(skid === undefined ? {} : { skid }), running, mine
-    }]
-  })
-  /** Vehicle `id`'s model and the zone of it a hit at (x, y) landed on (by the face that struck, for a ground hit); undefined once it is gone. */
-  const bodyAt = (id: number, x: number, y: number, face?: Face): Body | undefined => {
-    const found = bodies.get(id)
-    return found === undefined ? undefined : { model: found.model, zone: face === undefined ? zoneOf(found.model, found, x, y) : FACE_ZONE[face] }
-  }
-  const people = queries.people.each().map(({ entity, data }): HeardPerson => {
-    const at = data.pose.get(), v = data.motion.get()
-    return {
-      id: entity.id, x: at.x, y: at.y, vx: v.vx, vy: v.vy,
-      player: data.player.present, fleeing: data.pedestrian.value()?.mood === "flee", down: data.down.present
-    }
-  })
-  const happenings: Array<Happening> = [
-    // A vehicle despawned since its hit is no longer heard.
-    ...events.impacts.all().flatMap((hit): Array<Happening> => {
-      const body = bodyAt(hit.car, hit.x, hit.y, hit.face), otherBody = hit.hit === "car" && hit.other !== undefined ? bodyAt(hit.other, hit.x, hit.y) : undefined
-      if (body === undefined || (hit.hit === "car" && otherBody === undefined)) return []
-      return [{ kind: "impact", ...hit, body, ...(otherBody === undefined ? {} : { otherBody }) }]
-    }),
-    ...events.honks.all().map((honk) => ({ kind: "honk" as const, ...honk }))
-  ]
-  services.audio.hear({
-    listener: { x: pose.x, y: pose.y, vx: motion.vx, vy: motion.vy, car, turns: resources.view.get().turns },
-    vehicles,
-    people,
-    happenings,
-    horn: resources.input.get().horn.held
-  })
-})
+)
 
 /** The audio schedule, ticked once per animation frame after `render` (its first tick right after `setup`, so no event is missed). */
 export const audio = Game.Schedule(Hear)

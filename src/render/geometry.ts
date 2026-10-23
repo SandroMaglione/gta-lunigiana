@@ -11,7 +11,13 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js"
 /** The material every opaque static or actor mesh shares: vertex colours, flat Lambert. */
 export const solidMaterial = new MeshLambertMaterial({ vertexColors: true, flatShading: true })
 /** Ground decals: pulled towards the camera in depth so they never fight what they lie on. */
-export const decalMaterial = new MeshLambertMaterial({ vertexColors: true, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
+export const decalMaterial = new MeshLambertMaterial({
+  vertexColors: true,
+  flatShading: true,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -2,
+})
 
 const linearCache = new Map<number, readonly [number, number, number]>()
 /** Linear RGB of an sRGB hex colour (vertex colours are linear). */
@@ -32,9 +38,27 @@ export class Triangles {
   readonly color: Array<number> = []
 
   /** One triangle (three-world coordinates), counter-clockwise seen from its front. */
-  tri(ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number, hex: number): void {
-    const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az
-    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+  tri(
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    cx: number,
+    cy: number,
+    cz: number,
+    hex: number,
+  ): void {
+    const ux = bx - ax,
+      uy = by - ay,
+      uz = bz - az,
+      vx = cx - ax,
+      vy = cy - ay,
+      vz = cz - az
+    let nx = uy * vz - uz * vy,
+      ny = uz * vx - ux * vz,
+      nz = ux * vy - uy * vx
     const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1
     nx /= l
     ny /= l
@@ -53,8 +77,16 @@ export class Triangles {
 
   /** A quad wound so its front faces `outward` (any vector on the wanted side). */
   face(a: Point3, b: Point3, c: Point3, d: Point3, outward: Point3, hex: number): void {
-    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]
-    const dot = (uy * vz - uz * vy) * outward[0] + (uz * vx - ux * vz) * outward[1] + (ux * vy - uy * vx) * outward[2]
+    const ux = b[0] - a[0],
+      uy = b[1] - a[1],
+      uz = b[2] - a[2],
+      vx = c[0] - a[0],
+      vy = c[1] - a[1],
+      vz = c[2] - a[2]
+    const dot =
+      (uy * vz - uz * vy) * outward[0] +
+      (uz * vx - ux * vz) * outward[1] +
+      (ux * vy - uy * vx) * outward[2]
     if (dot >= 0) this.quad(a, b, c, d, hex)
     else this.quad(d, c, b, a, hex)
   }
@@ -102,7 +134,8 @@ export interface Piece {
 /** A three primitive (Box, Cylinder, Extrude...) as non-indexed position/normal/color in one colour. */
 export const paint = (source: BufferGeometry, hex: number): BufferGeometry => {
   const g = source.index === null ? source : source.toNonIndexed()
-  for (const name of Object.keys(g.attributes)) if (name !== "position" && name !== "normal") g.deleteAttribute(name)
+  for (const name of Object.keys(g.attributes))
+    if (name !== "position" && name !== "normal") g.deleteAttribute(name)
   if (g.getAttribute("normal") === undefined) g.computeVertexNormals()
   const [r, gg, b] = linear(hex)
   const n = g.getAttribute("position").count

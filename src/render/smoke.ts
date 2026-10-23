@@ -7,7 +7,17 @@
  *
  * @module render/smoke
  */
-import { Color, DynamicDrawUsage, IcosahedronGeometry, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3 } from "three"
+import {
+  Color,
+  DynamicDrawUsage,
+  IcosahedronGeometry,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Matrix4,
+  MeshLambertMaterial,
+  Quaternion,
+  Vector3,
+} from "three"
 
 import { STEP } from "../sim/index.ts"
 import type { Surface } from "../sim/map/surface.ts"
@@ -23,15 +33,26 @@ export const PUFF = {
   gravel: { hex: PALETTE.stoneLight, rate: 2 },
   dirt: { hex: PALETTE.dirtTrack, rate: 2.5 },
   grass: { hex: PALETTE.grassDry, rate: 0.2 },
-  leaves: { hex: PALETTE.woodBrown, rate: 1 }
+  leaves: { hex: PALETTE.woodBrown, rate: 1 },
 } as const satisfies Record<Surface, { readonly hex: number; readonly rate: number }>
 
 /** Floats per puff: spawn point (three space), drift and rise (m/s), birth and life (sim s), peak radius (m), yaw. */
 const STRIDE = 10
 
 const shape = paint(new IcosahedronGeometry(1, 0), 0xffffff) // tinted per puff by its instance colour
-const material = new MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.6, depthWrite: false })
-const matrix = new Matrix4(), at = new Vector3(), turn = new Quaternion(), size = new Vector3(), up = new Vector3(0, 1, 0), tint = new Color()
+const material = new MeshLambertMaterial({
+  vertexColors: true,
+  flatShading: true,
+  transparent: true,
+  opacity: 0.6,
+  depthWrite: false,
+})
+const matrix = new Matrix4(),
+  at = new Vector3(),
+  turn = new Quaternion(),
+  size = new Vector3(),
+  up = new Vector3(0, 1, 0),
+  tint = new Color()
 
 /** Every puff in the air. Host state for the page's life: nothing loads a save in the browser. */
 export class Smoke {
@@ -50,7 +71,9 @@ export class Smoke {
     this.mesh = new InstancedMesh(shape, material, max)
     this.mesh.count = 0
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage)
-    this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(DynamicDrawUsage)
+    this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(
+      DynamicDrawUsage,
+    )
     this.mesh.frustumCulled = false // spread over the whole map, and the bounds would change every frame
   }
 
@@ -62,9 +85,12 @@ export class Smoke {
 
   /** Moves every puff to sim time `now` (s) and lets the burnt-out ones go. */
   update(now: number): void {
-    const p = this.puffs, colors = this.mesh.instanceColor!.array
+    const p = this.puffs,
+      colors = this.mesh.instanceColor!.array
     for (let i = 0; i < this.mesh.count;) {
-      const o = i * STRIDE, age = Math.max(0, now - p[o + 6]!), u = age / p[o + 7]!
+      const o = i * STRIDE,
+        age = Math.max(0, now - p[o + 6]!),
+        u = age / p[o + 7]!
       if (u >= 1) {
         const last = --this.mesh.count
         p.copyWithin(o, last * STRIDE, (last + 1) * STRIDE)
@@ -73,7 +99,10 @@ export class Smoke {
       }
       const s = p[o + 8]! * Math.sin(Math.PI * Math.sqrt(u)) // swells quickly, then thins away
       at.set(p[o]! + p[o + 3]! * age, p[o + 1]! + p[o + 5]! * age, p[o + 2]! + p[o + 4]! * age)
-      this.mesh.setMatrixAt(i, matrix.compose(at, turn.setFromAxisAngle(up, p[o + 9]!), size.set(s, s, s)))
+      this.mesh.setMatrixAt(
+        i,
+        matrix.compose(at, turn.setFromAxisAngle(up, p[o + 9]!), size.set(s, s, s)),
+      )
       i++
     }
     this.mesh.instanceMatrix.needsUpdate = true
@@ -82,12 +111,25 @@ export class Smoke {
 
   private spawn(skid: SkidValue): void {
     if (this.mesh.count === this.max) return
-    const i = this.mesh.count++, r = this.random, heading = r() * 2 * Math.PI, drift = 0.2 + 0.4 * r()
-    this.puffs.set([
-      skid.x + (r() - 0.5) * 0.4, yOf(skid.z) + 0.2, -(skid.y + (r() - 0.5) * 0.4),
-      Math.cos(heading) * drift, -Math.sin(heading) * drift, 0.5 + 0.4 * r(),
-      skid.step * STEP.dt, 1 + r(), 0.4 + 0.4 * r(), r() * 2 * Math.PI
-    ], i * STRIDE)
+    const i = this.mesh.count++,
+      r = this.random,
+      heading = r() * 2 * Math.PI,
+      drift = 0.2 + 0.4 * r()
+    this.puffs.set(
+      [
+        skid.x + (r() - 0.5) * 0.4,
+        yOf(skid.z) + 0.2,
+        -(skid.y + (r() - 0.5) * 0.4),
+        Math.cos(heading) * drift,
+        -Math.sin(heading) * drift,
+        0.5 + 0.4 * r(),
+        skid.step * STEP.dt,
+        1 + r(),
+        0.4 + 0.4 * r(),
+        r() * 2 * Math.PI,
+      ],
+      i * STRIDE,
+    )
     this.mesh.setColorAt(i, tint.setHex(PUFF[skid.surface].hex))
   }
 }

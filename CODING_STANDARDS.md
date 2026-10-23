@@ -5,7 +5,7 @@ Every change follows these principles and steps; step 2 routes it to the checks 
 ## Principles
 
 - **The real place.** Streets, buildings, heights, rivers, land cover and names come from survey and open data of the real Lunigiana. When the game and the real place disagree, fix the data or the pipeline.
-- **Code style.** No semicolons, double quotes, a one-line JSDoc on every export, and modules under ~500 lines grouped by feature. Tests live in a `__tests__` folder beside the module they test: `src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`.
+- **Code style.** No semicolons and double quotes (`pnpm format` applies both), a one-line JSDoc on every export, and modules under ~500 lines grouped by feature. Tests live in a `__tests__` folder beside the module they test: `src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`.
 
 ## Every change
 

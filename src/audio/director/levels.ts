@@ -14,14 +14,17 @@ import type { VehicleModel } from "../../sim/vehicles.ts"
 import type { Continuous, OneShot } from "../types.ts"
 
 /** A source's calibration: dB(A) at 1 m at the synth's nominal peak, and its size, m. */
-export interface Level { readonly db: number; readonly rMin: number }
+export interface Level {
+  readonly db: number
+  readonly rMin: number
+}
 
 /** Engines at the redline under full load (pass-by levels, physics.md §8): every engine voice peaks alike, so the model's loudness lives here. */
 export const ENGINE = {
   panda: { db: 90, rMin: 2 },
   ape: { db: 92, rMin: 2 },
   truck: { db: 98, rMin: 4 },
-  carabinieri: { db: 93, rMin: 2.5 }
+  carabinieri: { db: 93, rMin: 2.5 },
 } as const satisfies Record<VehicleModel, Level>
 
 /**
@@ -51,8 +54,11 @@ export const LEVELS = {
   groan: { db: 72, rMin: 1 },
   bird: { db: 85, rMin: 1 },
   bark: { db: 96, rMin: 1 },
-  bell: { db: 118, rMin: 5 }
-} as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">, Level>
+  bell: { db: 118, rMin: 5 },
+} as const satisfies Record<
+  Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets">,
+  Level
+>
 
 /**
  * TUNED: a crash's direct sound plays at most this many dB over gain 1, where the master limiter takes
@@ -69,14 +75,23 @@ export const WATER_R_MIN = 1
 export const BEDS = { wind: 60, crickets: 42 } as const
 
 /** The wind voice (body and leaves) follows strength², so its level falls 40 dB per decade of strength. */
-export const windDb = (strength: number): number => BEDS.wind + 40 * Math.log10(Math.max(0.05, strength))
+export const windDb = (strength: number): number =>
+  BEDS.wind + 40 * Math.log10(Math.max(0.05, strength))
 
 /** Source heights above their ground, m: a vehicle's body, a person (feet to mouth), and water lifted out of its carved bed. */
 export const HEIGHT = { vehicle: 0.8, person: 1, water: 2 } as const
 
 /** At most this many voices of each kind play; the loudest at the listener win. */
 export const CAPS = {
-  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, water: 4, wind: 1, crickets: 1
+  engine: 8,
+  tyres: 4,
+  scrape: 2,
+  horn: 3,
+  siren: 2,
+  beeper: 2,
+  water: 4,
+  wind: 1,
+  crickets: 1,
 } as const satisfies Record<Continuous["kind"], number>
 
 /** A voice that played last frame keeps its place under the cap until a newcomer is this many dB louder: near-equals do not swap every frame. */
@@ -103,4 +118,10 @@ export const ECHO_MIN_DB = 10
 
 /** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices and bells (physics.md §7). */
 export const echoes = (sound: OneShot): boolean =>
-  sound.kind === "crash" ? sound.speed >= 6 : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell"
+  sound.kind === "crash"
+    ? sound.speed >= 6
+    : sound.kind === "honk" ||
+      sound.kind === "bark" ||
+      sound.kind === "shout" ||
+      sound.kind === "scream" ||
+      sound.kind === "bell"

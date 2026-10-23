@@ -14,7 +14,10 @@ test("one-shots past the cap replace the quietest, or are dropped if no louder",
 
 test("the speaker stays silent and inert until a trusted gesture", (t) => {
   const errors = t.mock.method(console, "error", () => {})
-  const host = Object.assign(new EventTarget(), { document: Object.assign(new EventTarget(), { hidden: false }), navigator: {} })
+  const host = Object.assign(new EventTarget(), {
+    document: Object.assign(new EventTarget(), { hidden: false }),
+    navigator: {},
+  })
   const speaker = makeSpeaker(host as unknown as Window, {} as Voices, {} as Shots)
   // Scripted events are untrusted: they must not try to build an AudioContext (Node has none).
   host.dispatchEvent(new Event("keydown"))

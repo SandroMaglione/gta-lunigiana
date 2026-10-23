@@ -16,10 +16,15 @@ export const UCS_CODES = {
   "321": "grassland", // pascoli naturali e praterie
   "322": "scrub", // brughiere e cespuglieti
   "332": "rock", // rocce nude, falesie, rupi, affioramenti
-  "333": "sparse" // vegetazione rada
+  "333": "sparse", // vegetazione rada
 } as const satisfies Record<string, AreaKind>
 
-interface UcsFile { readonly polygons: ReadonlyArray<{ readonly code: keyof typeof UCS_CODES; readonly rings: ReadonlyArray<ReadonlyArray<number>> }> }
+interface UcsFile {
+  readonly polygons: ReadonlyArray<{
+    readonly code: keyof typeof UCS_CODES
+    readonly rings: ReadonlyArray<ReadonlyArray<number>>
+  }>
+}
 
 /** The kept UCS polygons as areas: outer ring first, then the holes inside it. */
 export const readUcs = (path: string): Array<Area> => {
@@ -27,12 +32,15 @@ export const readUcs = (path: string): Array<Area> => {
   return file.polygons.flatMap(({ code, rings }) => {
     const [outer, ...holes] = rings.map((r) => {
       const ring: Array<P> = []
-      for (let i = 0; i + 1 < r.length; i += 2) ring.push(toLocal(...gaussBoagaToLatLon(r[i]!, r[i + 1]!)))
+      for (let i = 0; i + 1 < r.length; i += 2)
+        ring.push(toLocal(...gaussBoagaToLatLon(r[i]!, r[i + 1]!)))
       return ring.slice(0, -1) // gml repeats the first point
     })
     const o = flatRing(clipRing(outer!), true)
     if (o === undefined) return []
-    const hs = holes.map((h) => flatRing(clipRing(h), false)).filter((h): h is Array<number> => h !== undefined && pointInRing(h[0]!, h[1]!, o))
+    const hs = holes
+      .map((h) => flatRing(clipRing(h), false))
+      .filter((h): h is Array<number> => h !== undefined && pointInRing(h[0]!, h[1]!, o))
     return [{ kind: UCS_CODES[code], rings: [o, ...hs] }]
   })
 }

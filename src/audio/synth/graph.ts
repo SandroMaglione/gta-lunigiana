@@ -25,19 +25,27 @@ export const jitterDb = (db: number): number => 10 ** (((Math.random() * 2 - 1) 
 export const unit = (x: number): number => Math.min(1, Math.max(0, x)) || 0
 
 /** Moves `param` to `value` at `now`: a jump on a voice's first update (no slide-in), a smooth chase after. */
-export const glide = (param: AudioParam, value: number, now: number, jump: boolean, tau = TAU): void => {
+export const glide = (
+  param: AudioParam,
+  value: number,
+  now: number,
+  jump: boolean,
+  tau = TAU,
+): void => {
   if (jump) param.setValueAtTime(value, now)
   else param.setTargetAtTime(value, now, tau)
 }
 
 /** A voice whose nodes are built on its first update, from those params (a vehicle model fixes the graph). */
-export const builtOnFirst = <P>(build: (io: VoiceIo, first: P) => Voice<P>): VoiceFactory<P> => (io) => {
-  let voice: Voice<P> | undefined
-  return {
-    update: (params, now) => (voice ??= build(io, params)).update(params, now),
-    stop: (now) => voice?.stop(now)
+export const builtOnFirst =
+  <P>(build: (io: VoiceIo, first: P) => Voice<P>): VoiceFactory<P> =>
+  (io) => {
+    let voice: Voice<P> | undefined
+    return {
+      update: (params, now) => (voice ??= build(io, params)).update(params, now),
+      stop: (now) => voice?.stop(now),
+    }
   }
-}
 
 /** A continuous voice's last node: fades in from silence into `out`; `fadeOut` ends it. */
 export const outlet = (ctx: BaseAudioContext, out: AudioNode): GainNode => {
@@ -48,7 +56,12 @@ export const outlet = (ctx: BaseAudioContext, out: AudioNode): GainNode => {
 }
 
 /** Fades `output` to silence from `now` (gone within 6τ ≤ 0.3 s), stops `sources` then and detaches `output` once they end. */
-export const fadeOut = (output: GainNode, sources: ReadonlyArray<AudioScheduledSourceNode>, now: number, tau = TAU): void => {
+export const fadeOut = (
+  output: GainNode,
+  sources: ReadonlyArray<AudioScheduledSourceNode>,
+  now: number,
+  tau = TAU,
+): void => {
   output.gain.cancelScheduledValues(now)
   output.gain.setTargetAtTime(0, now, tau)
   for (const source of sources) source.stop(now + tau * 6)
@@ -56,7 +69,14 @@ export const fadeOut = (output: GainNode, sources: ReadonlyArray<AudioScheduledS
 }
 
 /** Strikes `source` into `out` at `t`: up to `peak` in 3 ms, then an exponential decay with time constant `tau` s. */
-export const strike = (ctx: BaseAudioContext, source: AudioNode, out: AudioNode, t: number, peak: number, tau: number): void => {
+export const strike = (
+  ctx: BaseAudioContext,
+  source: AudioNode,
+  out: AudioNode,
+  t: number,
+  peak: number,
+  tau: number,
+): void => {
   const gain = new GainNode(ctx, { gain: 0 })
   source.connect(gain).connect(out)
   gain.gain.setValueAtTime(0, t)
@@ -65,9 +85,23 @@ export const strike = (ctx: BaseAudioContext, source: AudioNode, out: AudioNode,
 }
 
 /** Band-passed `noise` at `t`: rises to `peak` in `attack` s, then decays with time constant `tau` s. */
-export const burst = (ctx: BaseAudioContext, noise: AudioBuffer, out: AudioNode, t: number, attack: number, tau: number, hz: number, q: number, peak: number): void => {
-  const source = new AudioBufferSourceNode(ctx, { buffer: noise }), amp = new GainNode(ctx, { gain: 0 })
-  source.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: q })).connect(amp).connect(out)
+export const burst = (
+  ctx: BaseAudioContext,
+  noise: AudioBuffer,
+  out: AudioNode,
+  t: number,
+  attack: number,
+  tau: number,
+  hz: number,
+  q: number,
+  peak: number,
+): void => {
+  const source = new AudioBufferSourceNode(ctx, { buffer: noise }),
+    amp = new GainNode(ctx, { gain: 0 })
+  source
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: q }))
+    .connect(amp)
+    .connect(out)
   amp.gain.setValueAtTime(0, t)
   amp.gain.linearRampToValueAtTime(peak, t + attack)
   amp.gain.setTargetAtTime(0, t + attack, tau)
@@ -77,8 +111,17 @@ export const burst = (ctx: BaseAudioContext, noise: AudioBuffer, out: AudioNode,
 }
 
 /** A sine at `hz` struck at `t` with amplitude `peak`, decaying with time constant `tau` s for `seconds`: thumps, knocks, bell partials. */
-export const ping = (ctx: BaseAudioContext, out: AudioNode, t: number, hz: number, peak: number, tau: number, seconds = 9 * tau): void => {
-  const tone = new OscillatorNode(ctx, { frequency: hz }), amp = new GainNode(ctx, { gain: 0 })
+export const ping = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  t: number,
+  hz: number,
+  peak: number,
+  tau: number,
+  seconds = 9 * tau,
+): void => {
+  const tone = new OscillatorNode(ctx, { frequency: hz }),
+    amp = new GainNode(ctx, { gain: 0 })
   tone.connect(amp).connect(out)
   amp.gain.setValueAtTime(peak, t)
   amp.gain.setTargetAtTime(0, t, tau)
@@ -88,19 +131,33 @@ export const ping = (ctx: BaseAudioContext, out: AudioNode, t: number, hz: numbe
 }
 
 /** The largest absolute sample. */
-const peakOf = (samples: Float32Array): number => samples.reduce((peak, v) => Math.max(peak, Math.abs(v)), 0)
+const peakOf = (samples: Float32Array): number =>
+  samples.reduce((peak, v) => Math.max(peak, Math.abs(v)), 0)
 
 /** Scales `sounds` in place by one factor so the loudest of `reference` peaks at `peak`, keeping their relative levels. */
-export const normalise = (sounds: ReadonlyArray<Float32Array>, peak: number, reference: ReadonlyArray<Float32Array> = sounds): void => {
+export const normalise = (
+  sounds: ReadonlyArray<Float32Array>,
+  peak: number,
+  reference: ReadonlyArray<Float32Array> = sounds,
+): void => {
   const loudest = Math.max(...reference.map(peakOf))
   if (loudest === 0) return
-  for (const samples of sounds) for (let i = 0; i < samples.length; i++) samples[i]! *= peak / loudest
+  for (const samples of sounds)
+    for (let i = 0; i < samples.length; i++) samples[i]! *= peak / loudest
 }
 
 /** Renders the mono sound `build` schedules from time 0, `seconds` long at `rate` Hz, offline. */
-export const bake = async (rate: number, seconds: number, build: (oc: OfflineAudioContext) => void): Promise<Float32Array<ArrayBuffer>> => {
+export const bake = async (
+  rate: number,
+  seconds: number,
+  build: (oc: OfflineAudioContext) => void,
+): Promise<Float32Array<ArrayBuffer>> => {
   // One context per sound: every node runs for its context's whole length, so sharing one would cost count² time.
-  const oc = new OfflineAudioContext({ numberOfChannels: 1, length: Math.ceil(rate * seconds), sampleRate: rate })
+  const oc = new OfflineAudioContext({
+    numberOfChannels: 1,
+    length: Math.ceil(rate * seconds),
+    sampleRate: rate,
+  })
   build(oc)
   return (await oc.startRendering()).getChannelData(0)
 }
@@ -114,20 +171,28 @@ export const trimmed = (sound: Float32Array<ArrayBuffer>): Float32Array<ArrayBuf
 
 /** A shot's baked buffers, made once per context: `prepare` bakes them, `get` is undefined until that resolves. */
 export const perContext = <T>(make: (ctx: BaseAudioContext, kit: Kit) => Promise<T>) => {
-  const jobs = new WeakMap<BaseAudioContext, Promise<void>>(), ready = new WeakMap<BaseAudioContext, T>()
+  const jobs = new WeakMap<BaseAudioContext, Promise<void>>(),
+    ready = new WeakMap<BaseAudioContext, T>()
   return {
     prepare: (ctx: BaseAudioContext, kit: Kit): Promise<void> => {
       const job = jobs.get(ctx) ?? make(ctx, kit).then((value) => void ready.set(ctx, value))
       jobs.set(ctx, job)
       return job
     },
-    get: (ctx: BaseAudioContext): T | undefined => ready.get(ctx)
+    get: (ctx: BaseAudioContext): T | undefined => ready.get(ctx),
   }
 }
 
 /** Plays `buffer` into `io.out` at `when`, sped up by `rate` and scaled by `gain`; returns the context time it ends. */
-export const playBuffer = (io: ShotIo, buffer: AudioBuffer, when: number, rate = 1, gain = 1): number => {
-  const source = new AudioBufferSourceNode(io.ctx, { buffer, playbackRate: rate }), amp = new GainNode(io.ctx, { gain })
+export const playBuffer = (
+  io: ShotIo,
+  buffer: AudioBuffer,
+  when: number,
+  rate = 1,
+  gain = 1,
+): number => {
+  const source = new AudioBufferSourceNode(io.ctx, { buffer, playbackRate: rate }),
+    amp = new GainNode(io.ctx, { gain })
   source.connect(amp).connect(io.out)
   source.onended = () => amp.disconnect()
   source.start(when)

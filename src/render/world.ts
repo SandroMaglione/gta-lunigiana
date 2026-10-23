@@ -8,13 +8,34 @@
  *
  * @module render/world
  */
-import { InstancedMesh, Mesh, type BufferGeometry, type Material, type Object3D, type Vector3 } from "three"
+import {
+  InstancedMesh,
+  Mesh,
+  type BufferGeometry,
+  type Material,
+  type Object3D,
+  type Vector3,
+} from "three"
 
 import { mapCover } from "../sim/map/cover.ts"
-
 import { buildingPieces } from "./buildings.ts"
-import { chunkBoxes, CHUNKS, chunkOf, plan, radiiFor, screenDistances, screenRects } from "./chunks.ts"
-import { decalMaterial, merge, solidMaterial, Triangles, type Piece, type Sink } from "./geometry.ts"
+import {
+  chunkBoxes,
+  CHUNKS,
+  chunkOf,
+  plan,
+  radiiFor,
+  screenDistances,
+  screenRects,
+} from "./chunks.ts"
+import {
+  decalMaterial,
+  merge,
+  solidMaterial,
+  Triangles,
+  type Piece,
+  type Sink,
+} from "./geometry.ts"
 import { linePieces } from "./lines.ts"
 import { viewAxes } from "./pipeline.ts"
 import { terrainChunk } from "./terrain.ts"
@@ -40,13 +61,20 @@ const bucketPieces = (pieces: ReadonlyArray<Piece>): Array<Array<number>> => {
   const range = new Map<number, [number, number]>()
   pieces.forEach((piece, p) => {
     range.clear()
-    const pts = piece.pts, n = pts.length / 2
+    const pts = piece.pts,
+      n = pts.length / 2
     for (let k = 0; k < Math.max(1, n - 1); k++) {
-      const ax = pts[2 * k]!, ay = pts[2 * k + 1]!, b = Math.min(k + 1, n - 1), bx = pts[2 * b]!, by = pts[2 * b + 1]!
-      const lo = chunkOf(Math.min(ax, bx), Math.min(ay, by)), hi = chunkOf(Math.max(ax, bx), Math.max(ay, by))
+      const ax = pts[2 * k]!,
+        ay = pts[2 * k + 1]!,
+        b = Math.min(k + 1, n - 1),
+        bx = pts[2 * b]!,
+        by = pts[2 * b + 1]!
+      const lo = chunkOf(Math.min(ax, bx), Math.min(ay, by)),
+        hi = chunkOf(Math.max(ax, bx), Math.max(ay, by))
       for (let cy = Math.floor(lo / CHUNKS.x); cy <= Math.floor(hi / CHUNKS.x); cy++) {
         for (let cx = lo % CHUNKS.x; cx <= hi % CHUNKS.x; cx++) {
-          const key = cy * CHUNKS.x + cx, seen = range.get(key)
+          const key = cy * CHUNKS.x + cx,
+            seen = range.get(key)
           if (seen === undefined) range.set(key, [k, k])
           else seen[1] = k
         }
@@ -110,10 +138,12 @@ export class World {
   }
 
   private build(key: number): Array<Mesh> {
-    const sink = emptySink(), elsewhere = emptySink()
+    const sink = emptySink(),
+      elsewhere = emptySink()
     const at = (x: number, y: number): Sink => (chunkOf(x, y) === key ? sink : elsewhere)
     const list = this.byChunk[key]!
-    for (let n = 0; n < list.length; n += 3) this.pieces[list[n]!]!.draw(at, list[n + 1]!, list[n + 2]!)
+    for (let n = 0; n < list.length; n += 3)
+      this.pieces[list[n]!]!.draw(at, list[n + 1]!, list[n + 2]!)
     const meshes = [staticMesh(terrainChunk(key, this.cover), solidMaterial, false)]
     const solid = [...(sink.solid.empty ? [] : [sink.solid.geometry()]), ...sink.pieces]
     if (solid.length > 0) meshes.push(staticMesh(merge(solid), solidMaterial, true))

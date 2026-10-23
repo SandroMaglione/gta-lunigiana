@@ -5,8 +5,14 @@ import { Triangles } from "../geometry.ts"
 import { hasHipRoof, hipRoof, orientedBox } from "../roof.ts"
 
 const rotated = (w: number, d: number, angle: number): Array<number> => {
-  const c = Math.cos(angle), s = Math.sin(angle)
-  return [[-w, -d], [w, -d], [w, d], [-w, d]].flatMap(([x, y]) => [10 + x! * c - y! * s, 5 + x! * s + y! * c])
+  const c = Math.cos(angle),
+    s = Math.sin(angle)
+  return [
+    [-w, -d],
+    [w, -d],
+    [w, d],
+    [-w, d],
+  ].flatMap(([x, y]) => [10 + x! * c - y! * s, 5 + x! * s + y! * c])
 }
 
 test("orientedBox recovers a rotated rectangle, long axis first", () => {
@@ -25,6 +31,7 @@ test("rectangles get hip roofs; L shapes and deep blocks stay flat", () => {
 test("every hip roof face looks up and the ridge sits above the eaves", () => {
   const tris = new Triangles()
   hipRoof(tris, orientedBox(rotated(6, 3, 0.3)), 10, 0xb0664b)
-  for (let i = 1; i < tris.normal.length; i += 3) assert.ok(tris.normal[i]! >= 0, "no face points down")
+  for (let i = 1; i < tris.normal.length; i += 3)
+    assert.ok(tris.normal[i]! >= 0, "no face points down")
   assert.ok(Math.max(...tris.position.filter((_, i) => i % 3 === 1)) > 10)
 })

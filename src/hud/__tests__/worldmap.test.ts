@@ -6,14 +6,23 @@ import { fitMap, PLACES, placeLabels } from "../worldmap.ts"
 
 test("the map fits the screen inside the margins, centred, with north up and the aspect kept", () => {
   const b = MAP.bounds
-  for (const [w, h] of [[1280, 720], [720, 1280], [2560, 1440]] as const) {
+  for (const [w, h] of [
+    [1280, 720],
+    [720, 1280],
+    [2560, 1440],
+  ] as const) {
     const fit = fitMap(b, w, h)
-    const mapW = (b.maxX - b.minX) * fit.scale, mapH = (b.maxY - b.minY) * fit.scale
+    const mapW = (b.maxX - b.minX) * fit.scale,
+      mapH = (b.maxY - b.minY) * fit.scale
     assert.ok(fit.ox >= 24 - 1e-9 && fit.ox + mapW <= w - 24 + 1e-9, `fits across at ${w}x${h}`)
     assert.ok(fit.oy >= 64 - 1e-9 && fit.oy + mapH <= h - 56 + 1e-9, `fits down at ${w}x${h}`)
     // One side touches its margins: the scale is as large as it can be.
     assert.ok(Math.abs(fit.ox - 24) < 1e-6 || Math.abs(fit.oy - 64) < 1e-6)
-    assert.ok(Math.abs(fit.ox - (w - fit.ox - mapW)) < 1e-6 || Math.abs((fit.oy - 64) - (h - 56 - fit.oy - mapH)) < 1e-6, "centred")
+    assert.ok(
+      Math.abs(fit.ox - (w - fit.ox - mapW)) < 1e-6 ||
+        Math.abs(fit.oy - 64 - (h - 56 - fit.oy - mapH)) < 1e-6,
+      "centred",
+    )
   }
 })
 
@@ -23,17 +32,57 @@ test("labels: villages win over overlapping hamlets, apart labels all stay, orde
   assert.deepEqual(placeLabels([box(0, false), box(50, false), box(100, true)]), [0, 1, 2]) // touching edges do not overlap
   assert.deepEqual(placeLabels([box(0, false), box(10, false)]), [0]) // the first hamlet wins a tie
   // A fixed box (the north arrow) beats every label, village or not.
-  assert.deepEqual(placeLabels([box(0, true), box(100, false)], [{ x0: 40, x1: 52, y0: 0, y1: 20 }]), [1])
+  assert.deepEqual(
+    placeLabels([box(0, true), box(100, false)], [{ x0: 40, x1: 52, y0: 0, y1: 20 }]),
+    [1],
+  )
 })
 
 test("places: the villages and hamlets the user asked for are named on the map", () => {
   const names = new Set(PLACES.map((p) => p.name))
-  for (const name of ["Monzone", "Equi Terme", "Gragnola", "Colognola", "Campiglione", "Viano", "Vinca", "Ugliancaldo", "Tenerano", "Monte Sagro", "Pizzo d'Uccello"]) assert.ok(names.has(name), name)
+  for (const name of [
+    "Monzone",
+    "Equi Terme",
+    "Gragnola",
+    "Colognola",
+    "Campiglione",
+    "Viano",
+    "Vinca",
+    "Ugliancaldo",
+    "Tenerano",
+    "Monte Sagro",
+    "Pizzo d'Uccello",
+  ])
+    assert.ok(names.has(name), name)
   assert.equal(names.size, PLACES.length, "one label per name")
-  assert.ok(PLACES.filter((p) => p.major).map((p) => p.name).includes("Gragnola"), "Gragnola is a village (big label)")
-  assert.ok(PLACES.every((p) => p.x >= MAP.bounds.minX && p.x <= MAP.bounds.maxX && p.y >= MAP.bounds.minY && p.y <= MAP.bounds.maxY))
+  assert.ok(
+    PLACES.filter((p) => p.major)
+      .map((p) => p.name)
+      .includes("Gragnola"),
+    "Gragnola is a village (big label)",
+  )
+  assert.ok(
+    PLACES.every(
+      (p) =>
+        p.x >= MAP.bounds.minX &&
+        p.x <= MAP.bounds.maxX &&
+        p.y >= MAP.bounds.minY &&
+        p.y <= MAP.bounds.maxY,
+    ),
+  )
   // Every place sits in the HUD district of the same name, so the map and the HUD agree.
-  for (const name of ["Equi Terme", "Gragnola", "Colognola", "Campiglione", "Viano", "Vinca", "Ugliancaldo", "Tenerano", "Monte Sagro", "Pizzo d'Uccello"]) {
+  for (const name of [
+    "Equi Terme",
+    "Gragnola",
+    "Colognola",
+    "Campiglione",
+    "Viano",
+    "Vinca",
+    "Ugliancaldo",
+    "Tenerano",
+    "Monte Sagro",
+    "Pizzo d'Uccello",
+  ]) {
     const p = PLACES.find((q) => q.name === name)!
     assert.equal(districtAt(p.x, p.y).name, name)
   }

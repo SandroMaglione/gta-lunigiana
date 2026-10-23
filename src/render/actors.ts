@@ -8,7 +8,16 @@
  * @module render/actors
  */
 import {
-  Box3, BoxGeometry, CylinderGeometry, GreaterDepth, Group, Mesh, MeshBasicMaterial, Vector3, type BufferGeometry, type Material
+  Box3,
+  BoxGeometry,
+  CylinderGeometry,
+  GreaterDepth,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  Vector3,
+  type BufferGeometry,
+  type Material,
 } from "three"
 
 import type { Look } from "../sim/index.ts"
@@ -16,20 +25,28 @@ import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
 import { merge, paint } from "./geometry.ts"
 import { PALETTE } from "./palette.ts"
 
-const box = (w: number, h: number, d: number, x: number, y: number, z: number, hex: number): BufferGeometry =>
-  paint(new BoxGeometry(w, h, d).translate(x, y + h / 2, z), hex)
+const box = (
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  hex: number,
+): BufferGeometry => paint(new BoxGeometry(w, h, d).translate(x, y + h / 2, z), hex)
 
 /** Walk frames: standing, left leg forward, right leg forward. */
 const personFrames = (look: Look): readonly [BufferGeometry, BufferGeometry, BufferGeometry] => {
-  const body = (stride: number) => merge([
-    box(0.2, 0.82, 0.18, stride, 0, 0.11, look.pants),
-    box(0.2, 0.82, 0.18, -stride, 0, -0.11, look.pants),
-    box(0.3, 0.6, 0.5, 0, 0.82, 0, look.shirt),
-    box(0.16, 0.56, 0.12, -stride, 0.84, 0.32, look.shirt),
-    box(0.16, 0.56, 0.12, stride, 0.84, -0.32, look.shirt),
-    box(0.34, 0.34, 0.34, 0.02, 1.42, 0, look.skin),
-    box(0.38, 0.12, 0.38, -0.02, 1.72, 0, look.hair)
-  ])
+  const body = (stride: number) =>
+    merge([
+      box(0.2, 0.82, 0.18, stride, 0, 0.11, look.pants),
+      box(0.2, 0.82, 0.18, -stride, 0, -0.11, look.pants),
+      box(0.3, 0.6, 0.5, 0, 0.82, 0, look.shirt),
+      box(0.16, 0.56, 0.12, -stride, 0.84, 0.32, look.shirt),
+      box(0.16, 0.56, 0.12, stride, 0.84, -0.32, look.shirt),
+      box(0.34, 0.34, 0.34, 0.02, 1.42, 0, look.skin),
+      box(0.38, 0.12, 0.38, -0.02, 1.72, 0, look.hair),
+    ])
   return [body(0), body(0.16), body(-0.16)]
 }
 
@@ -37,14 +54,28 @@ const personFrames = (look: Look): readonly [BufferGeometry, BufferGeometry, Buf
 const TANDEM: Partial<Record<VehicleModel, number>> = { truck: 0.65 }
 
 /** Where a model's wheels are drawn: forward of the centre of mass (x) and to its right (z, three's −left), m. */
-export const wheelLayout = (model: VehicleModel): ReadonlyArray<{ readonly x: number; readonly z: number }> => {
-  const { wheels } = VEHICLES[model], rear = Math.min(...wheels.map((w) => w.x)), split = TANDEM[model]
-  return wheels.flatMap((w) => (split !== undefined && w.x === rear ? [w.x + split, w.x - split] : [w.x]).map((x) => ({ x, z: -w.y })))
+export const wheelLayout = (
+  model: VehicleModel,
+): ReadonlyArray<{ readonly x: number; readonly z: number }> => {
+  const { wheels } = VEHICLES[model],
+    rear = Math.min(...wheels.map((w) => w.x)),
+    split = TANDEM[model]
+  return wheels.flatMap((w) =>
+    (split !== undefined && w.x === rear ? [w.x + split, w.x - split] : [w.x]).map((x) => ({
+      x,
+      z: -w.y,
+    })),
+  )
 }
 
 const wheels = (model: VehicleModel): Array<BufferGeometry> => {
   const r = VEHICLES[model].wheelRadius
-  return wheelLayout(model).map(({ x, z }) => paint(new CylinderGeometry(r, r, 0.24, 8).rotateX(Math.PI / 2).translate(x, r, z), PALETTE.outline))
+  return wheelLayout(model).map(({ x, z }) =>
+    paint(
+      new CylinderGeometry(r, r, 0.24, 8).rotateX(Math.PI / 2).translate(x, r, z),
+      PALETTE.outline,
+    ),
+  )
 }
 const glass = PALETTE.carabinieriBlue
 
@@ -57,7 +88,7 @@ const VEHICLE_BODIES = {
       box(l * 0.6, 0.55, w * 0.92, -l * 0.08, 1.05, 0, glass),
       box(l * 0.62, 0.08, w * 0.94, -l * 0.08, 1.6, 0, body),
       box(0.06, 0.16, 0.3, l / 2, 0.75, w * 0.32, PALETTE.marbleWhite),
-      box(0.06, 0.16, 0.3, l / 2, 0.75, -w * 0.32, PALETTE.marbleWhite)
+      box(0.06, 0.16, 0.3, l / 2, 0.75, -w * 0.32, PALETTE.marbleWhite),
     ]
   },
   ape: (body) => {
@@ -67,7 +98,7 @@ const VEHICLE_BODIES = {
       box(0.06, 0.4, w * 0.75, l * 0.49, 0.95, 0, glass),
       box(l * 0.6, 0.1, w, -l * 0.18, 0.55, 0, PALETTE.woodBrown),
       box(l * 0.6, 0.4, 0.06, -l * 0.18, 0.65, w / 2 - 0.03, PALETTE.woodBrown),
-      box(l * 0.6, 0.4, 0.06, -l * 0.18, 0.65, -w / 2 + 0.03, PALETTE.woodBrown)
+      box(l * 0.6, 0.4, 0.06, -l * 0.18, 0.65, -w / 2 + 0.03, PALETTE.woodBrown),
     ]
   },
   truck: (body) => {
@@ -76,7 +107,7 @@ const VEHICLE_BODIES = {
       box(1.9, 1.9, w, l / 2 - 0.95, 0.6, 0, body),
       box(0.06, 0.7, w * 0.85, l / 2, 1.6, 0, glass),
       box(l - 2.1, 0.25, w, -1.05, 0.9, 0, PALETTE.stoneDark),
-      box(2.4, 1.5, w * 0.8, -1.4, 1.15, 0, PALETTE.marbleWhite)
+      box(2.4, 1.5, w * 0.8, -1.4, 1.15, 0, PALETTE.marbleWhite),
     ]
   },
   carabinieri: () => {
@@ -89,12 +120,16 @@ const VEHICLE_BODIES = {
       box(0.3, 0.12, w * 0.7, -l * 0.02, 1.53, 0, PALETTE.limestone),
       box(0.3, 0.1, w * 0.3, -l * 0.02, 1.55, w * 0.2, PALETTE.carabinieriBlue),
       box(0.06, 0.16, 0.34, l / 2, 0.7, w * 0.32, PALETTE.marbleWhite),
-      box(0.06, 0.16, 0.34, l / 2, 0.7, -w * 0.32, PALETTE.marbleWhite)
+      box(0.06, 0.16, 0.34, l / 2, 0.7, -w * 0.32, PALETTE.marbleWhite),
     ]
-  }
+  },
 } as const satisfies Record<VehicleModel, (paint: number) => Array<BufferGeometry>>
 
-const xrayMaterial = new MeshBasicMaterial({ color: PALETTE.signYellow, depthFunc: GreaterDepth, depthWrite: false })
+const xrayMaterial = new MeshBasicMaterial({
+  color: PALETTE.signYellow,
+  depthFunc: GreaterDepth,
+  depthWrite: false,
+})
 /**
  * A silhouette box drawn only where something nearer covers it. It encloses every given shape, so
  * the actor's own body is always behind its front faces and never shows through; its bottom stays
@@ -108,8 +143,12 @@ const xray = (shapes: ReadonlyArray<BufferGeometry>): Mesh => {
   }
   bounds.expandByScalar(0.05)
   bounds.min.y = 0.15
-  const size = bounds.getSize(new Vector3()), centre = bounds.getCenter(new Vector3())
-  const proxy = new Mesh(new BoxGeometry(size.x, size.y, size.z).translate(centre.x, centre.y, centre.z), xrayMaterial)
+  const size = bounds.getSize(new Vector3()),
+    centre = bounds.getCenter(new Vector3())
+  const proxy = new Mesh(
+    new BoxGeometry(size.x, size.y, size.z).translate(centre.x, centre.y, centre.z),
+    xrayMaterial,
+  )
   proxy.renderOrder = 1 // after the opaque world, so the depth buffer is complete
   proxy.visible = false
   return proxy
@@ -165,9 +204,17 @@ export class VehicleNode extends ActorNode {
 
 const vehicleGeometry = new Map<string, BufferGeometry>()
 /** A vehicle node; geometry is shared per model and paint. */
-export const vehicleNode = (model: VehicleModel, color: number, material: Material): VehicleNode => {
+export const vehicleNode = (
+  model: VehicleModel,
+  color: number,
+  material: Material,
+): VehicleNode => {
   const key = `${model}:${color}`
   let geometry = vehicleGeometry.get(key)
-  if (geometry === undefined) vehicleGeometry.set(key, (geometry = merge([...VEHICLE_BODIES[model](color), ...wheels(model)])))
+  if (geometry === undefined)
+    vehicleGeometry.set(
+      key,
+      (geometry = merge([...VEHICLE_BODIES[model](color), ...wheels(model)])),
+    )
   return new VehicleNode(model, geometry, material)
 }

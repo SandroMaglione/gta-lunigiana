@@ -13,10 +13,14 @@ type Formants = readonly [number, number, number]
 
 /** Vowel formants F1–F3, Hz (Peterson & Barney 1952 averages). */
 const VOWELS = {
-  aMale: [730, 1090, 2440], aFemale: [850, 1220, 2810],
-  eMale: [530, 1840, 2480], eFemale: [610, 2330, 2990],
-  iMale: [270, 2290, 3010], iFemale: [310, 2790, 3310],
-  oMale: [570, 840, 2410], oFemale: [590, 920, 2710]
+  aMale: [730, 1090, 2440],
+  aFemale: [850, 1220, 2810],
+  eMale: [530, 1840, 2480],
+  eFemale: [610, 2330, 2990],
+  iMale: [270, 2290, 3010],
+  iFemale: [310, 2790, 3310],
+  oMale: [570, 840, 2410],
+  oFemale: [590, 920, 2710],
 } as const satisfies Record<string, Formants>
 
 /** Formant bandwidths (Hz) and levels, F1–F3. */
@@ -42,26 +46,39 @@ export interface Vocal {
 
 /** Schedules `vocal` into `io.out` at `t`; returns the time it ends. */
 export const vocalise = (io: ShotIo, vocal: Vocal, t: number): number => {
-  const { ctx, kit } = io, { f0, seconds, rough } = vocal, end = t + seconds
+  const { ctx, kit } = io,
+    { f0, seconds, rough } = vocal,
+    end = t + seconds
   const glottis = new OscillatorNode(ctx, { type: "sawtooth", frequency: f0[0] })
   glottis.frequency.setValueAtTime(f0[0], t)
   glottis.frequency.linearRampToValueAtTime(f0[1], t + seconds * 0.3)
   glottis.frequency.linearRampToValueAtTime(f0[2], end)
-  const breath = new AudioBufferSourceNode(ctx, { buffer: kit.pink }), source = new GainNode(ctx)
+  const breath = new AudioBufferSourceNode(ctx, { buffer: kit.pink }),
+    source = new GainNode(ctx)
   glottis.connect(source)
   breath.connect(new GainNode(ctx, { gain: vocal.breath })).connect(source)
   // Gain swings over [1 − rough, 1] at roughHz.
-  const rasp = new GainNode(ctx, { gain: 1 - rough / 2 }), wobble = new OscillatorNode(ctx, { frequency: vocal.roughHz })
+  const rasp = new GainNode(ctx, { gain: 1 - rough / 2 }),
+    wobble = new OscillatorNode(ctx, { frequency: vocal.roughHz })
   wobble.connect(new GainNode(ctx, { gain: rough / 2 })).connect(rasp.gain)
   vocal.vowel.forEach((hz, i) => {
-    const formant = new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: hz / BANDWIDTHS[i]! })
+    const formant = new BiquadFilterNode(ctx, {
+      type: "bandpass",
+      frequency: hz,
+      Q: hz / BANDWIDTHS[i]!,
+    })
     if (vocal.glide !== undefined) {
       formant.frequency.setValueAtTime(hz, t + seconds * 0.5)
       formant.frequency.linearRampToValueAtTime(vocal.glide[i]!, end)
     }
-    source.connect(formant).connect(new GainNode(ctx, { gain: LEVELS[i] })).connect(rasp)
+    source
+      .connect(formant)
+      .connect(new GainNode(ctx, { gain: LEVELS[i] }))
+      .connect(rasp)
   })
-  const envelope = new GainNode(ctx, { gain: 0 }), attack = Math.min(0.04, seconds * 0.25), release = Math.min(0.12, seconds * 0.4)
+  const envelope = new GainNode(ctx, { gain: 0 }),
+    attack = Math.min(0.04, seconds * 0.25),
+    release = Math.min(0.12, seconds * 0.4)
   rasp.connect(envelope).connect(io.out)
   envelope.gain.setValueAtTime(0, t)
   envelope.gain.linearRampToValueAtTime(vocal.peak, t + attack)
@@ -83,38 +100,101 @@ type Sex = "male" | "female"
 /** Each cue per sex (synthesis.md §8; male screams, female shouts and groans TUNED from the others; `peak` TUNED by rendering). */
 const CUES = {
   scream: {
-    male: { f0: [420, 560, 360], vowel: VOWELS.aMale, seconds: 0.8, rough: 0.7, roughHz: 70, breath: 1.2, peak: 1.5 },
-    female: { f0: [700, 950, 600], vowel: VOWELS.aFemale, seconds: 0.9, rough: 0.7, roughHz: 80, breath: 1.2, peak: 0.8 }
+    male: {
+      f0: [420, 560, 360],
+      vowel: VOWELS.aMale,
+      seconds: 0.8,
+      rough: 0.7,
+      roughHz: 70,
+      breath: 1.2,
+      peak: 1.5,
+    },
+    female: {
+      f0: [700, 950, 600],
+      vowel: VOWELS.aFemale,
+      seconds: 0.9,
+      rough: 0.7,
+      roughHz: 80,
+      breath: 1.2,
+      peak: 0.8,
+    },
   },
   shout: {
-    male: { f0: [200, 280, 170], vowel: VOWELS.eMale, glide: VOWELS.iMale, seconds: 0.35, rough: 0.2, roughHz: 60, breath: 1, peak: 1.25 },
-    female: { f0: [320, 440, 280], vowel: VOWELS.eFemale, glide: VOWELS.iFemale, seconds: 0.35, rough: 0.2, roughHz: 60, breath: 1, peak: 2 }
+    male: {
+      f0: [200, 280, 170],
+      vowel: VOWELS.eMale,
+      glide: VOWELS.iMale,
+      seconds: 0.35,
+      rough: 0.2,
+      roughHz: 60,
+      breath: 1,
+      peak: 1.25,
+    },
+    female: {
+      f0: [320, 440, 280],
+      vowel: VOWELS.eFemale,
+      glide: VOWELS.iFemale,
+      seconds: 0.35,
+      rough: 0.2,
+      roughHz: 60,
+      breath: 1,
+      peak: 2,
+    },
   },
   groan: {
-    male: { f0: [130, 110, 85], vowel: VOWELS.oMale, seconds: 0.8, rough: 0.35, roughHz: 40, breath: 1.4, peak: 1.2 },
-    female: { f0: [220, 190, 150], vowel: VOWELS.oFemale, seconds: 0.8, rough: 0.35, roughHz: 45, breath: 1.4, peak: 1.15 }
-  }
+    male: {
+      f0: [130, 110, 85],
+      vowel: VOWELS.oMale,
+      seconds: 0.8,
+      rough: 0.35,
+      roughHz: 40,
+      breath: 1.4,
+      peak: 1.2,
+    },
+    female: {
+      f0: [220, 190, 150],
+      vowel: VOWELS.oFemale,
+      seconds: 0.8,
+      rough: 0.35,
+      roughHz: 45,
+      breath: 1.4,
+      peak: 1.15,
+    },
+  },
 } as const satisfies Record<Cue, Record<Sex, Vocal>>
 
 /** Who `voice` 0…1 is: the lower half male, the upper female; within each, a pitch ±12 % and a vocal tract ±5 %. */
-const speakerOf = (voice: number): { readonly sex: Sex; readonly pitch: number; readonly tract: number } => {
-  const v = unit(voice), within = v < 0.5 ? v * 2 : (v - 0.5) * 2
-  return { sex: v < 0.5 ? "male" : "female", pitch: 0.88 + 0.24 * within, tract: 0.95 + 0.1 * within }
+const speakerOf = (
+  voice: number,
+): { readonly sex: Sex; readonly pitch: number; readonly tract: number } => {
+  const v = unit(voice),
+    within = v < 0.5 ? v * 2 : (v - 0.5) * 2
+  return {
+    sex: v < 0.5 ? "male" : "female",
+    pitch: 0.88 + 0.24 * within,
+    tract: 0.95 + 0.1 * within,
+  }
 }
 
 /** `cue` in the voice of `voice`, a little different every time. */
 const utter = (cue: Cue): Shot<Extract<OneShot, { readonly kind: Cue }>> => ({
   play: (io, { voice }, when) => {
-    const { sex, pitch, tract } = speakerOf(voice), base: Vocal = CUES[cue][sex], f0 = pitch * jitter(0.04)
+    const { sex, pitch, tract } = speakerOf(voice),
+      base: Vocal = CUES[cue][sex],
+      f0 = pitch * jitter(0.04)
     const scale = ([f1, f2, f3]: Formants): Formants => [f1 * tract, f2 * tract, f3 * tract]
-    return vocalise(io, {
-      ...base,
-      f0: [base.f0[0] * f0, base.f0[1] * f0, base.f0[2] * f0],
-      vowel: scale(base.vowel),
-      glide: base.glide === undefined ? undefined : scale(base.glide),
-      seconds: base.seconds * jitter(0.1)
-    }, when)
-  }
+    return vocalise(
+      io,
+      {
+        ...base,
+        f0: [base.f0[0] * f0, base.f0[1] * f0, base.f0[2] * f0],
+        vowel: scale(base.vowel),
+        glide: base.glide === undefined ? undefined : scale(base.glide),
+        seconds: base.seconds * jitter(0.1),
+      },
+      when,
+    )
+  },
 })
 
 /** A terrified scream (a pedestrian fleeing or knocked down). */

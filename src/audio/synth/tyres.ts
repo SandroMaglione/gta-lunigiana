@@ -33,7 +33,7 @@ const GROUND = {
   gravel: { roll: 0.8, tone: 0.8, setts: 0, crunch: 1, squeal: 0 },
   dirt: { roll: 0.7, tone: 0.6, setts: 0, crunch: 0.5, squeal: 0 },
   grass: { roll: 0.4, tone: 0.4, setts: 0, crunch: 0.15, squeal: 0 },
-  leaves: { roll: 0.45, tone: 0.5, setts: 0, crunch: 0.35, squeal: 0 }
+  leaves: { roll: 0.45, tone: 0.5, setts: 0, crunch: 0.35, squeal: 0 },
 } as const satisfies Record<Surface, Ground>
 
 /** The squeal's two tones, Hz. */
@@ -44,7 +44,9 @@ const SQUEAL = [980, 1460] as const
  * peaks near 0.5 (the director's tyres level). Louder by nature, the truck sliding at its top
  * speed (20 m/s) and cobbles at 40 m/s (the setts' rumble adds crest) peak up to 4 dB higher.
  */
-const ROLL = 0.37, SQUEAL_GAIN = 6.75, CRUNCH = 1.15
+const ROLL = 0.37,
+  SQUEAL_GAIN = 6.75,
+  CRUNCH = 1.15
 /** Light tyres relative to heavy ones (−6 dB). */
 const LIGHT = 0.5
 
@@ -69,7 +71,10 @@ interface TyreTargets {
  * grip does not squeal), so wheelspin standing still and a locked wheel in a straight line squeal too.
  */
 export const tyreTargets = (sound: TyreSound): TyreTargets => {
-  const ground = GROUND[sound.surface], speed = Math.max(0, sound.speed), kmh = speed * 3.6, size = sound.heavy ? 1 : LIGHT
+  const ground = GROUND[sound.surface],
+    speed = Math.max(0, sound.speed),
+    kmh = speed * 3.6,
+    size = sound.heavy ? 1 : LIGHT
   const slide = unit(sound.skid) * smoothstep(0.5, 2.5, sound.slip)
   const roll = ROLL * size * ground.roll * (kmh / 70) ** 1.5
   return {
@@ -80,19 +85,24 @@ export const tyreTargets = (sound: TyreSound): TyreTargets => {
     squeal: SQUEAL_GAIN * size * ground.squeal * slide,
     pitch: (1 + 0.15 * (slide - 0.2)) * (sound.heavy ? 0.8 : 1),
     crunch: CRUNCH * size * ground.crunch * (0.15 * Math.min(1, kmh / 40) + 0.8 * slide),
-    grains: 0.5 + Math.min(1.5, kmh / 50) + 0.5 * slide
+    grains: 0.5 + Math.min(1.5, kmh / 50) + 0.5 * slide,
   }
 }
 
 /** Tyres on the ground under one vehicle. */
 export const tyres: VoiceFactory<TyreSound> = (io) => {
-  const { ctx, kit } = io, output = new GainNode(ctx, { gain: 1 })
+  const { ctx, kit } = io,
+    output = new GainNode(ctx, { gain: 1 })
   output.connect(io.out)
-  const pink = loop(ctx, kit.pink), rollLp = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 400 }), roll = new GainNode(ctx, { gain: 0 })
+  const pink = loop(ctx, kit.pink),
+    rollLp = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 400 }),
+    roll = new GainNode(ctx, { gain: 0 })
   pink.connect(rollLp).connect(roll).connect(output)
-  const setts = new OscillatorNode(ctx, { type: "triangle", frequency: 50 }), settDepth = new GainNode(ctx, { gain: 0 })
+  const setts = new OscillatorNode(ctx, { type: "triangle", frequency: 50 }),
+    settDepth = new GainNode(ctx, { gain: 0 })
   setts.connect(settDepth).connect(roll.gain)
-  const white = loop(ctx, kit.white), squeal = new GainNode(ctx, { gain: 0 })
+  const white = loop(ctx, kit.white),
+    squeal = new GainNode(ctx, { gain: 0 })
   const bands = SQUEAL.map((frequency, i) => {
     const band = new BiquadFilterNode(ctx, { type: "bandpass", frequency, Q: i === 0 ? 45 : 35 })
     io.cents.connect(band.detune)
@@ -100,15 +110,20 @@ export const tyres: VoiceFactory<TyreSound> = (io) => {
     return band
   })
   squeal.connect(output)
-  const grains = loop(ctx, kit.crackle), crunch = new GainNode(ctx, { gain: 0 })
-  grains.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1800, Q: 0.7 })).connect(crunch).connect(output)
+  const grains = loop(ctx, kit.crackle),
+    crunch = new GainNode(ctx, { gain: 0 })
+  grains
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1800, Q: 0.7 }))
+    .connect(crunch)
+    .connect(output)
   for (const source of [pink, white, grains]) io.cents.connect(source.detune)
   setts.start()
 
   let first = true
   return {
     update: (sound, now) => {
-      const t = tyreTargets(sound), jump = first
+      const t = tyreTargets(sound),
+        jump = first
       first = false
       glide(roll.gain, t.roll, now, false)
       glide(rollLp.frequency, t.rollHz, now, jump)
@@ -119,6 +134,6 @@ export const tyres: VoiceFactory<TyreSound> = (io) => {
       glide(crunch.gain, t.crunch, now, false)
       glide(grains.playbackRate, t.grains, now, jump)
     },
-    stop: (now) => fadeOut(output, [pink, white, grains, setts], now)
+    stop: (now) => fadeOut(output, [pink, white, grains, setts], now),
   }
 }

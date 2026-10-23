@@ -20,17 +20,39 @@
         <div id="hud-district"></div>
       </div>
       <dl class="score">
-        <div><dt>Auto rubate <small>cars stolen</small></dt><dd id="hud-stolen">0</dd></div>
-        <div><dt>Persone investite <small>people hit</small></dt><dd id="hud-knocked">0</dd></div>
+        <div>
+          <dt>Auto rubate <small>cars stolen</small></dt>
+          <dd id="hud-stolen">0</dd>
+        </div>
+        <div>
+          <dt>Persone investite <small>people hit</small></dt>
+          <dd id="hud-knocked">0</dd>
+        </div>
       </dl>
       <div id="hud-prompt" class="for-keys" hidden></div>
-      <div id="hud-speedo" hidden><span id="hud-speed">0</span><span class="unit">km/h</span><div id="hud-vehicle"></div></div>
+      <div id="hud-speedo" hidden>
+        <span id="hud-speed">0</span><span class="unit">km/h</span>
+        <div id="hud-vehicle"></div>
+      </div>
       <div id="hud-minimap"></div>
-      <div id="hud-map" role="dialog" aria-modal="true" aria-labelledby="hud-map-title" aria-describedby="hud-map-desc" tabindex="-1" hidden>
+      <div
+        id="hud-map"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hud-map-title"
+        aria-describedby="hud-map-desc"
+        tabindex="-1"
+        hidden
+      >
         <div class="map-head">
           <div><span class="map-title" id="hud-map-title">Mappa</span> <small>map</small></div>
-          <div class="map-here" id="hud-map-desc">Qui <small>you are here</small> <span id="hud-map-here"></span></div>
-          <div class="map-keys"><span class="for-keys">M · Esc — chiudi <small>close</small></span><span class="for-touch">Tocca — chiudi <small>tap to close</small></span></div>
+          <div class="map-here" id="hud-map-desc">
+            Qui <small>you are here</small> <span id="hud-map-here"></span>
+          </div>
+          <div class="map-keys">
+            <span class="for-keys">M · Esc — chiudi <small>close</small></span
+            ><span class="for-touch">Tocca — chiudi <small>tap to close</small></span>
+          </div>
         </div>
       </div>
       <div id="hud-touch" class="for-touch" aria-hidden="true">
@@ -46,7 +68,10 @@
         <div class="pad turn" id="hud-touch-turnLeft">↺</div>
         <div class="pad turn" id="hud-touch-turnRight">↻</div>
       </div>
-      <div class="credits">Map data © OpenStreetMap contributors (ODbL) · Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR, Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)</div>
+      <div class="credits">
+        Map data © OpenStreetMap contributors (ODbL) · Fonte dei dati: Regione Toscana – CTR 1:2000,
+        Rilievi LIDAR, Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)
+      </div>
     </div>
     <dialog id="settings" aria-labelledby="settings-title">
       <h2 id="settings-title">Settings</h2>
@@ -65,39 +90,82 @@
         <p class="sub">Monzone · Equi Terme · Vinca · Gragnola — Valle del Lucido (MS)</p>
         <p class="warn">Il gioco è in fase di sviluppo iniziale <small>early development</small></p>
         <dl class="keys for-touch">
-          <div><dt>Left thumb</dt><dd>walk · steer</dd></div>
-          <div><dt>Minimap</dt><dd>map (pauses)</dd></div>
+          <div>
+            <dt>Left thumb</dt>
+            <dd>walk · steer</dd>
+          </div>
+          <div>
+            <dt>Minimap</dt>
+            <dd>map (pauses)</dd>
+          </div>
         </dl>
         <dl class="keys for-keys">
-          <div><dt>WASD / ↑←↓→</dt><dd>walk · drive</dd></div>
-          <div><dt>Shift</dt><dd>sprint</dd></div>
-          <div><dt>F / Enter</dt><dd>enter · exit · steal</dd></div>
-          <div><dt>Q / E</dt><dd>turn view</dd></div>
-          <div><dt>Space</dt><dd>handbrake</dd></div>
-          <div><dt>H</dt><dd>horn · siren (Carabinieri)</dd></div>
-          <div><dt>M</dt><dd>map (pauses)</dd></div>
-          <div><dt>Esc</dt><dd>settings (pauses)</dd></div>
+          <div>
+            <dt>WASD / ↑←↓→</dt>
+            <dd>walk · drive</dd>
+          </div>
+          <div>
+            <dt>Shift</dt>
+            <dd>sprint</dd>
+          </div>
+          <div>
+            <dt>F / Enter</dt>
+            <dd>enter · exit · steal</dd>
+          </div>
+          <div>
+            <dt>Q / E</dt>
+            <dd>turn view</dd>
+          </div>
+          <div>
+            <dt>Space</dt>
+            <dd>handbrake</dd>
+          </div>
+          <div>
+            <dt>H</dt>
+            <dd>horn · siren (Carabinieri)</dd>
+          </div>
+          <div>
+            <dt>M</dt>
+            <dd>map (pauses)</dd>
+          </div>
+          <div>
+            <dt>Esc</dt>
+            <dd>settings (pauses)</dd>
+          </div>
         </dl>
         <div id="title-load">
           <progress id="title-bar" max="1" value="0" aria-labelledby="title-step"></progress>
-          <p class="step"><span id="title-step" aria-live="polite">Loading</span> <span id="title-detail"></span></p>
+          <p class="step">
+            <span id="title-step" aria-live="polite">Loading</span> <span id="title-detail"></span>
+          </p>
           <p id="title-error" role="alert" hidden></p>
           <button id="title-retry" type="button" hidden>Retry</button>
         </div>
-        <p class="go" id="title-go" hidden><span class="for-keys">Press any key</span><span class="for-touch">Tap to play</span></p>
-        <p class="fine">Map data © OpenStreetMap contributors (ODbL)<br />Fonte dei dati: Regione Toscana – CTR 1:2000, Rilievi LIDAR,<br />Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0 IT)</p>
+        <p class="go" id="title-go" hidden>
+          <span class="for-keys">Press any key</span><span class="for-touch">Tap to play</span>
+        </p>
+        <p class="fine">
+          Map data © OpenStreetMap contributors (ODbL)<br />Fonte dei dati: Regione Toscana – CTR
+          1:2000, Rilievi LIDAR,<br />Uso e copertura del suolo (CC BY 4.0), DTM 10x10 (CC BY 3.0
+          IT)
+        </p>
       </div>
     </div>
     <script>
       // boot.ts reports every failure from its first line on; this covers the scripts themselves not
       // loading (a network error, or a page cached from before a deploy asking for removed assets).
-      addEventListener("error", (event) => {
-        if (!(event.target instanceof HTMLScriptElement)) return
-        const message = document.getElementById("title-error"), retry = document.getElementById("title-retry")
-        message.textContent = "Failed to start: the game's scripts did not load"
-        message.hidden = retry.hidden = false
-        retry.onclick = () => location.reload()
-      }, true)
+      addEventListener(
+        "error",
+        (event) => {
+          if (!(event.target instanceof HTMLScriptElement)) return
+          const message = document.getElementById("title-error"),
+            retry = document.getElementById("title-retry")
+          message.textContent = "Failed to start: the game's scripts did not load"
+          message.hidden = retry.hidden = false
+          retry.onclick = () => location.reload()
+        },
+        true,
+      )
     </script>
     <script type="module" src="/src/boot.ts"></script>
   </body>

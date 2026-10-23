@@ -6,7 +6,15 @@
  * @module hud/handling
  */
 import {
-  clampKnob, DEFAULT_HANDLING, HANDLING_KEYS, HANDLING_PRESETS, type HandlingKey, type HandlingValue, PRESET_IDS, presetOf, type PresetId
+  clampKnob,
+  DEFAULT_HANDLING,
+  HANDLING_KEYS,
+  HANDLING_PRESETS,
+  type HandlingKey,
+  type HandlingValue,
+  PRESET_IDS,
+  presetOf,
+  type PresetId,
 } from "../sim/handling.ts"
 
 /**
@@ -16,7 +24,8 @@ import {
 const STORED = "gta-lunigiana/handling"
 
 /** Whether `name` names a preset (not merely a property every object has, like "toString"). */
-const isPresetId = (name: string): name is PresetId => (PRESET_IDS as ReadonlyArray<string>).includes(name)
+const isPresetId = (name: string): name is PresetId =>
+  (PRESET_IDS as ReadonlyArray<string>).includes(name)
 
 /** The knobs in stored `text`, which is untrusted: anything not a preset's name or a JSON object is nothing, unknown keys and non-numbers are dropped, the rest kept in range (`clampKnob`). */
 const parse = (text: string | null): HandlingValue | undefined => {
@@ -75,7 +84,11 @@ export const makeHandlingStore = ({ read, set, storage }: HandlingHost) => {
   const put = (next: HandlingValue) => {
     apply(next)
     const moved = HANDLING_KEYS.filter((key) => values[key] !== DEFAULT_HANDLING[key])
-    keep(JSON.stringify(presetOf(values) ?? Object.fromEntries(moved.map((key) => [key, values[key]]))))
+    keep(
+      JSON.stringify(
+        presetOf(values) ?? Object.fromEntries(moved.map((key) => [key, values[key]])),
+      ),
+    )
     for (const listener of listeners) listener()
   }
   return {
@@ -90,7 +103,7 @@ export const makeHandlingStore = ({ read, set, storage }: HandlingHost) => {
       if (valid !== undefined) put({ ...values, [key]: valid })
     },
     /** Calls `listener` after every change, so an open UI shows it. */
-    subscribe: (listener: () => void): void => void listeners.push(listener)
+    subscribe: (listener: () => void): void => void listeners.push(listener),
   }
 }
 

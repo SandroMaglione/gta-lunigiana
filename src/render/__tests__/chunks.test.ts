@@ -4,13 +4,22 @@ import { test } from "node:test"
 import { Vector3 } from "three"
 
 import { MAP } from "../../sim/map/index.ts"
-import { chunkBoxes, CHUNKS, chunkOf, plan, radiiFor, screenDistances, screenRects } from "../chunks.ts"
+import {
+  chunkBoxes,
+  CHUNKS,
+  chunkOf,
+  plan,
+  radiiFor,
+  screenDistances,
+  screenRects,
+} from "../chunks.ts"
 import { terrainY } from "../ground.ts"
 import { viewAxes } from "../pipeline.ts"
 
 const { right, up, back } = viewAxes(0)
 const rects = screenRects(chunkBoxes(), right, up, new Float32Array(CHUNKS.x * CHUNKS.y * 4))
-const distancesFrom = (focus: Vector3) => screenDistances(rects, focus.dot(right), focus.dot(up), new Float32Array(CHUNKS.x * CHUNKS.y))
+const distancesFrom = (focus: Vector3) =>
+  screenDistances(rects, focus.dot(right), focus.dot(up), new Float32Array(CHUNKS.x * CHUNKS.y))
 const ground = (x: number, y: number) => new Vector3(x, terrainY(x, y), -y)
 
 test("plan: builds the missing chunks within the load radius nearest first, drops loaded ones past the unload radius", () => {
@@ -21,7 +30,8 @@ test("plan: builds the missing chunks within the load radius nearest first, drop
 })
 
 test("plan: a chunk at the rim does not flicker as the focus jitters across the load radius", () => {
-  const radii = radiiFor(50), loaded = new Set<number>()
+  const radii = radiiFor(50),
+    loaded = new Set<number>()
   for (const d of [radii.load - 1, radii.load + 1, radii.load + 20, radii.load - 1]) {
     const { build, drop } = plan([d], loaded, radii)
     for (const key of build) loaded.add(key)
@@ -36,14 +46,19 @@ test("screen distances: zero under the focus, growing with ground distance", () 
   const d = distancesFrom(ground(x, y))
   assert.equal(d[chunkOf(x, y)], 0)
   assert.ok(d[chunkOf(x + 1500, y)]! > 1000)
-  assert.ok(d[chunkOf(x, y - 1500)]! > 500, "screen-up foreshortens ground depth, but not to nothing")
+  assert.ok(
+    d[chunkOf(x, y - 1500)]! > 500,
+    "screen-up foreshortens ground depth, but not to nothing",
+  )
 })
 
 test("screen distances: a valley the camera shows beside the focus counts as near, however far on the ground", () => {
   // Focus 400 m up the view axis from a valley point: the same screen position, ≈ 350 m away on the ground.
-  const x = MAP.spawns.player.x, y = MAP.spawns.player.y
+  const x = MAP.spawns.player.x,
+    y = MAP.spawns.player.y
   const focus = ground(x, y).addScaledVector(back, 400)
-  const fx = focus.x, fy = -focus.z
+  const fx = focus.x,
+    fy = -focus.z
   assert.ok(Math.hypot(fx - x, fy - y) > 300)
   assert.notEqual(chunkOf(fx, fy), chunkOf(x, y))
   assert.equal(distancesFrom(focus)[chunkOf(x, y)], 0)

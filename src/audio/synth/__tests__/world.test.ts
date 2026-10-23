@@ -9,7 +9,15 @@ import { WORLD_SHOTS, WORLD_VOICES } from "../world.ts"
 
 test("the world synths load in Node: no Web Audio at module top level", () => {
   assert.deepEqual(Object.keys(WORLD_VOICES).sort(), ["crickets", "water", "wind"])
-  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), ["bark", "bell", "bird", "groan", "scream", "shout", "step"])
+  assert.deepEqual(Object.keys(WORLD_SHOTS).sort(), [
+    "bark",
+    "bell",
+    "bird",
+    "groan",
+    "scream",
+    "shout",
+    "step",
+  ])
 })
 
 test("footsteps fall twice a second at a walk and three times at a sprint", () => {
@@ -25,7 +33,10 @@ test("synth params clamp to 0…1, NaN to silence rather than a throwing AudioPa
 
 test("the crickets' masking law follows the voice: 0 dB under at full density, about 12 dB under at the sparsest", () => {
   assert.equal(cricketsQuiet(1), 0)
-  assert.ok(Math.abs(cricketsQuiet(0.5) - 4.9) < 0.1 && Math.abs(cricketsQuiet(0.1) - 11.7) < 0.1, `${cricketsQuiet(0.5)} ${cricketsQuiet(0.1)}`)
+  assert.ok(
+    Math.abs(cricketsQuiet(0.5) - 4.9) < 0.1 && Math.abs(cricketsQuiet(0.1) - 11.7) < 0.1,
+    `${cricketsQuiet(0.5)} ${cricketsQuiet(0.1)}`,
+  )
   assert.ok(cricketsQuiet(0.01) < 12.2)
 })
 

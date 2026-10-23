@@ -4,10 +4,21 @@
 import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 
-import type { BuildingStyle } from "../sim/map/kinds.ts"
 import { staticGrid } from "../sim/collide.ts"
+import type { BuildingStyle } from "../sim/map/kinds.ts"
 import { utm32ToLatLon } from "./crs.ts"
-import { arcLengths, clipRing, flatRing, pointAt, pointInRing, ringBox, signedArea, toLocal, type P, type V } from "./geometry.ts"
+import {
+  arcLengths,
+  clipRing,
+  flatRing,
+  pointAt,
+  pointInRing,
+  ringBox,
+  signedArea,
+  toLocal,
+  type P,
+  type V,
+} from "./geometry.ts"
 import { readShp, type ShpRecord } from "./shp.ts"
 
 /**
@@ -30,8 +41,11 @@ const BUILDING_CODES = {
   "0216": { kind: "barn", h: 5 },
   "0217": { kind: "tower", style: "tower", h: 12 },
   "0218": { kind: "silo", style: "industrial", h: 8 },
-  "0244": { kind: "garage", h: 2.6 }
-} as const satisfies Record<string, { readonly kind: string; readonly style?: BuildingStyle; readonly h: number }>
+  "0244": { kind: "garage", h: 2.6 },
+} as const satisfies Record<
+  string,
+  { readonly kind: string; readonly style?: BuildingStyle; readonly h: number }
+>
 type BuildingCode = keyof typeof BUILDING_CODES
 const isBuildingCode = (code: string): code is BuildingCode => Object.hasOwn(BUILDING_CODES, code)
 
@@ -52,7 +66,11 @@ interface CtrBuilding {
 }
 
 /** A road surface polygon: `rings[0]` outer (counter-clockwise), then holes; `paved` = asphalt (else dirt). */
-interface RoadArea { readonly name?: string; readonly paved: boolean; readonly rings: ReadonlyArray<ReadonlyArray<number>> }
+interface RoadArea {
+  readonly name?: string
+  readonly paved: boolean
+  readonly rings: ReadonlyArray<ReadonlyArray<number>>
+}
 
 export interface Ctr {
   readonly buildings: ReadonlyArray<CtrBuilding>
@@ -69,7 +87,9 @@ const local = ([e, n]: readonly [number, number]): P => toLocal(...utm32ToLatLon
  * otherwise it starts a polygon (so the file's ring order and winding do not matter).
  */
 const polygonsOf = (r: ShpRecord): Array<Array<Array<number>>> => {
-  const rings = r.parts.map((part) => part.map(local)).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))
+  const rings = r.parts
+    .map((part) => part.map(local))
+    .sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))
   const polys: Array<{ outer: Array<P>; flat: Array<number>; holes: Array<Array<P>> }> = []
   for (const ring of rings) {
     const host = polys.find((p) => pointInRing(ring[0]![0], ring[0]![1], p.flat))
@@ -79,11 +99,28 @@ const polygonsOf = (r: ShpRecord): Array<Array<Array<number>>> => {
   return polys.flatMap((p) => {
     const outer = flatRing(clipRing(p.outer), true)
     if (outer === undefined) return []
-    return [[outer, ...p.holes.map((h) => flatRing(clipRing(h), false)).filter((h) => h !== undefined)]]
+    return [
+      [outer, ...p.holes.map((h) => flatRing(clipRing(h), false)).filter((h) => h !== undefined)],
+    ]
   })
 }
 
-const SMALL_WORDS: ReadonlySet<string> = new Set(["A", "AL", "ALLA", "DA", "DEGLI", "DEI", "DEL", "DELLA", "DELLE", "DI", "E", "IL", "LA", "LE"])
+const SMALL_WORDS: ReadonlySet<string> = new Set([
+  "A",
+  "AL",
+  "ALLA",
+  "DA",
+  "DEGLI",
+  "DEI",
+  "DEL",
+  "DELLA",
+  "DELLE",
+  "DI",
+  "E",
+  "IL",
+  "LA",
+  "LE",
+])
 const title = (w: string) => w[0] + w.slice(1).toLowerCase()
 /** One word of a street name: articles lower-case (elided ones too), Roman numerals upper-case, the rest title-cased. */
 const streetWord = (w: string, i: number): string => {
@@ -100,35 +137,58 @@ const streetName = (toponym: string): string | undefined => {
 
 export const readCtr = (dir: string): Ctr => {
   /** Every sheet `fetch-rt.ts` wrote, in name order. */
-  const sheets = readdirSync(dir).filter((f) => f.endsWith("_AED.shp.gz")).map((f) => f.slice(0, -"_AED.shp.gz".length)).sort()
+  const sheets = readdirSync(dir)
+    .filter((f) => f.endsWith("_AED.shp.gz"))
+    .map((f) => f.slice(0, -"_AED.shp.gz".length))
+    .sort()
   /** A layer's records over every sheet that has it (a sheet with no garages or road areas has no AGE or AVI). */
-  const layer = (name: string, base = 0) => sheets.flatMap((sheet) => {
-    const path = join(dir, `${sheet}_${name}`)
-    return existsSync(`${path}.shp.gz`) ? readShp(path).map((rec, i) => ({ rec, id: -(Number(sheet.slice(3)) * 1e5 + base + i) })) : []
-  })
+  const layer = (name: string, base = 0) =>
+    sheets.flatMap((sheet) => {
+      const path = join(dir, `${sheet}_${name}`)
+      return existsSync(`${path}.shp.gz`)
+        ? readShp(path).map((rec, i) => ({ rec, id: -(Number(sheet.slice(3)) * 1e5 + base + i) }))
+        : []
+    })
   const buildings: Array<CtrBuilding> = []
   for (const { rec, id } of [...layer("AED"), ...layer("AGE", 5e4)]) {
     const code = rec.attrs.Cod_CTR!
     if (!isBuildingCode(code)) continue
-    const spec: { readonly kind: string; readonly style?: BuildingStyle; readonly h: number } = BUILDING_CODES[code]
-    const top = Number(rec.attrs.Qt_grmax ?? Number.NaN), eave = top > 0 ? top : undefined
+    const spec: { readonly kind: string; readonly style?: BuildingStyle; readonly h: number } =
+      BUILDING_CODES[code]
+    const top = Number(rec.attrs.Qt_grmax ?? Number.NaN),
+      eave = top > 0 ? top : undefined
     polygonsOf(rec).forEach(([outer, ...holes], k) => {
       buildings.push({
-        id: id - k * 1e7, kind: spec.kind, ...(spec.style !== undefined ? { style: spec.style } : {}), ...(eave !== undefined ? { eave } : {}), h: spec.h,
-        outer: outer!, ...(holes.length > 0 ? { holes } : {})
+        id: id - k * 1e7,
+        kind: spec.kind,
+        ...(spec.style !== undefined ? { style: spec.style } : {}),
+        ...(eave !== undefined ? { eave } : {}),
+        h: spec.h,
+        outer: outer!,
+        ...(holes.length > 0 ? { holes } : {}),
       })
     })
   }
   const roadAreas = layer("AVI").flatMap(({ rec }) => {
     const name = streetName(rec.attrs.Toponimo ?? "")
-    return polygonsOf(rec).map((rings) => ({ ...(name !== undefined ? { name } : {}), paved: rec.attrs.Cod_CTR === "0101", rings }))
+    return polygonsOf(rec).map((rings) => ({
+      ...(name !== undefined ? { name } : {}),
+      paved: rec.attrs.Cod_CTR === "0101",
+      rings,
+    }))
   })
   const mapped = layer("AZR").flatMap(({ rec }) => polygonsOf(rec).map((rings) => rings[0]!))
   return { buildings, roadAreas, mapped }
 }
 
 /** Road classes whose width and name come from the road surfaces they run over. */
-const SURFACED: ReadonlySet<string> = new Set(["tertiary", "unclassified", "residential", "service", "track"])
+const SURFACED: ReadonlySet<string> = new Set([
+  "tertiary",
+  "unclassified",
+  "residential",
+  "service",
+  "track",
+])
 const STATION = 4 // m between width stations along a road
 const END = 6 // m at each end without stations: junctions widen the surface there
 const MARCH = 0.2 // m per step when walking out to the surface edge
@@ -147,7 +207,17 @@ const GENERIC_SURFACES: ReadonlySet<string> = new Set(["asphalt", "unpaved"])
  * road that runs on into the unmapped mountains keeps the name its village stretch shows. OSM
  * names and specific OSM surfaces (cobblestone, gravel...) stay.
  */
-export const fitRoads = (roads: ReadonlyArray<{ readonly cls: string; name?: string; w: number; surface: string; readonly pts: ReadonlyArray<V> }>, areas: ReadonlyArray<RoadArea>, mapped: ReadonlyArray<ReadonlyArray<number>>): void => {
+export const fitRoads = (
+  roads: ReadonlyArray<{
+    readonly cls: string
+    name?: string
+    w: number
+    surface: string
+    readonly pts: ReadonlyArray<V>
+  }>,
+  areas: ReadonlyArray<RoadArea>,
+  mapped: ReadonlyArray<ReadonlyArray<number>>,
+): void => {
   const box = areas.map((a) => ringBox(a.rings[0]!))
   const grid = staticGrid(areas.length, (k) => box[k]!, 32)
   const mappedIn = staticGrid(mapped.length, (k) => ringBox(mapped[k]!), 64)
@@ -160,8 +230,18 @@ export const fitRoads = (roads: ReadonlyArray<{ readonly cls: string; name?: str
   const under = (x: number, y: number): number => {
     let hit = -1
     grid(x, y, x, y, (k) => {
-      const [x0, y0, x1, y1] = box[k]!, [outer, ...holes] = areas[k]!.rings
-      if (hit < 0 && x >= x0 && x <= x1 && y >= y0 && y <= y1 && pointInRing(x, y, outer!) && !holes.some((h) => pointInRing(x, y, h))) hit = k
+      const [x0, y0, x1, y1] = box[k]!,
+        [outer, ...holes] = areas[k]!.rings
+      if (
+        hit < 0 &&
+        x >= x0 &&
+        x <= x1 &&
+        y >= y0 &&
+        y <= y1 &&
+        pointInRing(x, y, outer!) &&
+        !holes.some((h) => pointInRing(x, y, h))
+      )
+        hit = k
     })
     return hit
   }
@@ -172,14 +252,20 @@ export const fitRoads = (roads: ReadonlyArray<{ readonly cls: string; name?: str
   }
   for (const road of roads) {
     if (!SURFACED.has(road.cls)) continue
-    const arc = arcLengths(road.pts), length = arc.at(-1)!
-    const widths: Array<number> = [], names = new Map<string, number>()
-    let stations = 0, surveyed = 0, paved = 0
+    const arc = arcLengths(road.pts),
+      length = arc.at(-1)!
+    const widths: Array<number> = [],
+      names = new Map<string, number>()
+    let stations = 0,
+      surveyed = 0,
+      paved = 0
     for (let at = END; at <= length - END; at += STATION, stations++) {
-      const { x, y, tx, ty } = pointAt(road.pts, arc, at), k = under(x, y)
+      const { x, y, tx, ty } = pointAt(road.pts, arc, at),
+        k = under(x, y)
       if (k >= 0 || inMapped(x, y)) surveyed++
       if (k < 0) continue
-      const left = edge(x, y, -ty, tx), right = edge(x, y, ty, -tx)
+      const left = edge(x, y, -ty, tx),
+        right = edge(x, y, ty, -tx)
       if (left >= REACH || right >= REACH) continue
       widths.push(left + right + MARCH)
       if (areas[k]!.paved) paved++
@@ -188,10 +274,20 @@ export const fitRoads = (roads: ReadonlyArray<{ readonly cls: string; name?: str
     }
     if (widths.length < 3) continue
     const [best] = [...names].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))
-    if (road.name === undefined && widths.length * 2 >= surveyed && best !== undefined && best[1] * 2 >= widths.length) road.name = best[0]
+    if (
+      road.name === undefined &&
+      widths.length * 2 >= surveyed &&
+      best !== undefined &&
+      best[1] * 2 >= widths.length
+    )
+      road.name = best[0]
     if (widths.length * 2 < stations) continue
     widths.sort((p, q) => p - q)
-    road.w = Math.round(Math.min(WIDTH.max, Math.max(WIDTH.min, widths[Math.floor(widths.length / 2)]!)) * 10) / 10
-    if (GENERIC_SURFACES.has(road.surface)) road.surface = paved * 2 >= widths.length ? "asphalt" : "unpaved"
+    road.w =
+      Math.round(
+        Math.min(WIDTH.max, Math.max(WIDTH.min, widths[Math.floor(widths.length / 2)]!)) * 10,
+      ) / 10
+    if (GENERIC_SURFACES.has(road.surface))
+      road.surface = paved * 2 >= widths.length ? "asphalt" : "unpaved"
   }
 }

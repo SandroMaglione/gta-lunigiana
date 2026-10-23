@@ -18,13 +18,35 @@
  * @module map
  */
 import { staticGrid } from "../collide.ts"
-import { BUILDING_STYLES, type BuildingStyle, isRoadClass, pushTrunk, type RoadClass, TRUNK } from "./kinds.ts"
+import {
+  BUILDING_STYLES,
+  type BuildingStyle,
+  isRoadClass,
+  pushTrunk,
+  type RoadClass,
+  TRUNK,
+} from "./kinds.ts"
 import { decodeMap, mapFile } from "./packed.ts"
 
-export { AREA_KINDS, type AreaKind, BUILDING_STYLES, type BuildingStyle, isAreaKind, isDrivable, ROAD_CLASSES, type RoadClass, TRUNK } from "./kinds.ts"
+export {
+  AREA_KINDS,
+  type AreaKind,
+  BUILDING_STYLES,
+  type BuildingStyle,
+  isAreaKind,
+  isDrivable,
+  ROAD_CLASSES,
+  type RoadClass,
+  TRUNK,
+} from "./kinds.ts"
 
 /** Play area rectangle, metres. */
-interface Bounds { readonly minX: number; readonly minY: number; readonly maxX: number; readonly maxY: number }
+interface Bounds {
+  readonly minX: number
+  readonly minY: number
+  readonly maxX: number
+  readonly maxY: number
+}
 
 /** Terrain nodes every `cell` m: row-major, row 0 = south (`y0`), col 0 = west (`x0`); integer decimetres. Covers `bounds`. */
 interface Heightmap {
@@ -95,19 +117,41 @@ export interface Rail {
 }
 
 /** Land use polygon: `rings[0]` outer, the rest holes; `kind` is one of `AREA_KINDS` (checked by map.test.ts, narrow with `isAreaKind`). */
-export interface Area { readonly kind: string; readonly name?: string; readonly rings: ReadonlyArray<ReadonlyArray<number>> }
+export interface Area {
+  readonly kind: string
+  readonly name?: string
+  readonly rings: ReadonlyArray<ReadonlyArray<number>>
+}
 
 /** "wall" | "guard_rail" | "cliff" polyline. */
-export interface Barrier { readonly kind: string; readonly pts: ReadonlyArray<number> }
+export interface Barrier {
+  readonly kind: string
+  readonly pts: ReadonlyArray<number>
+}
 
 /** Point of interest; `kind` is `key=value` of the OSM tag (or `area:<kind>` for named polygons). */
-export interface Poi { readonly id: number; readonly kind: string; readonly name?: string; readonly x: number; readonly y: number }
+export interface Poi {
+  readonly id: number
+  readonly kind: string
+  readonly name?: string
+  readonly x: number
+  readonly y: number
+}
 
 /** HUD location label for the disc of radius `r` around (x, y); look names up with `districtAt`. */
-export interface District { readonly name: string; readonly x: number; readonly y: number; readonly r: number }
+export interface District {
+  readonly name: string
+  readonly x: number
+  readonly y: number
+  readonly r: number
+}
 
 /** A placement: position and heading (radians from +x towards +y). */
-export interface Spawn { readonly x: number; readonly y: number; readonly angle: number }
+export interface Spawn {
+  readonly x: number
+  readonly y: number
+  readonly angle: number
+}
 
 /** The map as the game reads it: `monzone.bin` with its packed sections decoded. */
 export interface MonzoneMap {
@@ -158,14 +202,16 @@ export const roadClassOf = (road: Road): RoadClass => (isRoadClass(road.cls) ? r
 const buildingStyles: ReadonlySet<string> = new Set(BUILDING_STYLES)
 const isBuildingStyle = (style: string): style is BuildingStyle => buildingStyles.has(style)
 /** The building's facade style; the build only emits `BUILDING_STYLES`, anything else reads as "plaster". */
-export const buildingStyleOf = (building: Building): BuildingStyle => (isBuildingStyle(building.style) ? building.style : "plaster")
+export const buildingStyleOf = (building: Building): BuildingStyle =>
+  isBuildingStyle(building.style) ? building.style : "plaster"
 
 /**
  * HUD location name at (x, y): of the districts whose disc contains the point, the one it is
  * relatively closest to (distance / r); outside every disc, the district whose rim is nearest.
  */
 export const districtAt = (x: number, y: number): District => {
-  let best = MAP.districts[0]!, score = Number.MAX_VALUE
+  let best = MAP.districts[0]!,
+    score = Number.MAX_VALUE
   for (const d of MAP.districts) {
     const dist = Math.sqrt((x - d.x) * (x - d.x) + (y - d.y) * (y - d.y))
     const s = dist <= d.r ? dist / d.r : 1 + dist - d.r
@@ -193,11 +239,21 @@ export const heightAt = (x: number, y: number): number => {
 }
 
 /** Bounding box [minX, minY, maxX, maxY] of every building's outer ring, indexed like `MAP.buildings`. */
-export const buildingBoxes: ReadonlyArray<readonly [number, number, number, number]> = MAP.buildings.map(({ outer }) => {
-  let x0 = outer[0]!, y0 = outer[1]!, x1 = x0, y1 = y0
-  for (let k = 2; k + 1 < outer.length; k += 2) [x0, y0, x1, y1] = [Math.min(x0, outer[k]!), Math.min(y0, outer[k + 1]!), Math.max(x1, outer[k]!), Math.max(y1, outer[k + 1]!)]
-  return [x0, y0, x1, y1] as const
-})
+export const buildingBoxes: ReadonlyArray<readonly [number, number, number, number]> =
+  MAP.buildings.map(({ outer }) => {
+    let x0 = outer[0]!,
+      y0 = outer[1]!,
+      x1 = x0,
+      y1 = y0
+    for (let k = 2; k + 1 < outer.length; k += 2)
+      [x0, y0, x1, y1] = [
+        Math.min(x0, outer[k]!),
+        Math.min(y0, outer[k + 1]!),
+        Math.max(x1, outer[k]!),
+        Math.max(y1, outer[k + 1]!),
+      ]
+    return [x0, y0, x1, y1] as const
+  })
 
 /**
  * Building broad phase (`staticGrid` over `buildingBoxes`, 64 m cells): calls `visit` with the
@@ -223,14 +279,25 @@ const trunk: Array<number> = []
  * Tree broad phase (trees as points, the map has hundreds of thousands): calls `visit` with the
  * index i of every tree (`MAP.trees` at 3i, 3i + 1) in a cell the box overlaps; run the exact test.
  */
-export const treesIn = staticGrid(trees.length / 3, (i) => [trees[3 * i]!, trees[3 * i + 1]!, trees[3 * i]!, trees[3 * i + 1]!], CELL)
+export const treesIn = staticGrid(
+  trees.length / 3,
+  (i) => [trees[3 * i]!, trees[3 * i + 1]!, trees[3 * i]!, trees[3 * i + 1]!],
+  CELL,
+)
 
 /** A broad phase over flat (ax, ay, bx, by) walls plus every tree trunk, answering into one reused array of reused segments. */
 const indexWalls = (flat: ArrayLike<number>) => {
-  const wallsIn = staticGrid(flat.length / 4, (i) => {
-    const ax = flat[4 * i]!, ay = flat[4 * i + 1]!, bx = flat[4 * i + 2]!, by = flat[4 * i + 3]!
-    return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]
-  }, CELL)
+  const wallsIn = staticGrid(
+    flat.length / 4,
+    (i) => {
+      const ax = flat[4 * i]!,
+        ay = flat[4 * i + 1]!,
+        bx = flat[4 * i + 2]!,
+        by = flat[4 * i + 3]!
+      return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)]
+    },
+    CELL,
+  )
   const found: Array<Segment> = []
   const pool: Array<{ ax: number; ay: number; bx: number; by: number }> = []
   const add = (ax: number, ay: number, bx: number, by: number) => {
@@ -241,11 +308,13 @@ const indexWalls = (flat: ArrayLike<number>) => {
     s.by = by
     found.push(s)
   }
-  const wall = (i: number) => add(flat[4 * i]!, flat[4 * i + 1]!, flat[4 * i + 2]!, flat[4 * i + 3]!)
+  const wall = (i: number) =>
+    add(flat[4 * i]!, flat[4 * i + 1]!, flat[4 * i + 2]!, flat[4 * i + 3]!)
   const tree = (i: number) => {
     trunk.length = 0
     pushTrunk(trunk, trees[3 * i]!, trees[3 * i + 1]!)
-    for (let k = 0; k < trunk.length; k += 4) add(trunk[k]!, trunk[k + 1]!, trunk[k + 2]!, trunk[k + 3]!)
+    for (let k = 0; k < trunk.length; k += 4)
+      add(trunk[k]!, trunk[k + 1]!, trunk[k + 2]!, trunk[k + 3]!)
   }
   return (minX: number, minY: number, maxX: number, maxY: number): ReadonlyArray<Segment> => {
     found.length = 0
@@ -265,8 +334,13 @@ const driveWalls = indexWalls(MAP.walls.drive)
  * square of `pushTrunk` edges. The array and the segments in it are reused by
  * the next call of the same kind: copy the coordinates to keep them.
  */
-export const wallsNear = (kind: "walk" | "drive", minX: number, minY: number, maxX: number, maxY: number): ReadonlyArray<Segment> =>
-  (kind === "walk" ? walkWalls : driveWalls)(minX, minY, maxX, maxY)
+export const wallsNear = (
+  kind: "walk" | "drive",
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): ReadonlyArray<Segment> => (kind === "walk" ? walkWalls : driveWalls)(minX, minY, maxX, maxY)
 
 /**
  * A straight graph edge. a -> b follows the vertex order of `MAP.roads[road].pts` (the OSM way
@@ -308,8 +382,10 @@ const buildGraph = (): RoadGraph => {
   const adjacency: Array<Array<number>> = nodes.map(() => [])
   const edges: Array<GraphEdge> = []
   for (let i = 0; i + 2 < flat.length; i += 3) {
-    const a = flat[i]!, b = flat[i + 1]!
-    const dx = nodes[b]!.x - nodes[a]!.x, dy = nodes[b]!.y - nodes[a]!.y
+    const a = flat[i]!,
+      b = flat[i + 1]!
+    const dx = nodes[b]!.x - nodes[a]!.x,
+      dy = nodes[b]!.y - nodes[a]!.y
     adjacency[a]!.push(edges.length)
     adjacency[b]!.push(edges.length)
     edges.push({ a, b, road: flat[i + 2]!, length: Math.sqrt(dx * dx + dy * dy) })

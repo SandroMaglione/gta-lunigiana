@@ -19,7 +19,9 @@ import { TARGETS } from "./targets.ts"
 
 /** How far (dB) a crash plays under its nominal peak (the reference crash, a Panda into a house at 15 m/s), so masking counts the level played: the law, less what a ringing wall or two clanking shells add to it; negative past the reference, to about −8 dB. */
 export const crashQuiet = (sound: Crash): number =>
-  -levelOf(sound) - (sound.against.kind === "wall" ? TARGETS[sound.against.material].adds : SHELL_ADDS) * Math.min(1, sound.speed / 8)
+  -levelOf(sound) -
+  (sound.against.kind === "wall" ? TARGETS[sound.against.material].adds : SHELL_ADDS) *
+    Math.min(1, sound.speed / 8)
 
 /** The rate a crash renders at on `ctx`, Hz. */
 const rateOf = (ctx: BaseAudioContext): number => Math.min(ctx.sampleRate, 48000)
@@ -32,7 +34,15 @@ export const crash: Shot<Crash> = {
   prepare: (ctx) => Promise.resolve(void bandLoops(rateOf(ctx))),
   play: (io, sound, when) => {
     let buffer = renders.get(sound)
-    if (buffer === undefined) renders.set(sound, (buffer = bufferOf(io.ctx, renderCrash(sound, rateOf(io.ctx), Math.random), rateOf(io.ctx))))
+    if (buffer === undefined)
+      renders.set(
+        sound,
+        (buffer = bufferOf(
+          io.ctx,
+          renderCrash(sound, rateOf(io.ctx), Math.random),
+          rateOf(io.ctx),
+        )),
+      )
     return playBuffer(io, buffer, when)
-  }
+  },
 }

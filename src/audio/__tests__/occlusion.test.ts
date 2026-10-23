@@ -22,17 +22,24 @@ test("a bell at the top of the 30 m tower rings out over its own walls", () => {
   buildingsIn(-20, -340, 30, -310, (i) => block.push(i))
   const tower = block.map((i) => MAP.buildings[i]!).reduce((a, b) => (b.h > a.h ? b : a))
   assert.ok(tower.kind === "church" && tower.h > 29, `${tower.kind} ${tower.h} m`)
-  const xs = tower.outer.filter((_, k) => k % 2 === 0), ys = tower.outer.filter((_, k) => k % 2 === 1)
-  const bell = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: tower.z0 + tower.h }
+  const xs = tower.outer.filter((_, k) => k % 2 === 0),
+    ys = tower.outer.filter((_, k) => k % 2 === 1)
+  const bell = {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+    z: tower.z0 + tower.h,
+  }
   for (let k = 0; k < 8; k++) {
-    const a = (k * Math.PI) / 4, below = { x: bell.x + 50 * Math.cos(a), y: bell.y + 50 * Math.sin(a), z: bell.z - 5 }
+    const a = (k * Math.PI) / 4,
+      below = { x: bell.x + 50 * Math.cos(a), y: bell.y + 50 * Math.sin(a), z: bell.z - 5 }
     assert.equal(pathDifference(bell, below), 0, `towards ${45 * k}°`)
     assert.equal(pathDifference(below, bell), 0, `from ${45 * k}°`)
   }
 })
 
 test("Monte San Giorgio stands between its two flanks, with no building on the way", () => {
-  const west = at(785.7, -563.4), east = at(1185.7, -563.4)
+  const west = at(785.7, -563.4),
+    east = at(1185.7, -563.4)
   let buildings = 0
   buildingsIn(west.x, west.y, east.x, east.y, () => buildings++)
   assert.equal(buildings, 0)

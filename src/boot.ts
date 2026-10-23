@@ -19,18 +19,29 @@ const mb = (bytes: number) => (bytes / 1e6).toFixed(1)
  */
 const download = async (url: URL): Promise<Uint8Array> => {
   const response = await fetch(url)
-  if (!response.ok || response.body === null) throw new Error(`${url.pathname}: HTTP ${response.status}`)
+  if (!response.ok || response.body === null)
+    throw new Error(`${url.pathname}: HTTP ${response.status}`)
   const total = Number(response.headers.get("content-length") ?? 0)
   let received = 0
   const count = new TransformStream<Uint8Array<ArrayBuffer>, BufferSource>({
     transform(chunk, out) {
       received += chunk.byteLength
-      const detail = total > 0 ? `${mb(Math.min(received, total))} / ${mb(total)} MB` : `${mb(received)} MB`
-      loading(document, "Downloading map", total > 0 ? DOWNLOAD * Math.min(1, received / total) : 0, detail)
+      const detail =
+        total > 0 ? `${mb(Math.min(received, total))} / ${mb(total)} MB` : `${mb(received)} MB`
+      loading(
+        document,
+        "Downloading map",
+        total > 0 ? DOWNLOAD * Math.min(1, received / total) : 0,
+        detail,
+      )
       out.enqueue(chunk)
-    }
+    },
   })
-  return new Uint8Array(await new Response(response.body.pipeThrough(count).pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())
+  return new Uint8Array(
+    await new Response(
+      response.body.pipeThrough(count).pipeThrough(new DecompressionStream("gzip")),
+    ).arrayBuffer(),
+  )
 }
 
 try {
