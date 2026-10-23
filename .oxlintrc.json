@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
-  "jsPlugins": ["@typeonce/oxlint-plugin-ritmo"],
+  "jsPlugins": ["@typeonce/oxlint-plugin-ritmo", "./lint/plugin.ts"],
   "options": { "typeAware": true },
   "env": { "builtin": true, "es2024": true },
   "ignorePatterns": ["node_modules", "dist", "data"],
@@ -108,6 +108,7 @@
     "max-classes-per-file": "off",
     "import/max-dependencies": "off",
 
+    "lunigiana/tests-folder": "error",
     "ritmo/handle-tick-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
     "ritmo/use-cell-value": "error"

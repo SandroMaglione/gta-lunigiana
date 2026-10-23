@@ -7,7 +7,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives && ritmo-devtools lint src/sim/index.ts",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test \"src/**/*.test.ts\" \"lint/**/*.test.ts\"",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
     "map": "node src/tools/build-map.ts",
     "fetch-osm": "node src/tools/fetch-osm.ts",
@@ -24,6 +24,7 @@
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@oxlint/plugins": "^1.89.0",
     "@typeonce/oxlint-plugin-ritmo": "^0.10.0",
     "@typeonce/ritmo-devtools": "^0.10.0",
     "@types/node": "^26.6.5",

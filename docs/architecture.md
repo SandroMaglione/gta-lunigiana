@@ -462,6 +462,8 @@ step, and git hooks run the first three before a commit or push.
     `void`ed;
   - the Ritmo plugin everywhere: `handle-tick-result`, `prefix-descriptor-and-system-names`,
     `use-cell-value`;
+  - the project's own plugin, `lint/plugin.ts`: `lunigiana/tests-folder` fails a `*.test.ts`
+    that does not sit directly in a `__tests__` folder;
   - in `src/sim/**`: `use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`,
     `keep-simulation-headless`, `no-infinity-in-simulation-data`, and a ban on importing
     `render`, `hud`, `audio` or `main.ts`;
@@ -475,8 +477,9 @@ step, and git hooks run the first three before a commit or push.
   `SetHandling` a host event (`hostEvents`), since only the host sends it; undeclared it would be
   `event-never-written`. It also fails if a module the sim loads is not covered by the oxlint
   simulation override.
-- `node --test` over every `*.test.ts`. A test lives in a `__tests__` folder beside the module it
-  tests (`src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`). Beside the unit
+- `node --test` over every `*.test.ts` in `src` and `lint`. A test lives in a `__tests__` folder
+  beside the module it tests (`src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`;
+  `lunigiana/tests-folder` enforces it). Beside the unit
   tests, these guard the architecture:
   - `determinism` (`src/sim/__tests__/index.test.ts`): `Determinism.check` runs a 600-frame
     scripted joyride twice, with the handling off its real values (`SetHandling`), and requires
