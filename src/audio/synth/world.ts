@@ -12,7 +12,13 @@ import { groan, scream, shout } from "./voices.ts"
 import { water } from "./water.ts"
 
 /** Continuous world sounds. */
-export const WORLD_VOICES = { water, wind, crickets } satisfies Pick<Voices, "water" | "wind" | "crickets">
+export const WORLD_VOICES = { water, wind, crickets } satisfies Pick<
+  Voices,
+  "water" | "wind" | "crickets"
+>
 
 /** One-shot world sounds. */
-export const WORLD_SHOTS = { step, scream, shout, groan, bell, bird, bark } satisfies Pick<Shots, "step" | "scream" | "shout" | "groan" | "bell" | "bird" | "bark">
+export const WORLD_SHOTS = { step, scream, shout, groan, bell, bird, bark } satisfies Pick<
+  Shots,
+  "step" | "scream" | "shout" | "groan" | "bell" | "bird" | "bark"
+>

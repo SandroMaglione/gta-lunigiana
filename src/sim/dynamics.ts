@@ -101,29 +101,54 @@ const clampTo = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v
 
 /** Which face struck the ground: corner `index` (0–3 underbody, 4–7 roof) of a body tilted to `up`, pitched `pitch`. */
 const faceOf = (index: number, corner: Offset, up: number, pitch: number): GroundHit["face"] =>
-  up < -WHEELS_DOWN ? "roof"
-    : up < WHEELS_DOWN || index >= 4 ? "side"
-    : Math.abs(pitch) > 0.5 ? (corner.f > 0 ? "front" : "rear")
-    : "under"
+  up < -WHEELS_DOWN
+    ? "roof"
+    : up < WHEELS_DOWN || index >= 4
+      ? "side"
+      : Math.abs(pitch) > 0.5
+        ? corner.f > 0
+          ? "front"
+          : "rear"
+        : "under"
 
 /** Elevation of the ground at (x, y) nearest `near` (m a.s.l.): the map's (`groundZ`), or a test's. */
 export type Ground = (x: number, y: number, near?: number) => number
 
 /** Advances `body` by `dt` seconds under `controls` on `ground`. */
-export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: number, ground: Ground = groundZ): StepResult => {
-  const h = dt / SUBSTEPS, spec = rig.spec, m = spec.mass
+export const integrate = (
+  rig: Rig,
+  body: BodyState,
+  controls: Controls,
+  dt: number,
+  ground: Ground = groundZ,
+): StepResult => {
+  const h = dt / SUBSTEPS,
+    spec = rig.spec,
+    m = spec.mass
   const driven = rig.wheels.filter((w) => w.driven).length
   const skids = rig.wheels.map((): WheelSkid => ({ amount: 0, slip: 0, x: 0, y: 0, z: 0 }))
   const before = rig.wheels.map(() => 0)
-  const hullK = (m * (2 * Math.PI * HULL_HZ) ** 2) / 4, hullD = 2 * HULL_DAMPING * Math.sqrt((hullK * m) / 4)
+  const hullK = (m * (2 * Math.PI * HULL_HZ) ** 2) / 4,
+    hullD = 2 * HULL_DAMPING * Math.sqrt((hullK * m) / 4)
   const steer = { c: Ops.cos(controls.steer), s: Ops.sin(controls.steer) }
-  let hit: GroundHit | undefined, grounded = 0
+  let hit: GroundHit | undefined,
+    grounded = 0
   for (let k = 0; k < SUBSTEPS; k++) {
-    const c = Ops.cos(body.angle), s = Ops.sin(body.angle)
-    const tilt = tiltOf(body.pitch, body.roll), up = tilt.cp * tilt.cr
-    const vf = body.vx * c + body.vy * s, vl = -body.vx * s + body.vy * c
-    const p = body.rollRate, q = body.pitchRate, r = body.spin
-    let ff = 0, fl = 0, fu = -m * GRAVITY, tf = 0, tl = 0, tu = 0
+    const c = Ops.cos(body.angle),
+      s = Ops.sin(body.angle)
+    const tilt = tiltOf(body.pitch, body.roll),
+      up = tilt.cp * tilt.cr
+    const vf = body.vx * c + body.vy * s,
+      vl = -body.vx * s + body.vy * c
+    const p = body.rollRate,
+      q = body.pitchRate,
+      r = body.spin
+    let ff = 0,
+      fl = 0,
+      fu = -m * GRAVITY,
+      tf = 0,
+      tl = 0,
+      tu = 0
     const apply = (o: Offset, Ff: number, Fl: number, Fu: number) => {
       ff += Ff
       fl += Fl
@@ -134,12 +159,16 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     }
     /** Horizontal velocity of the body point at offset `o`, heading frame. */
     const along = (o: Offset) => ({ f: vf - q * o.u - r * o.l, l: vl + r * o.f - p * o.u })
-    const toWorld = (o: Offset) => ({ x: body.x + o.f * c - o.l * s, y: body.y + o.f * s + o.l * c })
+    const toWorld = (o: Offset) => ({
+      x: body.x + o.f * c - o.l * s,
+      y: body.y + o.f * s + o.l * c,
+    })
 
     // Suspension: each wheel's spring and damper against the ground under it.
     const offsets = rig.wheels.map((w) => turn(w.at, tilt))
     const grounds = offsets.map((o, i) => {
-      const at = toWorld(o), height = body.z + o.u
+      const at = toWorld(o),
+        height = body.z + o.u
       if (k === 0) {
         // Where the wheel was a substep ago, for the ground's rate under it.
         const v = along(o)
@@ -150,7 +179,9 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     // The ground's slope under the wheels: the springs push along its normal, so gravity pulls the car downhill.
     const plane = fitPlane(offsets, grounds)
     const loads: Array<number> = rig.wheels.map((w, i) => {
-      const o = offsets[i]!, g = grounds[i]!, rate = (g - before[i]!) / h
+      const o = offsets[i]!,
+        g = grounds[i]!,
+        rate = (g - before[i]!) / h
       before[i] = g
       const compression = rig.sag + g - (body.z + o.u)
       if (up <= WHEELS_DOWN || compression <= 0) return 0
@@ -160,8 +191,10 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
       if (over > 0) {
         load += BUMP * w.spring * over
         // A landing: the body coming down onto the bump stop faster than the slope under it falls away (a kerb under a rolling wheel is not one).
-        const v = along(o), closing = falling + v.f * plane.gf + v.l * plane.gl
-        if (closing > HIT_FROM && (hit === undefined || closing > hit.speed)) hit = { speed: closing, ...toWorld(o), face: faceOf(0, w.at, up, body.pitch) }
+        const v = along(o),
+          closing = falling + v.f * plane.gf + v.l * plane.gl
+        if (closing > HIT_FROM && (hit === undefined || closing > hit.speed))
+          hit = { speed: closing, ...toWorld(o), face: faceOf(0, w.at, up, body.pitch) }
       }
       return Math.min(MOST * w.load, Math.max(0, load))
     })
@@ -169,33 +202,60 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     const twist = rig.wheels.map((w, i) => {
       const j = rig.partner[i]!
       if (j < 0 || loads[i]! <= 0 || loads[j]! <= 0) return 0
-      const o = offsets[i]!, other = offsets[j]!
-      return w.antiRoll * ((grounds[i]! - (body.z + o.u)) - (grounds[j]! - (body.z + other.u)))
+      const o = offsets[i]!,
+        other = offsets[j]!
+      return w.antiRoll * (grounds[i]! - (body.z + o.u) - (grounds[j]! - (body.z + other.u)))
     })
     twist.forEach((t, i) => (loads[i] = Math.max(0, loads[i]! + t)))
-    const norm = Math.sqrt(1 + plane.gf * plane.gf + plane.gl * plane.gl), nf = -plane.gf / norm, nl = -plane.gl / norm, nu = 1 / norm
+    const norm = Math.sqrt(1 + plane.gf * plane.gf + plane.gl * plane.gl),
+      nf = -plane.gf / norm,
+      nl = -plane.gl / norm,
+      nu = 1 / norm
     let touching = 0
     rig.wheels.forEach((w, i) => {
-      const load = loads[i]!, o = offsets[i]!
+      const load = loads[i]!,
+        o = offsets[i]!
       if (load <= 0) return
       touching++
-      const ds = w.steered ? steer.s : 0, dc = w.steered ? steer.c : 1
-      const v = along(o), vx = v.f * dc + v.l * ds, vy = -v.f * ds + v.l * dc
-      const sx = load * (nf * dc + nl * ds), sy = load * (-nf * ds + nl * dc)
+      const ds = w.steered ? steer.s : 0,
+        dc = w.steered ? steer.c : 1
+      const v = along(o),
+        vx = v.f * dc + v.l * ds,
+        vy = -v.f * ds + v.l * dc
+      const sx = load * (nf * dc + nl * ds),
+        sy = load * (-nf * ds + nl * dc)
       // The tyre's force tilts the body over a lever cut by the handling's weight transfer.
       const lever = { ...o, u: o.u * rig.transfer }
       // The patch's own share of the mass, less what a push there spends tilting the body over it (or static friction overshoots).
-      const share = w.load / GRAVITY, alongMass = share / (1 + (m * lever.u * lever.u) / rig.iy), sideMass = share / (1 + (m * lever.u * lever.u) / rig.ix)
+      const share = w.load / GRAVITY,
+        alongMass = share / (1 + (m * lever.u * lever.u) / rig.iy),
+        sideMass = share / (1 + (m * lever.u * lever.u) / rig.ix)
       const grip = rig.grips[controls.surfaces[i] ?? "asphalt"]
       const out = tyreForce({
-        load, mu: loaded(grip.mu * spec.tyres.grip, load, w.load), slide: grip.slide, roll: grip.roll, peak: spec.tyres.slip, vx, vy,
-        drive: w.driven ? controls.drive / driven : 0, brake: controls.brake * spec.brakes.decel * m * w.brake,
-        locked: controls.handbrake && !w.steered, abs: spec.brakes.abs, traction: spec.traction,
-        holdX: (-alongMass * vx) / h - sx, holdY: (-sideMass * vy) / h - sy
+        load,
+        mu: loaded(grip.mu * spec.tyres.grip, load, w.load),
+        slide: grip.slide,
+        roll: grip.roll,
+        peak: spec.tyres.slip,
+        vx,
+        vy,
+        drive: w.driven ? controls.drive / driven : 0,
+        brake: controls.brake * spec.brakes.decel * m * w.brake,
+        locked: controls.handbrake && !w.steered,
+        abs: spec.brakes.abs,
+        traction: spec.traction,
+        holdX: (-alongMass * vx) / h - sx,
+        holdY: (-sideMass * vy) / h - sy,
       })
-      apply(lever, out.fx * dc - out.fy * ds + load * nf, out.fx * ds + out.fy * dc + load * nl, load * nu)
+      apply(
+        lever,
+        out.fx * dc - out.fy * ds + load * nf,
+        out.fx * ds + out.fy * dc + load * nl,
+        load * nu,
+      )
       const skid = skids[i]!
-      if (out.amount > skid.amount) Object.assign(skid, { amount: out.amount, slip: out.slip, ...toWorld(o), z: grounds[i]! })
+      if (out.amount > skid.amount)
+        Object.assign(skid, { amount: out.amount, slip: out.slip, ...toWorld(o), z: grounds[i]! })
     })
     grounded = Math.max(grounded, touching)
 
@@ -204,26 +264,49 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     let resting = false
     const level = body.z - spec.cg
     rig.corners.forEach((corner, index) => {
-      const o = turn(corner, tilt), at = toWorld(o), height = body.z + o.u
-      const here = ground(at.x, at.y, level), depth = here - height
+      const o = turn(corner, tilt),
+        at = toWorld(o),
+        height = body.z + o.u
+      const here = ground(at.x, at.y, level),
+        depth = here - height
       if (depth <= 0) return
       resting = true
       // The slope of the surface the corner is on: a sample past a step (a deck's edge, a kerb) is another surface, not a slope. Both
       // samples that far off are a face steeper than the reach, not an edge.
       const slope = (dx: number, dy: number) => {
-        const ahead = ground(at.x + dx * SLOPE_STEP, at.y + dy * SLOPE_STEP, level), behind = ground(at.x - dx * SLOPE_STEP, at.y - dy * SLOPE_STEP, level)
-        const a = Math.abs(ahead - here) <= STEP_REACH, b = Math.abs(behind - here) <= STEP_REACH
-        return a === b ? (ahead - behind) / (2 * SLOPE_STEP) : a ? (ahead - here) / SLOPE_STEP : (here - behind) / SLOPE_STEP
+        const ahead = ground(at.x + dx * SLOPE_STEP, at.y + dy * SLOPE_STEP, level),
+          behind = ground(at.x - dx * SLOPE_STEP, at.y - dy * SLOPE_STEP, level)
+        const a = Math.abs(ahead - here) <= STEP_REACH,
+          b = Math.abs(behind - here) <= STEP_REACH
+        return a === b
+          ? (ahead - behind) / (2 * SLOPE_STEP)
+          : a
+            ? (ahead - here) / SLOPE_STEP
+            : (here - behind) / SLOPE_STEP
       }
-      const gf = slope(c, s), gl = slope(-s, c)
-      const norm = Math.sqrt(1 + gf * gf + gl * gl), n = { f: -gf / norm, l: -gl / norm, u: 1 / norm }
-      const v = along(o), vu = body.vz + p * o.l + q * o.f, into = v.f * n.f + v.l * n.l + vu * n.u
+      const gf = slope(c, s),
+        gl = slope(-s, c)
+      const norm = Math.sqrt(1 + gf * gf + gl * gl),
+        n = { f: -gf / norm, l: -gl / norm, u: 1 / norm }
+      const v = along(o),
+        vu = body.vz + p * o.l + q * o.f,
+        into = v.f * n.f + v.l * n.l + vu * n.u
       const normal = Math.max(0, hullK * depth * n.u - hullD * into)
       // The sliding velocity, in the ground's plane.
-      const tf = v.f - into * n.f, tl = v.l - into * n.l, tu = vu - into * n.u, speed = Math.sqrt(tf * tf + tl * tl + tu * tu)
-      const friction = speed > 1e-6 ? Math.min(HULL_FRICTION * normal, (m / 8) * (speed / h)) / speed : 0
-      apply(o, normal * n.f - friction * tf, normal * n.l - friction * tl, normal * n.u - friction * tu)
-      if (-into > HIT_FROM && (hit === undefined || -into > hit.speed)) hit = { speed: -into, ...at, face: faceOf(index, corner, up, body.pitch) }
+      const tf = v.f - into * n.f,
+        tl = v.l - into * n.l,
+        tu = vu - into * n.u,
+        speed = Math.sqrt(tf * tf + tl * tl + tu * tu)
+      const friction =
+        speed > 1e-6 ? Math.min(HULL_FRICTION * normal, (m / 8) * (speed / h)) / speed : 0
+      apply(
+        o,
+        normal * n.f - friction * tf,
+        normal * n.l - friction * tl,
+        normal * n.u - friction * tu,
+      )
+      if (-into > HIT_FROM && (hit === undefined || -into > hit.speed))
+        hit = { speed: -into, ...at, face: faceOf(index, corner, up, body.pitch) }
     })
 
     // The stability assist (arcade): yaw toward the steered line, the slide damped.
@@ -236,7 +319,8 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     ff -= drag * vf
     fl -= drag * vl
 
-    const af = ff / m, al = fl / m
+    const af = ff / m,
+      al = fl / m
     body.vx += (af * c - al * s) * h
     body.vy += (af * s + al * c) * h
     body.vz += (fu / m) * h
@@ -249,7 +333,16 @@ export const integrate = (rig: Rig, body: BodyState, controls: Controls, dt: num
     }
     // Self-righting (arcade): a vehicle down on its side or roof, nearly stopped, rolls back onto its wheels.
     const partly = touching > 0 && touching < rig.wheels.length
-    const righted = righting(rig, up, resting || partly, Math.sqrt(body.vx * body.vx + body.vy * body.vy), body.roll, body.pitch, body, h)
+    const righted = righting(
+      rig,
+      up,
+      resting || partly,
+      Math.sqrt(body.vx * body.vx + body.vy * body.vy),
+      body.roll,
+      body.pitch,
+      body,
+      h,
+    )
     body.rollRate = righted.rollRate
     body.pitchRate = righted.pitchRate
     body.vz = righted.vz

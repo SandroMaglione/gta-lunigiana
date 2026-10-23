@@ -8,7 +8,21 @@ import { type BodyState, type Ground, integrate } from "../dynamics.ts"
 import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { groundZ } from "../map/ground.ts"
 import { type Surface, surfaceAt } from "../map/surface.ts"
-import { CarInput, Chassis, type ChassisValue, Damage, Game, Handling, Impact, Motion, Pose, type PoseValue, Skid, Time, Vehicle } from "../schema.ts"
+import {
+  CarInput,
+  Chassis,
+  type ChassisValue,
+  Damage,
+  Game,
+  Handling,
+  Impact,
+  Motion,
+  Pose,
+  type PoseValue,
+  Skid,
+  Time,
+  Vehicle,
+} from "../schema.ts"
 import type { VehicleModel, VehicleSpec } from "../vehicles.ts"
 
 /** Wall hits: share of the impact speed bounced back, and speed lost per m/s of impact. */
@@ -37,15 +51,29 @@ const REST = 0.05
  * along `into`, on the end circle that leads (the front corner of an oblique hit, the side's middle
  * of a square-on side hit).
  */
-const contact = (spec: VehicleSpec, x: number, y: number, angle: number, into: Vec2.Vec2): Vec2.Vec2 => {
-  const fx = Ops.cos(angle), fy = Ops.sin(angle), r = spec.width / 2, end = Math.sign(into.x * fx + into.y * fy) * (spec.length / 2 - r)
+const contact = (
+  spec: VehicleSpec,
+  x: number,
+  y: number,
+  angle: number,
+  into: Vec2.Vec2,
+): Vec2.Vec2 => {
+  const fx = Ops.cos(angle),
+    fy = Ops.sin(angle),
+    r = spec.width / 2,
+    end = Math.sign(into.x * fx + into.y * fy) * (spec.length / 2 - r)
   return { x: x + fx * end + into.x * r, y: y + fy * end + into.y * r }
 }
 
 /** The steering lock at `speed`: full lock while slow, then just enough to turn at the tyres' grip (× the handling's steering at speed). */
 export const steerLimit = (rig: Rig, speed: number): number => {
-  const grip = STEER_GRIP * rig.spec.tyres.grip, lateral = Math.min(grip, TIP_MARGIN * rig.tipping * 9.81) * rig.steering
-  return Math.min(rig.lock, Ops.atan((rig.wheelbase * lateral) / Math.max(1, speed * speed)) + 0.6 * rig.spec.tyres.slip * (lateral / grip))
+  const grip = STEER_GRIP * rig.spec.tyres.grip,
+    lateral = Math.min(grip, TIP_MARGIN * rig.tipping * 9.81) * rig.steering
+  return Math.min(
+    rig.lock,
+    Ops.atan((rig.wheelbase * lateral) / Math.max(1, speed * speed)) +
+      0.6 * rig.spec.tyres.slip * (lateral / grip),
+  )
 }
 
 /**
@@ -55,11 +83,19 @@ export const steerLimit = (rig: Rig, speed: number): number => {
 export const settles = (
   before: { readonly vx: number; readonly vy: number },
   after: { readonly vx: number; readonly vy: number; readonly spin: number },
-  chassis: Pick<ChassisValue, "vz" | "pitchRate" | "rollRate">
+  chassis: Pick<ChassisValue, "vz" | "pitchRate" | "rollRate">,
 ): boolean => {
-  const now = after.vx * after.vx + after.vy * after.vy, then = before.vx * before.vx + before.vy * before.vy
-  return now < REST * REST && then < REST * REST && now <= then + (REST * REST) / 4 &&
-    Math.abs(after.spin) < REST && Math.abs(chassis.vz) < REST && Math.abs(chassis.pitchRate) < REST && Math.abs(chassis.rollRate) < REST
+  const now = after.vx * after.vx + after.vy * after.vy,
+    then = before.vx * before.vx + before.vy * before.vy
+  return (
+    now < REST * REST &&
+    then < REST * REST &&
+    now <= then + (REST * REST) / 4 &&
+    Math.abs(after.spin) < REST &&
+    Math.abs(chassis.vz) < REST &&
+    Math.abs(chassis.pitchRate) < REST &&
+    Math.abs(chassis.rollRate) < REST
+  )
 }
 
 /**
@@ -78,26 +114,65 @@ const CREEP = 0.045
  * sliding, and does not sleep at the top of a coast up it.
  */
 export const rests = (
-  model: VehicleModel, at: VehicleState, input: Pedals, step: number, dt: number, ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt,
-  handling: HandlingValue = REAL_HANDLING, wear: Wear = NEW_ENGINE
+  model: VehicleModel,
+  at: VehicleState,
+  input: Pedals,
+  step: number,
+  dt: number,
+  ground: Ground = groundZ,
+  surface: (x: number, y: number, level: number) => Surface = surfaceAt,
+  handling: HandlingValue = REAL_HANDLING,
+  wear: Wear = NEW_ENGINE,
 ): boolean => {
-  let state: VehicleState = { pose: at.pose, motion: { vx: 0, vy: 0, spin: 0 }, chassis: { ...at.chassis, vz: 0, pitchRate: 0, rollRate: 0 } }
+  let state: VehicleState = {
+    pose: at.pose,
+    motion: { vx: 0, vy: 0, spin: 0 },
+    chassis: { ...at.chassis, vz: 0, pitchRate: 0, rollRate: 0 },
+  }
   let half = 0
   for (let k = 0; k < TRIAL; k++) {
-    if (k === TRIAL / 2) half = Math.sqrt(state.motion.vx * state.motion.vx + state.motion.vy * state.motion.vy)
-    const { body, steer, gearbox } = advance(model, state, input, step + k, dt, ground, surface, handling, wear)
+    if (k === TRIAL / 2)
+      half = Math.sqrt(state.motion.vx * state.motion.vx + state.motion.vy * state.motion.vy)
+    const { body, steer, gearbox } = advance(
+      model,
+      state,
+      input,
+      step + k,
+      dt,
+      ground,
+      surface,
+      handling,
+      wear,
+    )
     state = {
-      pose: { x: body.x, y: body.y, angle: body.angle }, motion: { vx: body.vx, vy: body.vy, spin: body.spin },
-      chassis: { z: body.z, vz: body.vz, pitch: body.pitch, pitchRate: body.pitchRate, roll: body.roll, rollRate: body.rollRate, steer, ...gearbox }
+      pose: { x: body.x, y: body.y, angle: body.angle },
+      motion: { vx: body.vx, vy: body.vy, spin: body.spin },
+      chassis: {
+        z: body.z,
+        vz: body.vz,
+        pitch: body.pitch,
+        pitchRate: body.pitchRate,
+        roll: body.roll,
+        rollRate: body.rollRate,
+        steer,
+        ...gearbox,
+      },
     }
   }
-  const { motion, chassis } = state, speed = Math.sqrt(motion.vx * motion.vx + motion.vy * motion.vy)
-  return (speed < HELD || (speed < CREEP && speed <= half)) && Math.abs(motion.spin) < 10 * HELD && Math.abs(chassis.vz) < 10 * HELD &&
-    Math.abs(chassis.pitchRate) < 10 * HELD && Math.abs(chassis.rollRate) < 10 * HELD
+  const { motion, chassis } = state,
+    speed = Math.sqrt(motion.vx * motion.vx + motion.vy * motion.vy)
+  return (
+    (speed < HELD || (speed < CREEP && speed <= half)) &&
+    Math.abs(motion.spin) < 10 * HELD &&
+    Math.abs(chassis.vz) < 10 * HELD &&
+    Math.abs(chassis.pitchRate) < 10 * HELD &&
+    Math.abs(chassis.rollRate) < 10 * HELD
+  )
 }
 
 /** `from` toward `to` by at most `step`. */
-const toward = (from: number, to: number, step: number): number => (from < to ? Math.min(to, from + step) : Math.max(to, from - step))
+const toward = (from: number, to: number, step: number): number =>
+  from < to ? Math.min(to, from + step) : Math.max(to, from - step)
 
 /** A vehicle's state as the physics reads and writes it. */
 interface VehicleState {
@@ -121,25 +196,57 @@ interface Pedals {
  * surfaces.
  */
 export const advance = (
-  model: VehicleModel, { pose, motion, chassis }: VehicleState, input: Pedals, step: number, dt: number,
-  ground: Ground = groundZ, surface: (x: number, y: number, level: number) => Surface = surfaceAt, handling: HandlingValue = REAL_HANDLING,
-  wear: Wear = NEW_ENGINE
+  model: VehicleModel,
+  { pose, motion, chassis }: VehicleState,
+  input: Pedals,
+  step: number,
+  dt: number,
+  ground: Ground = groundZ,
+  surface: (x: number, y: number, level: number) => Surface = surfaceAt,
+  handling: HandlingValue = REAL_HANDLING,
+  wear: Wear = NEW_ENGINE,
 ) => {
   // A wreck, burning or a charred shell, does not right itself: it stays where it lies.
-  const rig = rigFor(model, destroyed(wear.damage) && handling.selfRighting === 1 ? { ...handling, selfRighting: 0 } : handling), spec = rig.spec
+  const rig = rigFor(
+      model,
+      destroyed(wear.damage) && handling.selfRighting === 1
+        ? { ...handling, selfRighting: 0 }
+        : handling,
+    ),
+    spec = rig.spec
   const speed = forwardSpeed(motion, pose.angle)
   const gearbox = shiftGear(spec, chassis, speed, input.throttle, step)
   // The throttle against the motion is the brake pedal; standing with no pedal, the driver keeps a foot on the brake.
-  const braking = (input.throttle < 0 && speed > BRAKING) || (input.throttle > 0 && speed < -BRAKING) || (input.throttle === 0 && Math.abs(speed) < BRAKING)
+  const braking =
+    (input.throttle < 0 && speed > BRAKING) ||
+    (input.throttle > 0 && speed < -BRAKING) ||
+    (input.throttle === 0 && Math.abs(speed) < BRAKING)
   const target = input.steer * steerLimit(rig, Math.abs(speed))
-  const steer = toward(chassis.steer, target, (Math.abs(target) < Math.abs(chassis.steer) ? CENTRE_RATE : STEER_RATE) * rig.steeringRate * dt)
-  const c = Ops.cos(pose.angle), s = Ops.sin(pose.angle)
+  const steer = toward(
+    chassis.steer,
+    target,
+    (Math.abs(target) < Math.abs(chassis.steer) ? CENTRE_RATE : STEER_RATE) * rig.steeringRate * dt,
+  )
+  const c = Ops.cos(pose.angle),
+    s = Ops.sin(pose.angle)
   const level = chassis.z - spec.cg
-  const surfaces = rig.wheels.map((w) => surface(pose.x + w.at.f * c - w.at.l * s, pose.y + w.at.f * s + w.at.l * c, level))
+  const surfaces = rig.wheels.map((w) =>
+    surface(pose.x + w.at.f * c - w.at.l * s, pose.y + w.at.f * s + w.at.l * c, level),
+  )
   const body: BodyState = { ...pose, ...motion, ...chassis }
-  const result = integrate(rig, body, {
-    steer, drive: driveForce(spec, gearbox, speed, input.throttle, step, wear), brake: braking ? Math.abs(input.throttle) || 1 : 0, handbrake: input.handbrake, surfaces
-  }, dt, ground)
+  const result = integrate(
+    rig,
+    body,
+    {
+      steer,
+      drive: driveForce(spec, gearbox, speed, input.throttle, step, wear),
+      brake: braking ? Math.abs(input.throttle) || 1 : 0,
+      handbrake: input.handbrake,
+      surfaces,
+    },
+    dt,
+    ground,
+  )
   return { body, steer, gearbox, result, surfaces }
 }
 
@@ -153,91 +260,200 @@ export const advance = (
  * was. Wall and ground hits are Impact events, sliding tyres Skid events. A vehicle at rest with
  * its pedal up sleeps until something moves it.
  */
-export const VehiclePhysics = Game.System("Lunigiana/VehiclePhysics", {
-  queries: {
-    vehicles: Game.Query({
-      selection: {
-        pose: Game.Query.write(Pose), motion: Game.Query.write(Motion), chassis: Game.Query.write(Chassis), vehicle: Game.Query.read(Vehicle),
-        input: Game.Query.read(CarInput), damage: Game.Query.read(Damage)
-      }
-    })
+export const VehiclePhysics = Game.System(
+  "Lunigiana/VehiclePhysics",
+  {
+    queries: {
+      vehicles: Game.Query({
+        selection: {
+          pose: Game.Query.write(Pose),
+          motion: Game.Query.write(Motion),
+          chassis: Game.Query.write(Chassis),
+          vehicle: Game.Query.read(Vehicle),
+          input: Game.Query.read(CarInput),
+          damage: Game.Query.read(Damage),
+        },
+      }),
+    },
+    resources: {
+      time: Game.System.thisTick(Game.System.readResource(Time)),
+      handling: Game.System.readResource(Handling),
+    },
+    events: { impact: Game.System.writeEvent(Impact), skid: Game.System.writeEvent(Skid) },
   },
-  resources: { time: Game.System.thisTick(Game.System.readResource(Time)), handling: Game.System.readResource(Handling) },
-  events: { impact: Game.System.writeEvent(Impact), skid: Game.System.writeEvent(Skid) }
-}, ({ queries, resources, events }) => {
-  const { dt, step } = resources.time.get(), handling = resources.handling.get()
-  if (dt <= 0) return
-  for (const { entity, data } of queries.vehicles.each()) {
-    const { model } = data.vehicle.get()
-    const spec = RIGS[model].spec
-    const input = data.input.get()
-    const pose = data.pose.get()
-    const motion = data.motion.get()
-    const chassis = data.chassis.get()
-    // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing; one lying overturned wakes to
-    // right itself when the handling's self-righting is on, unless it is a wreck.
-    const wear = { damage: data.damage.get().amount, seed: entity.id }
-    const still = motion.vx === 0 && motion.vy === 0 && motion.spin === 0 && chassis.vz === 0 && chassis.pitchRate === 0 && chassis.rollRate === 0
-    if (input.throttle === 0 && still && !(handling.selfRighting === 1 && overturned(chassis) && !destroyed(wear.damage))) continue
+  ({ queries, resources, events }) => {
+    const { dt, step } = resources.time.get(),
+      handling = resources.handling.get()
+    if (dt <= 0) return
+    for (const { entity, data } of queries.vehicles.each()) {
+      const { model } = data.vehicle.get()
+      const spec = RIGS[model].spec
+      const input = data.input.get()
+      const pose = data.pose.get()
+      const motion = data.motion.get()
+      const chassis = data.chassis.get()
+      // Asleep: a vehicle its brakes hold at rest, that nobody drives off or touched, costs nothing; one lying overturned wakes to
+      // right itself when the handling's self-righting is on, unless it is a wreck.
+      const wear = { damage: data.damage.get().amount, seed: entity.id }
+      const still =
+        motion.vx === 0 &&
+        motion.vy === 0 &&
+        motion.spin === 0 &&
+        chassis.vz === 0 &&
+        chassis.pitchRate === 0 &&
+        chassis.rollRate === 0
+      if (
+        input.throttle === 0 &&
+        still &&
+        !(handling.selfRighting === 1 && overturned(chassis) && !destroyed(wear.damage))
+      )
+        continue
 
-    const { body, steer, gearbox, result, surfaces } = advance(model, { pose, motion, chassis }, input, step, dt, groundZ, surfaceAt, handling, wear)
+      const { body, steer, gearbox, result, surfaces } = advance(
+        model,
+        { pose, motion, chassis },
+        input,
+        step,
+        dt,
+        groundZ,
+        surfaceAt,
+        handling,
+        wear,
+      )
 
-    // The planar move against the walls. A turn that wedges the body into a wall is undone; if moving at all does, the car stays put.
-    let vx = body.vx, vy = body.vy
-    const delta = { x: body.x - pose.x, y: body.y - pose.y }
-    const walls = wallsAlong("drive", pose.x, pose.y, delta.x, delta.y, spec.length / 2 + 0.5)
-    const turned = moveCar(model, pose, body.angle, delta, walls)
-    const moved = turned ?? moveCar(model, pose, pose.angle, delta, walls)
-    // An undone turn keeps the heading, plus the half turn if the body's angles folded past vertical this step.
-    let spin = turned === undefined ? 0 : body.spin, angle = turned === undefined ? pose.angle + (result.folded ? Math.PI : 0) : body.angle, at: Vec2.Vec2 = pose
-    if (moved === undefined) {
-      const hit = Math.sqrt(vx * vx + vy * vy)
-      if (hit > NOISE) {
-        const point = contact(spec, pose.x, pose.y, pose.angle, { x: vx / hit, y: vy / hit })
-        events.impact.emit({ hit: "wall", x: point.x, y: point.y, speed: hit, mass: spec.mass / 1000, car: entity.id })
-      }
-      vx = 0
-      vy = 0
-      spin = 0
-    } else {
-      at = moved.position
-      if (moved.blocked) {
-        const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
-        const lost = Vec2.subtract({ x: vx, y: vy }, real)
-        const impact = Vec2.length(lost)
-        const into = Vec2.normalizeOr(lost, Vec2.zero)
-        if (impact > NOISE) {
-          const point = contact(spec, moved.position.x, moved.position.y, angle, into)
-          // How hard it hit: the velocity into the wall at contact. The speed lost this step is less by what the step
-          // travelled before contact, and the rest is lost next step: one hit would read as two softer ones.
-          // Never faster than the car was going: a push-out of the body counts in what was lost, not in how hard it hit.
-          const hard = Math.min(Math.sqrt(vx * vx + vy * vy), Math.max(impact, vx * into.x + vy * into.y))
-          events.impact.emit({ hit: "wall", x: point.x, y: point.y, speed: hard, mass: spec.mass / 1000, car: entity.id })
+      // The planar move against the walls. A turn that wedges the body into a wall is undone; if moving at all does, the car stays put.
+      let vx = body.vx,
+        vy = body.vy
+      const delta = { x: body.x - pose.x, y: body.y - pose.y }
+      const walls = wallsAlong("drive", pose.x, pose.y, delta.x, delta.y, spec.length / 2 + 0.5)
+      const turned = moveCar(model, pose, body.angle, delta, walls)
+      const moved = turned ?? moveCar(model, pose, pose.angle, delta, walls)
+      // An undone turn keeps the heading, plus the half turn if the body's angles folded past vertical this step.
+      const angle = turned === undefined ? pose.angle + (result.folded ? Math.PI : 0) : body.angle
+      let spin = turned === undefined ? 0 : body.spin,
+        at: Vec2.Vec2 = pose
+      if (moved === undefined) {
+        const hit = Math.sqrt(vx * vx + vy * vy)
+        if (hit > NOISE) {
+          const point = contact(spec, pose.x, pose.y, pose.angle, { x: vx / hit, y: vy / hit })
+          events.impact.emit({
+            hit: "wall",
+            x: point.x,
+            y: point.y,
+            speed: hit,
+            mass: spec.mass / 1000,
+            car: entity.id,
+          })
         }
-        const keep = Math.max(0.2, 1 - IMPACT_LOSS * impact)
-        // Never faster than before the hit (push-outs from a rotation can add speed).
-        const slide = Vec2.clampLength(Vec2.scale(real, keep), Math.sqrt(vx * vx + vy * vy) * keep)
-        vx = slide.x - into.x * impact * BOUNCE
-        vy = slide.y - into.y * impact * BOUNCE
-        spin *= keep
+        vx = 0
+        vy = 0
+        spin = 0
+      } else {
+        at = moved.position
+        if (moved.blocked) {
+          const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
+          const lost = Vec2.subtract({ x: vx, y: vy }, real)
+          const impact = Vec2.length(lost)
+          const into = Vec2.normalizeOr(lost, Vec2.zero)
+          if (impact > NOISE) {
+            const point = contact(spec, moved.position.x, moved.position.y, angle, into)
+            // How hard it hit: the velocity into the wall at contact. The speed lost this step is less by what the step
+            // travelled before contact, and the rest is lost next step: one hit would read as two softer ones.
+            // Never faster than the car was going: a push-out of the body counts in what was lost, not in how hard it hit.
+            const hard = Math.min(
+              Math.sqrt(vx * vx + vy * vy),
+              Math.max(impact, vx * into.x + vy * into.y),
+            )
+            events.impact.emit({
+              hit: "wall",
+              x: point.x,
+              y: point.y,
+              speed: hard,
+              mass: spec.mass / 1000,
+              car: entity.id,
+            })
+          }
+          const keep = Math.max(0.2, 1 - IMPACT_LOSS * impact)
+          // Never faster than before the hit (push-outs from a rotation can add speed).
+          const slide = Vec2.clampLength(
+            Vec2.scale(real, keep),
+            Math.sqrt(vx * vx + vy * vy) * keep,
+          )
+          vx = slide.x - into.x * impact * BOUNCE
+          vy = slide.y - into.y * impact * BOUNCE
+          spin *= keep
+        }
+      }
+
+      if (result.hit !== undefined) {
+        events.impact.emit({
+          hit: "ground",
+          x: result.hit.x,
+          y: result.hit.y,
+          speed: result.hit.speed,
+          mass: spec.mass / 1000,
+          car: entity.id,
+          face: result.hit.face,
+        })
+      }
+      result.skids.forEach((skid, wheel) => {
+        if (skid.amount >= SKID_FROM)
+          events.skid.emit({
+            car: entity.id,
+            wheel,
+            x: skid.x,
+            y: skid.y,
+            z: skid.z,
+            slip: skid.slip,
+            amount: skid.amount,
+            surface: surfaces[wheel]!,
+            step,
+          })
+      })
+
+      data.pose.set({ x: at.x, y: at.y, angle })
+      const next = { ...body, steer, ...gearbox }
+      if (
+        input.throttle === 0 &&
+        settles(motion, { vx, vy, spin }, next) &&
+        rests(
+          model,
+          { pose: { x: at.x, y: at.y, angle }, motion, chassis: next },
+          input,
+          step,
+          dt,
+          groundZ,
+          surfaceAt,
+          handling,
+          wear,
+        )
+      ) {
+        data.motion.set({ vx: 0, vy: 0, spin: 0 })
+        data.chassis.set({
+          z: next.z,
+          vz: 0,
+          pitch: next.pitch,
+          pitchRate: 0,
+          roll: next.roll,
+          rollRate: 0,
+          steer: next.steer,
+          gear: next.gear,
+          shiftUntil: next.shiftUntil,
+        })
+      } else {
+        data.motion.set({ vx, vy, spin })
+        data.chassis.set({
+          z: next.z,
+          vz: next.vz,
+          pitch: next.pitch,
+          pitchRate: next.pitchRate,
+          roll: next.roll,
+          rollRate: next.rollRate,
+          steer: next.steer,
+          gear: next.gear,
+          shiftUntil: next.shiftUntil,
+        })
       }
     }
-
-    if (result.hit !== undefined) {
-      events.impact.emit({ hit: "ground", x: result.hit.x, y: result.hit.y, speed: result.hit.speed, mass: spec.mass / 1000, car: entity.id, face: result.hit.face })
-    }
-    result.skids.forEach((skid, wheel) => {
-      if (skid.amount >= SKID_FROM) events.skid.emit({ car: entity.id, wheel, x: skid.x, y: skid.y, z: skid.z, slip: skid.slip, amount: skid.amount, surface: surfaces[wheel]!, step })
-    })
-
-    data.pose.set({ x: at.x, y: at.y, angle })
-    const next = { ...body, steer, ...gearbox }
-    if (input.throttle === 0 && settles(motion, { vx, vy, spin }, next) && rests(model, { pose: { x: at.x, y: at.y, angle }, motion, chassis: next }, input, step, dt, groundZ, surfaceAt, handling, wear)) {
-      data.motion.set({ vx: 0, vy: 0, spin: 0 })
-      data.chassis.set({ z: next.z, vz: 0, pitch: next.pitch, pitchRate: 0, roll: next.roll, rollRate: 0, steer: next.steer, gear: next.gear, shiftUntil: next.shiftUntil })
-    } else {
-      data.motion.set({ vx, vy, spin })
-      data.chassis.set({ z: next.z, vz: next.vz, pitch: next.pitch, pitchRate: next.pitchRate, roll: next.roll, rollRate: next.rollRate, steer: next.steer, gear: next.gear, shiftUntil: next.shiftUntil })
-    }
-  }
-})
+  },
+)

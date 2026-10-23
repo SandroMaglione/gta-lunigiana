@@ -20,20 +20,26 @@ const STEP = 8
 const SIZE = 1 << 17
 
 /** `lo` … `hi`, uniformly. */
-export const between = (random: () => number, lo: number, hi: number): number => lo + (hi - lo) * random()
+export const between = (random: () => number, lo: number, hi: number): number =>
+  lo + (hi - lo) * random()
 /** A Rayleigh draw of mean ≈ 1.25: a mode's shape at a random contact point. */
-export const rayleigh = (random: () => number): number => Math.sqrt(-2 * Math.log(1 - 0.999 * random()))
+export const rayleigh = (random: () => number): number =>
+  Math.sqrt(-2 * Math.log(1 - 0.999 * random()))
 /** p(E) ∝ E^−alpha on [lo, hi], by inverse CDF (alpha ≠ 1). */
 export const powerLaw = (u: number, alpha: number, lo: number, hi: number): number => {
-  const a = lo ** (1 - alpha), b = hi ** (1 - alpha)
+  const a = lo ** (1 - alpha),
+    b = hi ** (1 - alpha)
   return (a + u * (b - a)) ** (1 / (1 - alpha))
 }
 /** Power gains from levels in dB; −60 dB or less is none (the band is skipped). */
-export const power = (db: Spectrum): Spectrum => db.map((level) => (level <= -60 ? 0 : 10 ** (level / 10)))
+export const power = (db: Spectrum): Spectrum =>
+  db.map((level) => (level <= -60 ? 0 : 10 ** (level / 10)))
 /** The spectrum of a half-sine contact force `tau` s long at `hz`, 1 at DC: −6 dB at 0.83/τ, falling as f^−2 past 1.5/τ. */
 export const halfSine = (hz: number, tau: number): number => {
   const x = 2 * hz * tau
-  return Math.abs(1 - x * x) < 1e-6 ? Math.PI / 4 : Math.abs(Math.cos(Math.PI * hz * tau) / (1 - x * x))
+  return Math.abs(1 - x * x) < 1e-6
+    ? Math.PI / 4
+    : Math.abs(Math.cos(Math.PI * hz * tau) / (1 - x * x))
 }
 
 /** In-place radix-2 FFT (forward); `re.length` is a power of two. */
@@ -44,7 +50,8 @@ export const fft = (re: Float64Array, im: Float64Array): void => {
     for (; j & bit; bit >>= 1) j ^= bit
     j ^= bit
     if (i < j) {
-      const r = re[i]!, m = im[i]!
+      const r = re[i]!,
+        m = im[i]!
       re[i] = re[j]!
       im[i] = im[j]!
       re[j] = r
@@ -52,12 +59,17 @@ export const fft = (re: Float64Array, im: Float64Array): void => {
     }
   }
   for (let size = 2; size <= n; size <<= 1) {
-    const half = size >> 1, wr = Math.cos((-2 * Math.PI) / size), wi = Math.sin((-2 * Math.PI) / size)
+    const half = size >> 1,
+      wr = Math.cos((-2 * Math.PI) / size),
+      wi = Math.sin((-2 * Math.PI) / size)
     for (let start = 0; start < n; start += size) {
-      let cr = 1, ci = 0
+      let cr = 1,
+        ci = 0
       for (let k = 0; k < half; k++) {
-        const a = start + k, b = a + half
-        const tr = re[b]! * cr - im[b]! * ci, ti = re[b]! * ci + im[b]! * cr
+        const a = start + k,
+          b = a + half
+        const tr = re[b]! * cr - im[b]! * ci,
+          ti = re[b]! * ci + im[b]! * cr
         re[b] = re[a]! - tr
         im[b] = im[a]! - ti
         re[a] = re[a]! + tr
@@ -97,14 +109,23 @@ const loops = new Map<number, ReadonlyArray<Float32Array>>()
 export const bandLoops = (sampleRate: number): ReadonlyArray<Float32Array> => {
   const known = loops.get(sampleRate)
   if (known !== undefined) return known
-  const random = seeded(0x5eed), made: Array<Float32Array> = [], sign = () => (random() < 0.5 ? -1 : 1)
+  const random = seeded(0x5eed),
+    made: Array<Float32Array> = [],
+    sign = () => (random() < 0.5 ? -1 : 1)
   for (let b = 0; b < BANDS.length; b += 2) {
-    const re = new Float64Array(SIZE), im = new Float64Array(SIZE)
+    const re = new Float64Array(SIZE),
+      im = new Float64Array(SIZE)
     // Only the bins either band reaches: an octave below the lower one's centre to an octave above the upper one's.
-    const k0 = Math.max(1, Math.floor((BANDS[b]! / 2) * (SIZE / sampleRate))), k1 = b + 2 >= BANDS.length ? SIZE / 2 : Math.ceil(BANDS[b + 1]! * 2 * (SIZE / sampleRate))
+    const k0 = Math.max(1, Math.floor((BANDS[b]! / 2) * (SIZE / sampleRate))),
+      k1 = b + 2 >= BANDS.length ? SIZE / 2 : Math.ceil(BANDS[b + 1]! * 2 * (SIZE / sampleRate))
     for (let k = k0; k < Math.min(k1, SIZE / 2); k++) {
-      const hz = (k * sampleRate) / SIZE, wa = weight(b, hz), wb = weight(b + 1, hz)
-      const ar = wa * sign(), ai = wa * sign(), br = wb * sign(), bi = wb * sign()
+      const hz = (k * sampleRate) / SIZE,
+        wa = weight(b, hz),
+        wb = weight(b + 1, hz)
+      const ar = wa * sign(),
+        ai = wa * sign(),
+        br = wb * sign(),
+        bi = wb * sign()
       // X = A + iB with A and B Hermitian: the transform's real part is band b, its imaginary part band b + 1.
       re[k] = ar - bi
       im[k] = ai + br
@@ -116,7 +137,8 @@ export const bandLoops = (sampleRate: number): ReadonlyArray<Float32Array> => {
       let energy = 0
       for (let i = 0; i < SIZE; i++) energy += part[i]! * part[i]!
       // A band with no bins under Nyquist holds only rounding residue: silence, not noise scaled up to unit power (or NaN).
-      const scale = energy > 1e-12 * SIZE ? 1 / Math.sqrt(energy / SIZE) : 0, loop = new Float32Array(SIZE)
+      const scale = energy > 1e-12 * SIZE ? 1 / Math.sqrt(energy / SIZE) : 0,
+        loop = new Float32Array(SIZE)
       for (let i = 0; i < SIZE; i++) loop[i] = part[i]! * scale
       made.push(loop)
     }
@@ -134,15 +156,27 @@ export interface Noise {
 /** Empty envelopes for `n` samples at `sampleRate`. */
 export const noiseFor = (n: number, sampleRate: number): Noise => ({
   power: BANDS.map(() => new Float32Array(Math.ceil(n / STEP) + 2)),
-  rate: sampleRate / STEP
+  rate: sampleRate / STEP,
 })
 
 /** Adds a burst at `t0` s: each band's power ramps over `rise` s to `peak`·`spectrum`, then decays with time constant `tau` s. */
-const burst = (noise: Noise, t0: number, rise: number, tau: number, peak: number, spectrum: Spectrum): void => {
-  const { power: bands, rate } = noise, length = bands[0]!.length, c0 = Math.max(0, Math.round(t0 * rate))
-  const up = Math.max(1, Math.round(rise * rate)), fall = Math.exp(-1 / (tau * rate)), end = Math.min(length, c0 + up + Math.ceil(14 * tau * rate))
+const burst = (
+  noise: Noise,
+  t0: number,
+  rise: number,
+  tau: number,
+  peak: number,
+  spectrum: Spectrum,
+): void => {
+  const { power: bands, rate } = noise,
+    length = bands[0]!.length,
+    c0 = Math.max(0, Math.round(t0 * rate))
+  const up = Math.max(1, Math.round(rise * rate)),
+    fall = Math.exp(-1 / (tau * rate)),
+    end = Math.min(length, c0 + up + Math.ceil(14 * tau * rate))
   for (let b = 0; b < bands.length; b++) {
-    const top = peak * spectrum[b]!, env = bands[b]!
+    const top = peak * spectrum[b]!,
+      env = bands[b]!
     if (!(top > 0)) continue
     let level = top
     for (let c = c0; c < end; c++) {
@@ -156,10 +190,17 @@ const burst = (noise: Noise, t0: number, rise: number, tau: number, peak: number
 }
 
 /** Adds `drive` (power, one value per control point) ringing through a dense modal field: per band, `spectrum`× the drive, held as it falls by a decay of `t60` s. */
-export const excite = (noise: Noise, drive: Float32Array, spectrum: Spectrum, t60: Spectrum): void => {
+export const excite = (
+  noise: Noise,
+  drive: Float32Array,
+  spectrum: Spectrum,
+  t60: Spectrum,
+): void => {
   const { power: bands, rate } = noise
   for (let b = 0; b < bands.length; b++) {
-    const gain = spectrum[b]!, env = bands[b]!, hold = 10 ** (-6 / (t60[b]! * rate))
+    const gain = spectrum[b]!,
+      env = bands[b]!,
+      hold = 10 ** (-6 / (t60[b]! * rate))
     if (!(gain > 0)) continue
     let level = 0
     for (let c = 0; c < drive.length; c++) {
@@ -170,13 +211,22 @@ export const excite = (noise: Noise, drive: Float32Array, spectrum: Spectrum, t6
 }
 
 /** Adds the noise into `out`: each band's loop, from a random offset, forth and back, times the square root of its power envelope (skipped under amplitude `floor`). */
-export const playNoise = (out: Float32Array, noise: Noise, random: () => number, floor: number): void => {
-  const bands = bandLoops(noise.rate * STEP), mask = 2 * SIZE - 1
+export const playNoise = (
+  out: Float32Array,
+  noise: Noise,
+  random: () => number,
+  floor: number,
+): void => {
+  const bands = bandLoops(noise.rate * STEP),
+    mask = 2 * SIZE - 1
   noise.power.forEach((env, b) => {
-    const loop = bands[b]!, offset = Math.floor(random() * 2 * SIZE)
+    const loop = bands[b]!,
+      offset = Math.floor(random() * 2 * SIZE)
     let from = Math.sqrt(env[0]!)
     for (let c = 0; c + 1 < env.length; c++) {
-      const to = Math.sqrt(env[c + 1]!), i0 = c * STEP, i1 = Math.min(out.length, i0 + STEP)
+      const to = Math.sqrt(env[c + 1]!),
+        i0 = c * STEP,
+        i1 = Math.min(out.length, i0 + STEP)
       if (from + to > floor) {
         const slope = (to - from) / STEP
         let a = from
@@ -197,14 +247,30 @@ export const playNoise = (out: Float32Array, noise: Noise, random: () => number,
  * added into `out` by the damped sine's two-term recurrence until it falls 60 dB, or under `floor`;
  * driven up over `attack` s (a force building, as a guard rail's while it deflects).
  */
-const ring = (out: Float32Array, sampleRate: number, t0: number, hz: number, eta: number, amp: number, floor: number, attack = 0): void => {
-  const size = Math.abs(amp), stop = Math.max(floor, size * 1e-3)
+const ring = (
+  out: Float32Array,
+  sampleRate: number,
+  t0: number,
+  hz: number,
+  eta: number,
+  amp: number,
+  floor: number,
+  attack = 0,
+): void => {
+  const size = Math.abs(amp),
+    stop = Math.max(floor, size * 1e-3)
   if (hz >= 0.45 * sampleRate || hz <= 0 || !(size > stop)) return
-  const decay = Math.PI * hz * eta, r = Math.exp(-decay / sampleRate), w = (2 * Math.PI * hz) / sampleRate
-  const i0 = Math.max(0, Math.round(t0 * sampleRate)), n = Math.min(out.length - i0, Math.ceil((Math.log(size / stop) / decay) * sampleRate))
-  const c1 = 2 * r * Math.cos(w), c2 = -r * r
+  const decay = Math.PI * hz * eta,
+    r = Math.exp(-decay / sampleRate),
+    w = (2 * Math.PI * hz) / sampleRate
+  const i0 = Math.max(0, Math.round(t0 * sampleRate)),
+    n = Math.min(out.length - i0, Math.ceil((Math.log(size / stop) / decay) * sampleRate))
+  const c1 = 2 * r * Math.cos(w),
+    c2 = -r * r
   // y[k] = amp·r^k·sin((k + 1)w): it starts from zero, so no click.
-  let y2 = 0, y1 = amp * Math.sin(w), i = i0
+  let y2 = 0,
+    y1 = amp * Math.sin(w),
+    i = i0
   for (const rise = Math.min(n, Math.round(attack * sampleRate)); i < i0 + rise; i++) {
     out[i]! += (y1 * (i - i0 + 1)) / rise
     const y = c1 * y1 + c2 * y2
@@ -230,27 +296,48 @@ export interface Mix {
 }
 
 /** `spectrum` (power) tilted by `db` per band. */
-export const tint = (spectrum: Spectrum, db: Spectrum): Spectrum => spectrum.map((p, b) => p * 10 ** (db[b]! / 10))
+export const tint = (spectrum: Spectrum, db: Spectrum): Spectrum =>
+  spectrum.map((p, b) => p * 10 ** (db[b]! / 10))
 
 /** A mode struck into the mix (driven up over `attack` s). */
-export const strike = (mix: Mix, t0: number, hz: number, eta: number, amp: number, attack = 0): void =>
-  ring(mix.out, mix.sampleRate, t0, hz, eta, amp, mix.floor, attack)
+export const strike = (
+  mix: Mix,
+  t0: number,
+  hz: number,
+  eta: number,
+  amp: number,
+  attack = 0,
+): void => ring(mix.out, mix.sampleRate, t0, hz, eta, amp, mix.floor, attack)
 
 /** A noise burst into the mix (`spectrum` in power). */
-export const puff = (mix: Mix, t0: number, rise: number, tau: number, peak: number, spectrum: Spectrum): void =>
-  burst(mix.noise, t0, rise, tau, peak, spectrum)
+export const puff = (
+  mix: Mix,
+  t0: number,
+  rise: number,
+  tau: number,
+  peak: number,
+  spectrum: Spectrum,
+): void => burst(mix.noise, t0, rise, tau, peak, spectrum)
 
 /** No render peaks over this (a +6 dB crash with an unlucky draw is scaled down to it): the audition page's clipping mark. */
 const LIMIT = 0.95
 
 /** `out` × `scale`, trimmed after its last sample within 60 dB of its peak, faded over its last 0.15 s, never over `LIMIT`. */
-export const finish = (out: Float32Array, scale: number, sampleRate: number): Float32Array<ArrayBuffer> => {
+export const finish = (
+  out: Float32Array,
+  scale: number,
+  sampleRate: number,
+): Float32Array<ArrayBuffer> => {
   let peak = 0
   for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]!))
   let end = out.length
   while (end > 1 && Math.abs(out[end - 1]!) < peak * 1e-3) end--
   end = Math.min(out.length, end + Math.round(0.02 * sampleRate))
-  const fade = Math.min(Math.round(0.15 * sampleRate), end >> 2), k = peak * scale > LIMIT ? LIMIT / peak : scale, result = new Float32Array(end)
-  for (let i = 0; i < end; i++) result[i] = out[i]! * k * (i < end - fade ? 1 : 0.5 + 0.5 * Math.cos((Math.PI * (i - end + fade)) / fade))
+  const fade = Math.min(Math.round(0.15 * sampleRate), end >> 2),
+    k = peak * scale > LIMIT ? LIMIT / peak : scale,
+    result = new Float32Array(end)
+  for (let i = 0; i < end; i++)
+    result[i] =
+      out[i]! * k * (i < end - fade ? 1 : 0.5 + 0.5 * Math.cos((Math.PI * (i - end + fade)) / fade))
   return result
 }

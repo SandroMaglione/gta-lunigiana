@@ -24,14 +24,31 @@ export type { Surface }
  *  churches, ruins), sheet (metal-clad industrial walls), glass (greenhouses), rail (steel W-beam guard rail),
  *  rock (cliffs), earth (steep banks, every other drive wall and loose ground), tree (a trunk), road (the
  *  asphalt or paving it lands or rolls on). */
-export type Material = "masonry" | "stone" | "sheet" | "glass" | "rail" | "rock" | "earth" | "tree" | "road"
+export type Material =
+  | "masonry"
+  | "stone"
+  | "sheet"
+  | "glass"
+  | "rail"
+  | "rock"
+  | "earth"
+  | "tree"
+  | "road"
 /** Where a hit lands on a vehicle's body: its front, a side (the roof too), its rear, or under it (bottoming out after a jump). */
 export type Zone = "front" | "side" | "rear" | "under"
 /** One vehicle in a crash; `worn`: the barrier-equivalent speed (m/s) of the hardest earlier hit on this zone, so what broke then stays broken (none: intact). */
-export interface Body { readonly model: VehicleModel; readonly zone: Zone; readonly worn?: number }
+export interface Body {
+  readonly model: VehicleModel
+  readonly zone: Zone
+  readonly worn?: number
+}
 
 /** A vehicle's tyres sliding this frame: the most any wheel went past its grip (0…1), the fastest one slid (m/s), and the surface under the one furthest past. */
-export interface Skidding { readonly amount: number; readonly slip: number; readonly surface: Surface }
+export interface Skidding {
+  readonly amount: number
+  readonly slip: number
+  readonly surface: Surface
+}
 
 /** A vehicle someone could hear: running (someone at the wheel), moving (rolling over and bouncing too) or burning. Parked, still cars that do not burn are left out. */
 export interface HeardVehicle {
@@ -83,40 +100,40 @@ export interface HeardPerson {
 /** Something that happened since the last frame, known only inside a simulation system. */
 export type Happening =
   | {
-    readonly kind: "impact"
-    /** What the vehicle `car` hit: a wall, another vehicle (`other`), a person (`other`), or the ground (`face`). */
-    readonly hit: "wall" | "car" | "person" | "ground"
-    /** Where: the contact point (a wall, a vehicle or the ground), or the person. */
-    readonly x: number
-    readonly y: number
-    /** Impact speed, m/s: the closing speed at contact, or the car's speed. */
-    readonly speed: number
-    /** Mass behind the hit, t: the vehicle's, or the reduced mass of two vehicles. */
-    readonly mass: number
-    readonly car: number
-    readonly other?: number
-    /** The face of the body that struck the ground (hit "ground"). */
-    readonly face?: "under" | "roof" | "side" | "front" | "rear"
-    /** The vehicle `car`'s model and the zone of it the hit landed on; `otherBody`, the vehicle `other`'s (hit "car"). */
-    readonly body: Body
-    readonly otherBody?: Body
-  }
+      readonly kind: "impact"
+      /** What the vehicle `car` hit: a wall, another vehicle (`other`), a person (`other`), or the ground (`face`). */
+      readonly hit: "wall" | "car" | "person" | "ground"
+      /** Where: the contact point (a wall, a vehicle or the ground), or the person. */
+      readonly x: number
+      readonly y: number
+      /** Impact speed, m/s: the closing speed at contact, or the car's speed. */
+      readonly speed: number
+      /** Mass behind the hit, t: the vehicle's, or the reduced mass of two vehicles. */
+      readonly mass: number
+      readonly car: number
+      readonly other?: number
+      /** The face of the body that struck the ground (hit "ground"). */
+      readonly face?: "under" | "roof" | "side" | "front" | "rear"
+      /** The vehicle `car`'s model and the zone of it the hit landed on; `otherBody`, the vehicle `other`'s (hit "car"). */
+      readonly body: Body
+      readonly otherBody?: Body
+    }
   | {
-    /** An AI driver held up for a while sounds the horn. */
-    readonly kind: "honk"
-    readonly car: number
-    readonly model: VehicleModel
-    readonly x: number
-    readonly y: number
-  }
+      /** An AI driver held up for a while sounds the horn. */
+      readonly kind: "honk"
+      readonly car: number
+      readonly model: VehicleModel
+      readonly x: number
+      readonly y: number
+    }
   | {
-    /** A burning wreck `car` blew up, at its centre of mass (z m a.s.l.). */
-    readonly kind: "explosion"
-    readonly car: number
-    readonly x: number
-    readonly y: number
-    readonly z: number
-  }
+      /** A burning wreck `car` blew up, at its centre of mass (z m a.s.l.). */
+      readonly kind: "explosion"
+      readonly car: number
+      readonly x: number
+      readonly y: number
+      readonly z: number
+    }
 
 /** The ears: the player, on foot or in `car`. */
 interface HeardListener {
@@ -161,10 +178,25 @@ export interface Placement {
 export type Continuous =
   /** Revs `rpm` and `load` 0…1; `inside`: heard from the driver's seat; `variant` 0…1: which of its model's engines (0.5 the nominal one);
    *  `damage` 0…1 the sim's (rough, knocking, duller); `misfire`: the sim cuts its drive this step (the voice cuts out). */
-  | { readonly kind: "engine"; readonly model: VehicleModel; readonly rpm: number; readonly load: number; readonly inside: boolean; readonly variant: number;
-      readonly damage: number; readonly misfire: boolean }
+  | {
+      readonly kind: "engine"
+      readonly model: VehicleModel
+      readonly rpm: number
+      readonly load: number
+      readonly inside: boolean
+      readonly variant: number
+      readonly damage: number
+      readonly misfire: boolean
+    }
   /** Rolling noise, squeal or gravel crunch: `speed` m/s over the ground, `skid` 0…1 past the tyres' grip, sliding at `slip` m/s. */
-  | { readonly kind: "tyres"; readonly speed: number; readonly skid: number; readonly slip: number; readonly surface: Surface; readonly heavy: boolean }
+  | {
+      readonly kind: "tyres"
+      readonly speed: number
+      readonly skid: number
+      readonly slip: number
+      readonly surface: Surface
+      readonly heavy: boolean
+    }
   /** Grinding along a wall at `speed` m/s, on `material`. */
   | { readonly kind: "scrape"; readonly speed: number; readonly material: Material }
   /** A held horn. */
@@ -176,7 +208,11 @@ export type Continuous =
   /** A destroyed vehicle burning, until it blows up. */
   | { readonly kind: "fire" }
   /** Running water: `flow` 0 (trickle) … 1 (the Lucido in spate); `body` sets the texture. */
-  | { readonly kind: "water"; readonly body: "fountain" | "stream" | "river"; readonly flow: number }
+  | {
+      readonly kind: "water"
+      readonly body: "fountain" | "stream" | "river"
+      readonly flow: number
+    }
   /** Wind at the listener: `strength` 0…1 (altitude, exposure), `forest` 0…1 (leaves in it). */
   | { readonly kind: "wind"; readonly strength: number; readonly forest: number }
   /** Tree crickets in the grass around the listener: `density` 0…1. */
@@ -187,9 +223,16 @@ export type OneShot =
   /** A vehicle hitting something: closing `speed` m/s, `mass` t (the car's, or the reduced mass of two), the `body` (the Impact's
    *  `car`: query order, not necessarily the striker), what it met (a wall's material, the ground's, or
    *  another vehicle), the `surface` debris lands on. */
-  | { readonly kind: "crash"; readonly speed: number; readonly mass: number; readonly body: Body;
-      readonly against: { readonly kind: "wall"; readonly material: Material } | { readonly kind: "car"; readonly body: Body };
-      readonly surface: Surface }
+  | {
+      readonly kind: "crash"
+      readonly speed: number
+      readonly mass: number
+      readonly body: Body
+      readonly against:
+        | { readonly kind: "wall"; readonly material: Material }
+        | { readonly kind: "car"; readonly body: Body }
+      readonly surface: Surface
+    }
   /** A burning wreck blowing up; its debris rains down on `surface`. */
   | { readonly kind: "explosion"; readonly surface: Surface }
   /** A body hit by a vehicle. */
@@ -253,9 +296,13 @@ export interface Shot<P> {
 }
 
 /** A synth for every continuous kind. */
-export type Voices = { readonly [K in Continuous["kind"]]: VoiceFactory<Extract<Continuous, { readonly kind: K }>> }
+export type Voices = {
+  readonly [K in Continuous["kind"]]: VoiceFactory<Extract<Continuous, { readonly kind: K }>>
+}
 /** A synth for every one-shot kind. */
-export type Shots = { readonly [K in OneShot["kind"]]: Shot<Extract<OneShot, { readonly kind: K }>> }
+export type Shots = {
+  readonly [K in OneShot["kind"]]: Shot<Extract<OneShot, { readonly kind: K }>>
+}
 
 /** What the director plays through. The Web Audio implementation is `makeSpeaker`; tests record calls. */
 export interface Speaker {

@@ -26,17 +26,27 @@ interface Crackle {
 /** The sharp pops of burning trim and paint, and the rarer, deeper snaps of the bodywork. */
 const CRACKLE: ReadonlyArray<Crackle> = [
   { rate: 10, hz: [2000, 6000], q: 1.5, tau: [0.002, 0.006], peak: 1.5 },
-  { rate: 1, hz: [600, 800], q: 2, tau: [0.012, 0.018], peak: 2.5 }
+  { rate: 1, hz: [600, 800], q: 2, tau: [0.012, 0.018], peak: 2.5 },
 ]
 /** How far ahead the crackle is scheduled, s. */
 const LOOKAHEAD = 0.3
 
 /** A burning wreck: Doppler from `io.cents` on the roar. */
-export const fire: VoiceFactory<Extract<Continuous, { readonly kind: "fire" }>> = ({ ctx, out, cents, kit }) => {
+export const fire: VoiceFactory<Extract<Continuous, { readonly kind: "fire" }>> = ({
+  ctx,
+  out,
+  cents,
+  kit,
+}) => {
   const level = outlet(ctx, out)
-  const brown = loop(ctx, kit.brown), gust = loop(ctx, kit.gust, ROAR.rate), roar = new GainNode(ctx, { gain: ROAR.gain })
+  const brown = loop(ctx, kit.brown),
+    gust = loop(ctx, kit.gust, ROAR.rate),
+    roar = new GainNode(ctx, { gain: ROAR.gain })
   cents.connect(brown.detune)
-  brown.connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 500 })).connect(roar).connect(level)
+  brown
+    .connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 500 }))
+    .connect(roar)
+    .connect(level)
   gust.connect(new GainNode(ctx, { gain: ROAR.flicker })).connect(roar.gain)
   // When each kind of crackle bursts next.
   const next = CRACKLE.map(() => 0)
@@ -49,7 +59,17 @@ export const fire: VoiceFactory<Extract<Continuous, { readonly kind: "fire" }>> 
         let t = Math.max(next[i]!, now)
         for (; t < now + LOOKAHEAD; t += -Math.log(1 - Math.random()) / crackle.rate) {
           // Mostly faint, a few loud: the peak's square of a uniform draw.
-          burst(ctx, kit.white, level, t, 0.0005, draw(crackle.tau), drawLog(crackle.hz), crackle.q, crackle.peak * Math.random() ** 2)
+          burst(
+            ctx,
+            kit.white,
+            level,
+            t,
+            0.0005,
+            draw(crackle.tau),
+            drawLog(crackle.hz),
+            crackle.q,
+            crackle.peak * Math.random() ** 2,
+          )
         }
         next[i] = t
       }
@@ -57,6 +77,6 @@ export const fire: VoiceFactory<Extract<Continuous, { readonly kind: "fire" }>> 
     stop: (now) => {
       burning = false
       fadeOut(level, [brown, gust], now)
-    }
+    },
   }
 }

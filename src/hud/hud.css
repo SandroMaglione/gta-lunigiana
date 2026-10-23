@@ -5,160 +5,687 @@
   --accent: #f0c93c;
   --alarm: #b8312b;
   --panel: rgb(23 22 26 / 0.72);
-  font: 700 15px/1.25 "Courier New", ui-monospace, Menlo, Consolas, monospace;
+  font:
+    700 15px/1.25 "Courier New",
+    ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   -webkit-font-smoothing: none;
   font-smooth: never;
 }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #2c3d22; }
-#game { display: block; width: 100vw; height: 100vh; }
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #2c3d22;
+}
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
 
-#hud { position: fixed; inset: 0; pointer-events: none; color: var(--ink); text-shadow: 2px 2px 0 var(--shadow); text-transform: uppercase; letter-spacing: 0.06em; }
-#hud [hidden] { display: none; }
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: var(--ink);
+  text-shadow: 2px 2px 0 var(--shadow);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#hud [hidden] {
+  display: none;
+}
 
-.where { position: absolute; top: 16px; left: 16px; }
-#hud-road { font-size: 20px; color: var(--accent); }
-#hud-district { font-size: 14px; }
+.where {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+#hud-road {
+  font-size: 20px;
+  color: var(--accent);
+}
+#hud-district {
+  font-size: 14px;
+}
 
-.score { position: absolute; top: 16px; right: 16px; margin: 0; text-align: right; }
-.score div { display: flex; justify-content: flex-end; align-items: baseline; gap: 12px; }
-.score dt { font-size: 12px; }
-.score dt small { display: block; font-size: 10px; opacity: 0.75; }
-.score dd { margin: 0; min-width: 2ch; font-size: 22px; color: var(--accent); }
+.score {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  margin: 0;
+  text-align: right;
+}
+.score div {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 12px;
+}
+.score dt {
+  font-size: 12px;
+}
+.score dt small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.score dd {
+  margin: 0;
+  min-width: 2ch;
+  font-size: 22px;
+  color: var(--accent);
+}
 
-#hud-prompt { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); padding: 6px 12px; background: var(--panel); border: 2px solid var(--accent); }
+#hud-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+}
 
 /* Killed: the screen darkens and "Sei morto" fades in over a second, until the player is back at the start (hud.ts). */
-#hud-wasted { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: rgb(23 22 26 / 0.45); animation: fade-in 1s ease-out; }
-#hud-wasted p { margin: 0; font-size: 48px; color: var(--alarm); text-align: center; text-shadow: 3px 3px 0 var(--shadow); }
-#hud-wasted small { display: block; font-size: 16px; color: var(--ink); opacity: 0.85; }
-@keyframes fade-in { from { opacity: 0; } }
+#hud-wasted {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(23 22 26 / 0.45);
+  animation: fade-in 1s ease-out;
+}
+#hud-wasted p {
+  margin: 0;
+  font-size: 48px;
+  color: var(--alarm);
+  text-align: center;
+  text-shadow: 3px 3px 0 var(--shadow);
+}
+#hud-wasted small {
+  display: block;
+  font-size: 16px;
+  color: var(--ink);
+  opacity: 0.85;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
 
-#hud-speedo { position: absolute; right: 16px; bottom: 28px; text-align: right; }
-#hud-speed { font-size: 40px; color: var(--accent); }
-#hud-speedo .unit { margin-left: 6px; font-size: 14px; }
-#hud-vehicle { font-size: 12px; }
+#hud-speedo {
+  position: absolute;
+  right: 16px;
+  bottom: 28px;
+  text-align: right;
+}
+#hud-speed {
+  font-size: 40px;
+  color: var(--accent);
+}
+#hud-speedo .unit {
+  margin-left: 6px;
+  font-size: 14px;
+}
+#hud-vehicle {
+  font-size: 12px;
+}
 
 /* A click or tap on the minimap opens the full map, and one on the map closes it (hud.ts). */
-#hud-minimap { position: absolute; left: 16px; bottom: 48px; line-height: 0; pointer-events: auto; cursor: pointer; }
-.minimap { width: 180px; height: 180px; image-rendering: pixelated; border: 2px solid var(--shadow); outline: 2px solid var(--ink); }
+#hud-minimap {
+  position: absolute;
+  left: 16px;
+  bottom: 48px;
+  line-height: 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.minimap {
+  width: 180px;
+  height: 180px;
+  image-rendering: pixelated;
+  border: 2px solid var(--shadow);
+  outline: 2px solid var(--ink);
+}
 
-#hud-map { position: fixed; inset: 0; z-index: 1; background: var(--shadow); pointer-events: auto; }
-#hud-map:focus { outline: none; }
-#hud-map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-#hud-map .marker { animation: blink 1s steps(2, start) infinite; }
-.map-head { position: absolute; top: 16px; left: 24px; right: 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-.map-title { font-size: 22px; color: var(--accent); }
-.map-head small { font-size: 10px; opacity: 0.75; }
-#hud-map-here { color: var(--accent); }
-.map-keys { font-size: 12px; }
+#hud-map {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: var(--shadow);
+  pointer-events: auto;
+}
+#hud-map:focus {
+  outline: none;
+}
+#hud-map canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+#hud-map .marker {
+  animation: blink 1s steps(2, start) infinite;
+}
+.map-head {
+  position: absolute;
+  top: 16px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.map-title {
+  font-size: 22px;
+  color: var(--accent);
+}
+.map-head small {
+  font-size: 10px;
+  opacity: 0.75;
+}
+#hud-map-here {
+  color: var(--accent);
+}
+.map-keys {
+  font-size: 12px;
+}
 
-.credits { z-index: 2; position: absolute; right: 16px; bottom: 8px; font-size: 10px; text-transform: none; letter-spacing: 0; opacity: 0.85; }
+.credits {
+  z-index: 2;
+  position: absolute;
+  right: 16px;
+  bottom: 8px;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
 
-#settings { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); padding: 24px 32px; color: var(--ink); background: var(--panel); border: 2px solid var(--accent); text-shadow: 2px 2px 0 var(--shadow); }
-#settings::backdrop { background: rgb(23 22 26 / 0.55); }
-#settings h2, #settings h3 { margin: 0; color: var(--accent); text-transform: uppercase; }
-#settings h2 { margin-bottom: 16px; font-size: 22px; letter-spacing: 0.08em; }
-#settings h3 { margin-bottom: 8px; font-size: 13px; letter-spacing: 0.06em; }
-#settings fieldset { margin: 0; padding: 0; border: 0; }
-#settings legend { padding: 0; text-transform: uppercase; letter-spacing: 0.06em; }
-#settings-custom { margin: 8px 0 0; font-size: 12px; color: var(--accent); }
-#settings .preset { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 8px; margin-top: 12px; }
-#settings .preset input { margin: 0; accent-color: var(--accent); }
-#settings .preset label { cursor: pointer; }
-#settings .preset input:checked + label { color: var(--accent); }
-#settings .preset p { grid-column: 2; margin: 0; font-size: 12px; opacity: 0.85; }
-#settings button { margin-top: 20px; padding: 2px 12px; font: inherit; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); cursor: pointer; text-shadow: none; }
-#settings :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+#settings {
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 32px));
+  padding: 24px 32px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  text-shadow: 2px 2px 0 var(--shadow);
+}
+#settings::backdrop {
+  background: rgb(23 22 26 / 0.55);
+}
+#settings h2,
+#settings h3 {
+  margin: 0;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+#settings h2 {
+  margin-bottom: 16px;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+#settings h3 {
+  margin-bottom: 8px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+#settings fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+#settings legend {
+  padding: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#settings-custom {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--accent);
+}
+#settings .preset {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 8px;
+  margin-top: 12px;
+}
+#settings .preset input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+#settings .preset label {
+  cursor: pointer;
+}
+#settings .preset input:checked + label {
+  color: var(--accent);
+}
+#settings .preset p {
+  grid-column: 2;
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+#settings button {
+  margin-top: 20px;
+  padding: 2px 12px;
+  font: inherit;
+  color: var(--shadow);
+  background: var(--accent);
+  border: 2px solid var(--shadow);
+  cursor: pointer;
+  text-shadow: none;
+}
+#settings :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
 
-#title { position: fixed; inset: 0; display: grid; place-items: center; background: rgb(23 22 26 / 0.55); color: var(--ink); text-shadow: 2px 2px 0 var(--shadow); }
-#title[hidden] { display: none; }
-#title .card { padding: 24px 32px; background: var(--panel); border: 2px solid var(--accent); text-align: center; }
-#title h1 { margin: 0; font-size: 40px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
-#title h1 small { display: block; font-size: 16px; color: var(--ink); letter-spacing: 0.32em; }
-#title .sub { margin: 4px 0 8px; text-transform: uppercase; }
-#title .warn { margin: 0 0 20px; font-size: 13px; text-transform: uppercase; }
-#title .warn small { display: block; font-size: 10px; opacity: 0.75; }
-#title .keys { display: grid; gap: 4px; margin: 0 0 20px; text-align: left; }
-#title .keys div { display: grid; grid-template-columns: 14ch 1fr; gap: 16px; }
-#title dt { color: var(--accent); }
-#title dd { margin: 0; }
-#title [hidden] { display: none; }
-#title progress { display: block; width: 100%; height: 12px; margin: 0 0 8px; appearance: none; background: var(--shadow); border: 2px solid var(--shadow); outline: 2px solid var(--ink); }
-#title progress::-webkit-progress-bar { background: var(--shadow); }
-#title progress::-webkit-progress-value { background: var(--accent); }
-#title progress::-moz-progress-bar { background: var(--accent); }
-#title .step { margin: 0 0 16px; }
-#title-detail { opacity: 0.75; }
-#title-error { margin: 0 0 12px; color: var(--accent); }
-#title button { margin: 0 0 16px; padding: 2px 12px; font: inherit; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); cursor: pointer; text-shadow: none; }
-#title .go { margin: 0 0 16px; animation: blink 1s steps(2, start) infinite; }
-#title .fine { margin: 0; font-size: 11px; opacity: 0.85; }
-@keyframes blink { to { visibility: hidden; } }
-@media (prefers-reduced-motion: reduce) { #title .go, #hud-map .marker, #hud-wasted { animation: none; } }
+#title {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(23 22 26 / 0.55);
+  color: var(--ink);
+  text-shadow: 2px 2px 0 var(--shadow);
+}
+#title[hidden] {
+  display: none;
+}
+#title .card {
+  padding: 24px 32px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  text-align: center;
+}
+#title h1 {
+  margin: 0;
+  font-size: 40px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#title h1 small {
+  display: block;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: 0.32em;
+}
+#title .sub {
+  margin: 4px 0 8px;
+  text-transform: uppercase;
+}
+#title .warn {
+  margin: 0 0 20px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+#title .warn small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.75;
+}
+#title .keys {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 20px;
+  text-align: left;
+}
+#title .keys div {
+  display: grid;
+  grid-template-columns: 14ch 1fr;
+  gap: 16px;
+}
+#title dt {
+  color: var(--accent);
+}
+#title dd {
+  margin: 0;
+}
+#title [hidden] {
+  display: none;
+}
+#title progress {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin: 0 0 8px;
+  appearance: none;
+  background: var(--shadow);
+  border: 2px solid var(--shadow);
+  outline: 2px solid var(--ink);
+}
+#title progress::-webkit-progress-bar {
+  background: var(--shadow);
+}
+#title progress::-webkit-progress-value {
+  background: var(--accent);
+}
+#title progress::-moz-progress-bar {
+  background: var(--accent);
+}
+#title .step {
+  margin: 0 0 16px;
+}
+#title-detail {
+  opacity: 0.75;
+}
+#title-error {
+  margin: 0 0 12px;
+  color: var(--accent);
+}
+#title button {
+  margin: 0 0 16px;
+  padding: 2px 12px;
+  font: inherit;
+  color: var(--shadow);
+  background: var(--accent);
+  border: 2px solid var(--shadow);
+  cursor: pointer;
+  text-shadow: none;
+}
+#title .go {
+  margin: 0 0 16px;
+  animation: blink 1s steps(2, start) infinite;
+}
+#title .fine {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.85;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #title .go,
+  #hud-map .marker,
+  #hud-wasted {
+    animation: none;
+  }
+}
 
 /* Mobile mode (html.touch, set in index.html): controls on the screen, a smaller HUD, landscape only. */
 /* !important: the mode outranks each element's own display (#title .keys is a grid). */
-html:not(.touch) .for-touch, html.touch .for-keys { display: none !important; }
-html.touch body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+html:not(.touch) .for-touch,
+html.touch .for-keys {
+  display: none !important;
+}
+html.touch body {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
 /* A phone held upright shows the game a quarter turned, to be held sideways: the page lays out
    landscape, then turns (dvh: the height Safari's toolbars leave). Touches are turned back in touch.ts. */
 @media (orientation: portrait) {
-  html.touch body { position: fixed; top: 0; left: 0; width: 100vh; width: 100dvh; height: 100vw; transform-origin: 0 0; transform: translateX(100vw) rotate(90deg); }
+  html.touch body {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vh;
+    width: 100dvh;
+    height: 100vw;
+    transform-origin: 0 0;
+    transform: translateX(100vw) rotate(90deg);
+  }
   /* The settings open in the top layer, which the page's turn does not reach: they turn on their own. */
-  html.touch #settings { inset: 50% auto auto 50%; margin: 0; translate: -50% -50%; rotate: 90deg; width: min(560px, calc(100dvh - 32px)); max-width: none; max-height: calc(100vw - 32px); }
+  html.touch #settings {
+    inset: 50% auto auto 50%;
+    margin: 0;
+    translate: -50% -50%;
+    rotate: 90deg;
+    width: min(560px, calc(100dvh - 32px));
+    max-width: none;
+    max-height: calc(100vw - 32px);
+  }
 }
 
-html.touch #hud-minimap { top: 12px; bottom: auto; left: 12px; }
-html.touch .minimap { width: 120px; height: 120px; }
-html.touch .where { top: 12px; left: 148px; }
-html.touch #hud-road { font-size: 15px; }
-html.touch #hud-district { font-size: 11px; }
-html.touch .score { top: 12px; right: 12px; }
-html.touch .score div { gap: 8px; }
-html.touch .score dt { font-size: 10px; }
-html.touch .score dt small { font-size: 8px; }
-html.touch .score dd { font-size: 17px; }
+html.touch #hud-minimap {
+  top: 12px;
+  bottom: auto;
+  left: 12px;
+}
+html.touch .minimap {
+  width: 120px;
+  height: 120px;
+}
+html.touch .where {
+  top: 12px;
+  left: 148px;
+}
+html.touch #hud-road {
+  font-size: 15px;
+}
+html.touch #hud-district {
+  font-size: 11px;
+}
+html.touch .score {
+  top: 12px;
+  right: 12px;
+}
+html.touch .score div {
+  gap: 8px;
+}
+html.touch .score dt {
+  font-size: 10px;
+}
+html.touch .score dt small {
+  font-size: 8px;
+}
+html.touch .score dd {
+  font-size: 17px;
+}
 /* Between the left controls and the right ones (◀ ▶ reach 192 px in, Brake 172 px), a long vehicle name cut short. */
-html.touch #hud-speedo { right: auto; left: 50%; bottom: 48px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 400px); text-align: center; }
-html.touch #hud-vehicle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html.touch #hud-speed { font-size: 26px; }
-html.touch .credits { right: auto; left: 50%; bottom: 4px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 400px); font-size: 8px; text-align: center; }
-html.touch .map-head { top: 10px; left: 16px; right: 16px; font-size: 12px; }
-html.touch .map-title { font-size: 16px; }
+html.touch #hud-speedo {
+  right: auto;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 400px);
+  text-align: center;
+}
+html.touch #hud-vehicle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.touch #hud-speed {
+  font-size: 26px;
+}
+html.touch .credits {
+  right: auto;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 400px);
+  font-size: 8px;
+  text-align: center;
+}
+html.touch .map-head {
+  top: 10px;
+  left: 16px;
+  right: 16px;
+  font-size: 12px;
+}
+html.touch .map-title {
+  font-size: 16px;
+}
 
 /* The touch controls (touch.ts). On foot, a finger on the left half brings the stick under it;
    driving, ◀ ▶ take its place and Gas and Brake the action button's and Run's, the action button
    moving up. The buttons show only in the mode they work in, the action button only when there is
    something to do. */
-#hud-touch { position: absolute; inset: 0; }
-#hud-touch[data-mode="driving"] .on-foot, #hud-touch:not([data-mode="driving"]) .driving, #hud-touch-action:empty { display: none; }
+#hud-touch {
+  position: absolute;
+  inset: 0;
+}
+#hud-touch[data-mode="driving"] .on-foot,
+#hud-touch:not([data-mode="driving"]) .driving,
+#hud-touch-action:empty {
+  display: none;
+}
 /* Dead, the player can only turn the view (as Q and E do) until they are back at the start. */
-#hud-touch[data-mode="dead"] .on-foot { display: none; }
-#hud-stick { position: absolute; left: 28px; bottom: 28px; box-sizing: border-box; width: 112px; height: 112px; border: 2px solid var(--ink); border-radius: 50%; background: rgb(23 22 26 / 0.35); opacity: 0.5; }
-#hud-stick.held { opacity: 1; }
-#hud-stick .knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: var(--ink); opacity: 0.85; }
-.pad { position: absolute; box-sizing: border-box; display: grid; place-items: center; width: 56px; height: 56px; border: 2px solid var(--ink); border-radius: 50%; background: var(--panel); font-size: 10px; line-height: 1.1; text-align: center; }
-.pad.held { color: var(--shadow); background: var(--accent); text-shadow: none; }
-#hud-touch-action { right: 20px; bottom: 24px; width: 76px; height: 76px; border-color: var(--accent); font-size: 12px; }
-#hud-touch-sprint { right: 108px; bottom: 16px; width: 60px; height: 60px; }
-.pad.steer { bottom: 24px; width: 76px; height: 76px; font-size: 26px; }
-#hud-touch-left { left: 24px; }
-#hud-touch-right { left: 116px; }
-.pad.pedal { font-size: 12px; }
-#hud-touch-up { right: 20px; bottom: 24px; width: 76px; height: 76px; }
-#hud-touch-down { right: 108px; bottom: 20px; width: 64px; height: 64px; }
+#hud-touch[data-mode="dead"] .on-foot {
+  display: none;
+}
+#hud-stick {
+  position: absolute;
+  left: 28px;
+  bottom: 28px;
+  box-sizing: border-box;
+  width: 112px;
+  height: 112px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: rgb(23 22 26 / 0.35);
+  opacity: 0.5;
+}
+#hud-stick.held {
+  opacity: 1;
+}
+#hud-stick .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.85;
+}
+.pad {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--panel);
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: center;
+}
+.pad.held {
+  color: var(--shadow);
+  background: var(--accent);
+  text-shadow: none;
+}
+#hud-touch-action {
+  right: 20px;
+  bottom: 24px;
+  width: 76px;
+  height: 76px;
+  border-color: var(--accent);
+  font-size: 12px;
+}
+#hud-touch-sprint {
+  right: 108px;
+  bottom: 16px;
+  width: 60px;
+  height: 60px;
+}
+.pad.steer {
+  bottom: 24px;
+  width: 76px;
+  height: 76px;
+  font-size: 26px;
+}
+#hud-touch-left {
+  left: 24px;
+}
+#hud-touch-right {
+  left: 116px;
+}
+.pad.pedal {
+  font-size: 12px;
+}
+#hud-touch-up {
+  right: 20px;
+  bottom: 24px;
+  width: 76px;
+  height: 76px;
+}
+#hud-touch-down {
+  right: 108px;
+  bottom: 20px;
+  width: 64px;
+  height: 64px;
+}
 /* A row above the pedals, clear of ↺ ↻ even on a 250 px tall screen and of the speedometer. */
-#hud-touch-handbrake { right: 112px; bottom: 96px; }
-#hud-touch[data-mode="driving"] #hud-touch-action { right: 184px; bottom: 96px; width: 56px; height: 56px; }
-#hud-touch-horn { right: 256px; bottom: 96px; }
-.pad.turn { top: 80px; width: 44px; height: 44px; font-size: 20px; }
-#hud-touch-turnLeft { right: 64px; }
-#hud-touch-turnRight { right: 12px; }
+#hud-touch-handbrake {
+  right: 112px;
+  bottom: 96px;
+}
+#hud-touch[data-mode="driving"] #hud-touch-action {
+  right: 184px;
+  bottom: 96px;
+  width: 56px;
+  height: 56px;
+}
+#hud-touch-horn {
+  right: 256px;
+  bottom: 96px;
+}
+.pad.turn {
+  top: 80px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+}
+#hud-touch-turnLeft {
+  right: 64px;
+}
+#hud-touch-turnRight {
+  right: 12px;
+}
 
-html.touch #title .card { box-sizing: border-box; max-width: calc(100% - 24px); max-height: calc(100% - 16px); overflow: auto; padding: 12px 24px; }
-html.touch #title h1 { font-size: 28px; }
-html.touch #title h1 small { font-size: 12px; }
-html.touch #title .sub { margin: 2px 0 6px; font-size: 11px; }
-html.touch #title .warn, html.touch #title .keys { margin-bottom: 12px; font-size: 11px; }
-html.touch #title .step, html.touch #title .go { margin-bottom: 12px; }
-html.touch #title .fine { font-size: 9px; }
+html.touch #title .card {
+  box-sizing: border-box;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  padding: 12px 24px;
+}
+html.touch #title h1 {
+  font-size: 28px;
+}
+html.touch #title h1 small {
+  font-size: 12px;
+}
+html.touch #title .sub {
+  margin: 2px 0 6px;
+  font-size: 11px;
+}
+html.touch #title .warn,
+html.touch #title .keys {
+  margin-bottom: 12px;
+  font-size: 11px;
+}
+html.touch #title .step,
+html.touch #title .go {
+  margin-bottom: 12px;
+}
+html.touch #title .fine {
+  font-size: 9px;
+}

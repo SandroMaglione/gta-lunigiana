@@ -22,29 +22,29 @@ It runs from about 7 km of coast, between Punta Bianca and the Torrente Parmigno
 
 ### How the map grows, part by part
 
-The map grows one part at a time, each built from the same survey sources as today’s valley. The parts come in this order, tracked in [#3](https://github.com/mastro993/grand-theft-auto-vdl/issues/3):
+The map grows one part at a time, each built from the same survey sources as today’s valley. The parts come in this order, tracked in [#3](https://github.com/mastro993/gta-lunigiana/issues/3):
 
-1. [Fivizzano, Casola and the upper Aulella](https://github.com/mastro993/grand-theft-auto-vdl/issues/17): the walled town of Fivizzano, the Verrucola fortress and the SS63 hairpins
-2. [Fosdinovo, the Bardine valley and the Apuan foothills](https://github.com/mastro993/grand-theft-auto-vdl/issues/18): the Castello Malaspina on its crag, olive terraces and Colli di Luni vines
-3. [Aulla and the Magra–Aulella–Taverone confluence](https://github.com/mastro993/grand-theft-auto-vdl/issues/19): the Fortezza della Brunella, the first motorway (the A15 della Cisa) and the first wide river
-4. [Sarzana and the lower Val di Magra](https://github.com/mastro993/grand-theft-auto-vdl/issues/20): the first Ligurian part, with the fortresses of Sarzana and the A12–A15 junction
-5. [The coast: Bocca di Magra, Marinella, Luni and Montemarcello](https://github.com/mastro993/grand-theft-auto-vdl/issues/21): the sea, sand beaches, the Magra mouth and ancient Luni
-6. [Bagnone and its valley up to the Sillara–Matto–Marmagna ridge](https://github.com/mastro993/grand-theft-auto-vdl/issues/22): an arcaded borgo, its castles and passes up to 1,794 m
-7. [Comano, the Lagastrello and the Cerreto](https://github.com/mastro993/grand-theft-auto-vdl/issues/23): the Apennine passes above Fivizzano, with the most reliable winter snow in Lunigiana
-8. [The middle Magra: Villafranca, Filattiera, Mulazzo and Pontremoli](https://github.com/mastro993/grand-theft-auto-vdl/issues/24): Pontremoli’s Castello del Piagnaro and the chestnut country
-9. [The Cisa, Brattello and Cirone passes](https://github.com/mastro993/grand-theft-auto-vdl/issues/25): the source of the Magra and the A15’s high viaducts and tunnels
-10. [Zeri, the Gordana and Teglia valleys and the Passo dei Due Santi](https://github.com/mastro993/grand-theft-auto-vdl/issues/26): the Rossano plateau, sheep pastures and the Zum Zeri ski area
+1. [Fivizzano, Casola and the upper Aulella](https://github.com/mastro993/gta-lunigiana/issues/17): the walled town of Fivizzano, the Verrucola fortress and the SS63 hairpins
+2. [Fosdinovo, the Bardine valley and the Apuan foothills](https://github.com/mastro993/gta-lunigiana/issues/18): the Castello Malaspina on its crag, olive terraces and Colli di Luni vines
+3. [Aulla and the Magra–Aulella–Taverone confluence](https://github.com/mastro993/gta-lunigiana/issues/19): the Fortezza della Brunella, the first motorway (the A15 della Cisa) and the first wide river
+4. [Sarzana and the lower Val di Magra](https://github.com/mastro993/gta-lunigiana/issues/20): the first Ligurian part, with the fortresses of Sarzana and the A12–A15 junction
+5. [The coast: Bocca di Magra, Marinella, Luni and Montemarcello](https://github.com/mastro993/gta-lunigiana/issues/21): the sea, sand beaches, the Magra mouth and ancient Luni
+6. [Bagnone and its valley up to the Sillara–Matto–Marmagna ridge](https://github.com/mastro993/gta-lunigiana/issues/22): an arcaded borgo, its castles and passes up to 1,794 m
+7. [Comano, the Lagastrello and the Cerreto](https://github.com/mastro993/gta-lunigiana/issues/23): the Apennine passes above Fivizzano, with the most reliable winter snow in Lunigiana
+8. [The middle Magra: Villafranca, Filattiera, Mulazzo and Pontremoli](https://github.com/mastro993/gta-lunigiana/issues/24): Pontremoli’s Castello del Piagnaro and the chestnut country
+9. [The Cisa, Brattello and Cirone passes](https://github.com/mastro993/gta-lunigiana/issues/25): the source of the Magra and the A15’s high viaducts and tunnels
+10. [Zeri, the Gordana and Teglia valleys and the Passo dei Due Santi](https://github.com/mastro993/gta-lunigiana/issues/26): the Rossano plateau, sheep pastures and the Zum Zeri ski area
 
-Parts 4 and 5 may swap. Before part 1, the engine has to scale: a single map file would exhaust a browser tab’s memory at about 320 km², less than a third of Lunigiana. The map moves into 2 km tiles loaded on demand ([#5](https://github.com/mastro993/grand-theft-auto-vdl/issues/5)). Issues [#4](https://github.com/mastro993/grand-theft-auto-vdl/issues/4) to [#12](https://github.com/mastro993/grand-theft-auto-vdl/issues/12) cover the rest of the groundwork: raw inputs out of git, motorways and other main roads, wide rivers and lakes, terrain where the LiDAR surveys stop, older building maps and the Ligurian sources.
+Parts 4 and 5 may swap. Before part 1, the engine has to scale: a single map file would exhaust a browser tab’s memory at about 320 km², less than a third of Lunigiana. The map moves into 2 km tiles loaded on demand ([#5](https://github.com/mastro993/gta-lunigiana/issues/5)). Issues [#4](https://github.com/mastro993/gta-lunigiana/issues/4) to [#12](https://github.com/mastro993/gta-lunigiana/issues/12) cover the rest of the groundwork: raw inputs out of git, motorways and other main roads, wide rivers and lakes, terrain where the LiDAR surveys stop, older building maps and the Ligurian sources.
 
 ### New landscapes
 
 These landscapes come alongside the parts:
 
-- **Sea, coast and beaches**: the sea at 0 m, sand and pebble beaches, piers and the mouth of the Magra ([#13](https://github.com/mastro993/grand-theft-auto-vdl/issues/13))
-- **Forest types**: chestnut and oak in the valleys, beech above about 1,000 m and pines on the coast ([#14](https://github.com/mastro993/grand-theft-auto-vdl/issues/14))
-- **Olive groves and vineyards**: on the hills, where they render as meadow today ([#15](https://github.com/mastro993/grand-theft-auto-vdl/issues/15))
-- **Snow**: an early-spring snow line on the high Apennines, over bare beech woods ([#16](https://github.com/mastro993/grand-theft-auto-vdl/issues/16))
+- **Sea, coast and beaches**: the sea at 0 m, sand and pebble beaches, piers and the mouth of the Magra ([#13](https://github.com/mastro993/gta-lunigiana/issues/13))
+- **Forest types**: chestnut and oak in the valleys, beech above about 1,000 m and pines on the coast ([#14](https://github.com/mastro993/gta-lunigiana/issues/14))
+- **Olive groves and vineyards**: on the hills, where they render as meadow today ([#15](https://github.com/mastro993/gta-lunigiana/issues/15))
+- **Snow**: an early-spring snow line on the high Apennines, over bare beech woods ([#16](https://github.com/mastro993/gta-lunigiana/issues/16))
 
 ## The playable map today: the Valle del Lucido
 
@@ -163,10 +163,12 @@ Every script runs with `pnpm`:
 | `pnpm dev` | Vite dev server on port 5173, open to the local network (`--host`) |
 | `pnpm build` | production build into `dist/` (the Pages workflow adds `--base=./`) |
 | `pnpm preview` | serves `dist/` on port 4173 |
-| `pnpm check` | `typecheck`, then `lint`, then `test` |
+| `pnpm check` | `format:check`, then `typecheck`, then `lint`, then `test` |
+| `pnpm format` | `oxfmt`: formats the code, JSON, YAML, HTML and CSS in place |
+| `pnpm format:check` | `oxfmt --check`: fails on any unformatted file |
 | `pnpm typecheck` | `tsc` (no emit) |
-| `pnpm lint` | `oxlint` with the Ritmo plugin, then `ritmo-devtools lint src/sim/index.ts` |
-| `pnpm test` | `node --test` over `src/**/*.test.ts` |
+| `pnpm lint` | type-aware `oxlint` with the Ritmo plugin and the project's own (`lint/`), warnings failing, then `ritmo-devtools lint src/sim/index.ts` |
+| `pnpm test` | `node --test` over `src/**/*.test.ts` and `lint/**/*.test.ts`, each in a `__tests__` folder beside the module it tests |
 | `pnpm map` | rebuilds `src/sim/map/monzone.bin` from `data/raw` |
 | `pnpm fetch-osm` | downloads the OpenStreetMap extract again into `data/raw/lunigiana.osm.gz` |
 | `pnpm fetch-rt` | downloads the Regione Toscana sources again into `data/raw/rt` |
@@ -190,6 +192,8 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
 | `docs/` | architecture, map pipeline, gameplay and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `.oxlintrc.json`, `.oxfmtrc.json`, `lefthook.yml` | lint rules, formatter settings, and the git hooks that format and lint each commit and check each push |
+| `lint/` | the project's own oxlint plugins, one file each named after the plugin (`test-files.ts`: each test in a `__tests__` folder) |
 
 ## Rebuilding the map
 

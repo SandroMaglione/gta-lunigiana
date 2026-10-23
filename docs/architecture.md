@@ -508,39 +508,71 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
 
 ## Checks
 
-`pnpm check` runs:
+`pnpm check` runs the format, type, lint and test gates in that order; CI runs each as its own
+step, and git hooks run the first three before a commit or push.
 
-- `tsc`: strict TypeScript, no emit.
-- `oxlint` (`.oxlintrc.json`) with `@typeonce/oxlint-plugin-ritmo`:
-  - everywhere: `handle-tick-result`, `prefix-descriptor-and-system-names`, `use-cell-value`;
+- `oxfmt --check` (`.oxfmtrc.json`): no semicolons, double quotes, 100 columns, sorted imports,
+  over the code, JSON, YAML, HTML and CSS. Markdown is skipped: oxfmt pads every table cell to
+  its column's width, which turns the docs' long tables into rows hundreds of characters wide,
+  and the docs keep their own wrapping (see CODING_STANDARDS.md). `pnpm format` rewrites the
+  files.
+- `tsc`: strict TypeScript with `noUncheckedIndexedAccess`, no emit.
+- `oxlint --deny-warnings --report-unused-disable-directives` (`.oxlintrc.json`), type-aware
+  through `oxlint-tsgolint`:
+  - the `correctness`, `suspicious`, `perf` and `pedantic` categories as errors, minus the rules
+    whose fix would change behaviour (`| 0` wraps to int32 in the seeded generators,
+    `Math.trunc` does not), that misread the code's idioms, or that only restyle it; each turned
+    off with its reason beside it in the config;
+  - a few style rules on top: `eqeqeq`, `prefer-const`, `object-shorthand`, `prefer-template`,
+    inline `type` imports, `no-explicit-any`, `prefer-optional-chain`, `prefer-nullish-coalescing`
+    (a string's `||` still treats `""` as absent), `switch-exhaustiveness-check`,
+    `import/no-cycle` and `node:` imports;
+  - `max-lines` at 700 code lines a module (tests exempt);
+  - `node:test`'s `test` and `describe` may float their promises; any other promise is awaited or
+    `void`ed;
+  - the Ritmo plugin everywhere: `handle-tick-result`, `prefix-descriptor-and-system-names`,
+    `use-cell-value`;
+  - the project's own plugins in `lint/`, one file each, named after its plugin (a unique name,
+    never a shared project-wide one): `test-files/in-tests-folder` (`lint/test-files.ts`) fails a
+    `*.test.ts` that does not sit directly in a `__tests__` folder;
   - in `src/sim/**`: `use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`,
     `keep-simulation-headless`, `no-infinity-in-simulation-data`, and a ban on importing
     `render`, `hud`, `audio` or `main.ts`;
   - in `src/audio/**`: a ban on importing `hud` or `main.ts` (they wire the audio host, never the
     reverse).
+
+  A rule broken on purpose takes an `oxlint-disable-next-line <rule> -- <reason>` comment.
 - `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
   (described, not run) `render` and `audio` schedules. Any warning fails: without the audio schedule
   described, `Honk` would be `event-never-read` (`CrashDamage` reads `Impact` in `update`).
   `lintTarget` declares `SetHandling` a host event (`hostEvents`), since only the host sends it;
   undeclared it would be `event-never-written`. It also fails if a module the sim loads is not
   covered by the oxlint simulation override.
-- `node --test`. Beside the unit tests, these guard the architecture:
-  - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
-    twice, with the handling off its real values (`SetHandling`), a car crashing into a house wall
-    to drive on misfiring and a wreck blowing up, and requires identical state, transient
-    components included.
+- `node --test` over every `*.test.ts` in `src` and `lint`. A test lives in a `__tests__` folder
+  beside the module it tests (`src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`;
+  `test-files/in-tests-folder` enforces it). Beside the unit tests, these guard the architecture:
+  - `determinism` (`src/sim/__tests__/index.test.ts`): `Determinism.check` runs a 600-frame
+    scripted joyride twice, with the handling off its real values (`SetHandling`), a car crashing
+    into a house wall to drive on misfiring and a wreck blowing up, and requires identical state,
+    transient components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
     into a fresh runtime, and plays on identically.
-  - `src/sim/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
-    `SetHandling` kept in range and through a save.
-  - `src/hud/handling.test.ts`: the handling store (what it stores, restores and sends);
-    `src/hud/settings.test.ts`: the settings' keys (Esc on to the router, every other key kept
-    from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
-    the Esc and M routing (`overlayKey`) and the pause.
-  - `src/render/index.test.ts`: every system of every described schedule (`render` and `audio`)
-    declares no writes.
-  - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
+  - `src/sim/__tests__/handling.test.ts`: each handling knob's effect, each preset's behaviour,
+    and `SetHandling` kept in range and through a save.
+  - `src/hud/__tests__/handling.test.ts`: the handling store (what it stores, restores and
+    sends); `src/hud/__tests__/settings.test.ts`: the settings' keys (Esc on to the router, every
+    other key kept from the game) and the preset they show (Custom for a hand-set mix);
+    `src/hud/__tests__/hud.test.ts`: the Esc and M routing (`overlayKey`) and the pause.
+  - `src/render/__tests__/index.test.ts`: every system of every described schedule (`render` and
+    `audio`) declares no writes.
+  - `src/sim/map/__tests__/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
+
+Git hooks come from `lefthook.yml`; `pnpm install` installs them (lefthook's own install script,
+allowed in `pnpm.onlyBuiltDependencies`). Before a commit, `oxfmt` rewrites the staged files and
+stages the result, with any unstaged edits to them held aside, then `oxlint` checks them. Before a
+push, `pnpm format:check`, `pnpm typecheck` and `pnpm lint` run in parallel; the tests are left to
+CI. `git commit --no-verify` skips the hooks, never CI.
 
 `src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with
 scripted keys and collects every `Impact`, `Honk` and `Explosion` emitted (`heard`), `stage` clears

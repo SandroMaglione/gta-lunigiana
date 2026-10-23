@@ -1,3 +1,5 @@
+import { roadHex } from "../render/lines.ts"
+import { css, PALETTE } from "../render/palette.ts"
 /**
  * The minimap: the whole map drawn once (areas, water, rail, roads, buildings) into an offscreen
  * canvas, then blitted every frame around the player, turned with the view so that screen-up is
@@ -7,8 +9,6 @@
  */
 import { type AreaKind, isAreaKind, MAP, roadClassOf } from "../sim/map/index.ts"
 import { screenAxes } from "../sim/view.ts"
-import { roadHex } from "../render/lines.ts"
-import { css, PALETTE } from "../render/palette.ts"
 
 /** Base map pixels per metre: the minimap's own scale (90 canvas px over SPAN), so the blit is 1:1. */
 const BASE = 0.3
@@ -17,10 +17,24 @@ const SPAN = 300
 
 /** Area fills; kinds left out (grassland, residential) show the grass background. */
 const AREA_HEX: Partial<Record<AreaKind, number>> = {
-  forest: PALETTE.forest, cemetery: PALETTE.plasterGrey, pitch: PALETTE.forestLight, park: PALETTE.forestLight,
-  parking: PALETTE.asphaltWorn, vineyard: PALETTE.grassDry, farmland: PALETTE.grassDry, farmyard: PALETTE.dirtTrack,
-  industrial: PALETTE.stoneMid, platform: PALETTE.asphaltWorn, school: PALETTE.grass, ruins: PALETTE.stoneMid, paved: PALETTE.asphaltWorn,
-  quarry: PALETTE.marbleWhite, rock: PALETTE.limestone, scree: PALETTE.stoneLight, sparse: PALETTE.grassDry, scrub: PALETTE.forestLight
+  forest: PALETTE.forest,
+  cemetery: PALETTE.plasterGrey,
+  pitch: PALETTE.forestLight,
+  park: PALETTE.forestLight,
+  parking: PALETTE.asphaltWorn,
+  vineyard: PALETTE.grassDry,
+  farmland: PALETTE.grassDry,
+  farmyard: PALETTE.dirtTrack,
+  industrial: PALETTE.stoneMid,
+  platform: PALETTE.asphaltWorn,
+  school: PALETTE.grass,
+  ruins: PALETTE.stoneMid,
+  paved: PALETTE.asphaltWorn,
+  quarry: PALETTE.marbleWhite,
+  rock: PALETTE.limestone,
+  scree: PALETTE.stoneLight,
+  sparse: PALETTE.grassDry,
+  scrub: PALETTE.forestLight,
 }
 
 const HOME_UP = screenAxes(0).up
@@ -30,7 +44,8 @@ const HOME_UP = screenAxes(0).up
  * atan2(−up.y, up.x); rotating by −π/2 minus that brings it to the top. The view's turn takes
  * screen-up to canvas angle atan2(−up.y, up.x) − yaw, so the rotation grows by `yaw`.
  */
-export const minimapRotation = (yaw: number): number => yaw - Math.PI / 2 - Math.atan2(-HOME_UP.y, HOME_UP.x)
+export const minimapRotation = (yaw: number): number =>
+  yaw - Math.PI / 2 - Math.atan2(-HOME_UP.y, HOME_UP.x)
 
 /**
  * Paints the map layers (areas, water, rail, roads, buildings) north-up at `scale` px/m, with the
@@ -38,9 +53,16 @@ export const minimapRotation = (yaw: number): number => yaw - Math.PI / 2 - Math
  * than that at this scale fade instead. `overview` (the full map) draws roads light and at least
  * 2 px (main roads) or 1.5 px wide, so the network reads at a few pixels per hundred metres.
  */
-export const paintMap = (ctx: CanvasRenderingContext2D, scale: number, ox = 0, oy = 0, overview = false): void => {
+export const paintMap = (
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  ox = 0,
+  oy = 0,
+  overview = false,
+): void => {
   const { minX, minY, maxX, maxY } = MAP.bounds
-  const u = (x: number) => ox + (x - minX) * scale, v = (y: number) => oy + (maxY - y) * scale
+  const u = (x: number) => ox + (x - minX) * scale,
+    v = (y: number) => oy + (maxY - y) * scale
   const path = (flat: ArrayLike<number>, closed: boolean, into = new Path2D()) => {
     into.moveTo(u(flat[0]!), v(flat[1]!))
     for (let i = 2; i + 1 < flat.length; i += 2) into.lineTo(u(flat[i]!), v(flat[i + 1]!))
@@ -71,11 +93,12 @@ export const paintMap = (ctx: CanvasRenderingContext2D, scale: number, ox = 0, o
   for (const road of MAP.roads) {
     const cls = roadClassOf(road)
     if (road.tunnel === true || cls === "path") continue
-    if (!overview) stroke(road.pts, road.w * 1.6, roadHex(road))
-    else {
+    if (overview) {
       ctx.strokeStyle = css(cls === "track" ? PALETTE.stoneLight : PALETTE.limestone)
       ctx.lineWidth = Math.max(cls === "tertiary" ? 2 : 1.5, road.w * 1.6 * scale)
       ctx.stroke(path(road.pts, false))
+    } else {
+      stroke(road.pts, road.w * 1.6, roadHex(road))
     }
   }
   ctx.fillStyle = css(PALETTE.roofTile)
@@ -83,7 +106,11 @@ export const paintMap = (ctx: CanvasRenderingContext2D, scale: number, ox = 0, o
 }
 
 /** The player marker: an arrow along +x, `size` px from tail to tip, centred on the current origin. */
-export const paintArrow = (ctx: CanvasRenderingContext2D, size = 9, fill: number = PALETTE.signYellow): void => {
+export const paintArrow = (
+  ctx: CanvasRenderingContext2D,
+  size = 9,
+  fill: number = PALETTE.signYellow,
+): void => {
   const k = size / 9
   ctx.beginPath()
   ctx.moveTo(5 * k, 0)
@@ -132,6 +159,6 @@ export const makeMinimap = (document: Document) => {
       ctx.setTransform(1, 0, 0, 1, s / 2, s / 2)
       ctx.rotate(rotation - angle)
       paintArrow(ctx)
-    }
+    },
   }
 }

@@ -7,7 +7,15 @@
  *
  * @module hud/debug
  */
-import { DEFAULT_HANDLING, HANDLING, HANDLING_KEYS, HANDLING_PRESETS, type HandlingKey, type Knob, PRESET_IDS } from "../sim/handling.ts"
+import {
+  DEFAULT_HANDLING,
+  HANDLING,
+  HANDLING_KEYS,
+  HANDLING_PRESETS,
+  type HandlingKey,
+  type Knob,
+  PRESET_IDS,
+} from "../sim/handling.ts"
 import type { HandlingStore } from "./handling.ts"
 
 const TITLE = "Debug: vehicle handling"
@@ -20,15 +28,20 @@ export const formatKnob = (key: HandlingKey, value: number): string => {
 }
 
 /** `keys` in the menu's sections, one per `group`: the sections in the order their first knob comes, each with its knobs in that order. */
-export const sections = (keys: ReadonlyArray<HandlingKey> = HANDLING_KEYS): ReadonlyArray<[group: string, keys: ReadonlyArray<HandlingKey>]> =>
-  [...Map.groupBy(keys, (key) => HANDLING[key].group)]
+export const sections = (
+  keys: ReadonlyArray<HandlingKey> = HANDLING_KEYS,
+): ReadonlyArray<[group: string, keys: ReadonlyArray<HandlingKey>]> => [
+  ...Map.groupBy(keys, (key) => HANDLING[key].group),
+]
 
 /**
  * Whether `event` toggles the menu: the key that types P (on any Latin layout, AZERTY too), or the
  * key in P's place on layouts that type no ASCII character there (Cyrillic, Greek). Repeats and
  * Ctrl, Cmd or Alt chords are not.
  */
-export const isDebugKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">): boolean => {
+export const isDebugKey = (
+  event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">,
+): boolean => {
   if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return false
   const key = event.key.toLowerCase()
   return key === "p" || (event.code === "KeyP" && !/^[ -~]$/.test(key))
@@ -76,25 +89,54 @@ html.touch .debug-toggle { top: 12px; top: anchor(--ritmo-monitor top, 12px); bo
  */
 export const mountDebugMenu = ({ window, store }: DebugMenuHost): void => {
   const document = window.document
-  const make = <K extends keyof HTMLElementTagNameMap>(tag: K, props: NoInfer<Partial<HTMLElementTagNameMap[K]>> = {}, ...children: Array<Node | string>): HTMLElementTagNameMap[K] => {
+  const make = <K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    props: NoInfer<Partial<HTMLElementTagNameMap[K]>> = {},
+    ...children: Array<Node | string>
+  ): HTMLElementTagNameMap[K] => {
     const node = Object.assign(document.createElement(tag), props)
     node.append(...children)
     return node
   }
-  const panel = make("section", { id: "debug-menu", className: "debug", role: "dialog", ariaLabel: TITLE, hidden: true },
+  const panel = make(
+    "section",
+    { id: "debug-menu", className: "debug", role: "dialog", ariaLabel: TITLE, hidden: true },
     make("h2", { textContent: TITLE }),
-    make("p", { textContent: "Dev builds only. Every change applies to every vehicle at once, traffic included." }))
+    make("p", {
+      textContent:
+        "Dev builds only. Every change applies to every vehicle at once, traffic included.",
+    }),
+  )
   const presets = PRESET_IDS.map((id) => {
-    const button = make("button", { type: "button", textContent: HANDLING_PRESETS[id].label, title: HANDLING_PRESETS[id].description })
+    const button = make("button", {
+      type: "button",
+      textContent: HANDLING_PRESETS[id].label,
+      title: HANDLING_PRESETS[id].description,
+    })
     button.addEventListener("click", () => store.choose(id))
     return { id, button }
   })
   // A mix of knobs set here is no preset: none pressed, and the row says so.
   const custom = make("span", { className: "debug-custom", textContent: "Custom" })
-  panel.append(make("section", {}, make("h3", { textContent: "Presets" }), make("div", { className: "debug-presets" }, ...presets.map(({ button }) => button), custom)))
-  const controls = new Map<HandlingKey, { readonly input: HTMLInputElement; readonly shown: HTMLOutputElement; readonly reset: HTMLButtonElement }>()
+  panel.append(
+    make(
+      "section",
+      {},
+      make("h3", { textContent: "Presets" }),
+      make("div", { className: "debug-presets" }, ...presets.map(({ button }) => button), custom),
+    ),
+  )
+  const controls = new Map<
+    HandlingKey,
+    {
+      readonly input: HTMLInputElement
+      readonly shown: HTMLOutputElement
+      readonly reset: HTMLButtonElement
+    }
+  >()
   const show = (key: HandlingKey) => {
-    const { input, shown, reset } = controls.get(key)!, value = store.values()[key]
+    const { input, shown, reset } = controls.get(key)!,
+      value = store.values()[key]
     if (input.type === "checkbox") input.checked = value === 1
     else {
       input.value = String(value)
@@ -106,24 +148,55 @@ export const mountDebugMenu = ({ window, store }: DebugMenuHost): void => {
   for (const [group, keys] of sections()) {
     const section = make("section", {}, make("h3", { textContent: group }))
     for (const key of keys) {
-      const knob: Knob = HANDLING[key], id = `debug-${key}`
-      const input = make("input", knob.kind === "switch"
-        ? { id, type: "checkbox" }
-        : { id, type: "range", min: String(knob.min), max: String(knob.max), step: String(knob.step) })
-      const shown = make("output"), about = make("p", { id: `${id}-about`, textContent: knob.description })
-      const reset = make("button", { type: "button", textContent: "Reset", ariaLabel: `Reset ${knob.label}` })
+      const knob: Knob = HANDLING[key],
+        id = `debug-${key}`
+      const input = make(
+        "input",
+        knob.kind === "switch"
+          ? { id, type: "checkbox" }
+          : {
+              id,
+              type: "range",
+              min: String(knob.min),
+              max: String(knob.max),
+              step: String(knob.step),
+            },
+      )
+      const shown = make("output"),
+        about = make("p", { id: `${id}-about`, textContent: knob.description })
+      const reset = make("button", {
+        type: "button",
+        textContent: "Reset",
+        ariaLabel: `Reset ${knob.label}`,
+      })
       input.setAttribute("aria-describedby", about.id)
-      input.addEventListener("input", () => store.change(key, knob.kind === "switch" ? Number(input.checked) : Number(input.value)))
+      input.addEventListener("input", () =>
+        store.change(key, knob.kind === "switch" ? Number(input.checked) : Number(input.value)),
+      )
       reset.addEventListener("click", () => {
         store.change(key, DEFAULT_HANDLING[key])
         input.focus() // the button hides itself
       })
       controls.set(key, { input, shown, reset })
-      section.append(make("div", { className: "debug-knob" }, make("label", { htmlFor: id, textContent: knob.label }), shown, input, reset, about))
+      section.append(
+        make(
+          "div",
+          { className: "debug-knob" },
+          make("label", { htmlFor: id, textContent: knob.label }),
+          shown,
+          input,
+          reset,
+          about,
+        ),
+      )
     }
     panel.append(section)
   }
-  const resetAll = make("button", { type: "button", className: "debug-reset-all", textContent: "Reset all" })
+  const resetAll = make("button", {
+    type: "button",
+    className: "debug-reset-all",
+    textContent: "Reset all",
+  })
   resetAll.addEventListener("click", () => {
     for (const key of HANDLING_KEYS) store.change(key, DEFAULT_HANDLING[key])
   })
@@ -136,7 +209,13 @@ export const mountDebugMenu = ({ window, store }: DebugMenuHost): void => {
   }
   store.subscribe(showAll)
   showAll()
-  const toggle = make("button", { type: "button", className: "debug-toggle", textContent: "Debug (P)", title: TITLE, ariaExpanded: "false" })
+  const toggle = make("button", {
+    type: "button",
+    className: "debug-toggle",
+    textContent: "Debug (P)",
+    title: TITLE,
+    ariaExpanded: "false",
+  })
   toggle.setAttribute("aria-controls", panel.id)
 
   let returnTo: Element | null = null

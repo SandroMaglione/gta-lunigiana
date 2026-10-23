@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "printWidth": 100,
+  "sortImports": {},
+  "ignorePatterns": [
+    "data/**",
+    "pnpm-lock.yaml",
+    "**/*.md",
+    ".claude/skills/**",
+    ".agents/skills/**"
+  ]
+}

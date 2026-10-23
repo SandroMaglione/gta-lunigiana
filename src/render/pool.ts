@@ -5,7 +5,13 @@
  *
  * @module render/pool
  */
-import { type BufferGeometry, DynamicDrawUsage, InstancedBufferAttribute, InstancedMesh, type Material } from "three"
+import {
+  type BufferGeometry,
+  DynamicDrawUsage,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  type Material,
+} from "three"
 
 /** Live pieces packed at the front of one InstancedMesh, `stride` floats each, tinted per instance; uploads only while any is drawn. */
 export class Pool {
@@ -25,7 +31,9 @@ export class Pool {
     this.mesh.count = 0
     this.mesh.renderOrder = order
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage)
-    this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(DynamicDrawUsage)
+    this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(
+      DynamicDrawUsage,
+    )
     this.mesh.frustumCulled = false // spread over the whole map, and the bounds would change every frame
   }
 
@@ -41,7 +49,8 @@ export class Pool {
 
   /** Lets piece `i` go, moving the last piece's floats and colour into its slot; returns the last piece's old slot. */
   drop(i: number): number {
-    const last = --this.mesh.count, s = this.stride
+    const last = --this.mesh.count,
+      s = this.stride
     this.data.copyWithin(i * s, last * s, (last + 1) * s)
     this.mesh.instanceColor!.array.copyWithin(i * 3, last * 3, last * 3 + 3)
     return last

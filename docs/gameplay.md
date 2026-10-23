@@ -166,7 +166,7 @@ speed.
 | `carabinieri` | Alfa Romeo Giulia dei Carabinieri | 4.6 × 1.85 | 1580 kg | rear, ABS, traction control | 1995 cm³ turbo petrol four, 330 N·m, 147 kW | 8 |
 
 What follows from them, measured on flat ground with `advance` (the physics tests in
-`src/sim/physics.test.ts`; published figures in brackets):
+`src/sim/__tests__/physics.test.ts`; published figures in brackets):
 
 | Model | 0–100 km/h | Top speed | Stop from 100 km/h | Cornering limit | Tips over at |
 |---|---|---|---|---|---|
@@ -233,7 +233,7 @@ the Simulation, Balanced and Arcade columns of the [knob table](#knobs).
   to 75% because self-righting catches it (50% without).
 
 What each preset drives like, measured with `drive` (`src/sim/testing.ts`) on flat test ground
-and asphalt unless named; `src/sim/handling.test.ts` pins the Panda's quicker 0–100 km/h and
+and asphalt unless named; `src/sim/__tests__/handling.test.ts` pins the Panda's quicker 0–100 km/h and
 shorter gravel stop from preset to preset, which vehicles roll over on which, and Arcade's
 half-second tap. Top speed is the speed after 180 s floored; a lateral g is the steady sideways acceleration at full lock held
 at 15 m/s; a rollover is the lowest speed a vehicle set going at 15–120 km/h, in 3 km/h steps,
@@ -292,7 +292,7 @@ Body and suspension), with each preset's value. Multipliers and shares move in s
 | Suspension damping | `damping` | 0.3–2 × | 1 | 1.2 | 1.8 | the dampers: higher settles the body at once after a bump or a landing, lower lets it bounce |
 
 What one knob changes, measured with `drive` (`src/sim/testing.ts`: `advance` alone, flat test
-ground and asphalt unless named, no walls), the scenarios of `src/sim/handling.test.ts`:
+ground and asphalt unless named, no walls), the scenarios of `src/sim/__tests__/handling.test.ts`:
 
 | Knob | Case | Real | Changed |
 |---|---|---|---|
@@ -551,10 +551,11 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | `src/render/pipeline.ts` | `zoomFor` zoom levels, `turnToward` view turn speed |
 | `src/audio/director/levels.ts` | how loud each sound is and how far it carries (see [audio.md](audio.md#known-limits-and-tuning)) |
 
-Gameplay changes need a test: the scenario tests in `src/sim/index.test.ts`,
-`src/sim/walls.test.ts`, `src/sim/damage.test.ts` and `src/sim/explosions.test.ts` stage exact
-situations with `src/sim/testing.ts`, `src/sim/physics.test.ts` drives each model on flat, sloping
-and ramped test ground with `advance` (no walls), and `src/sim/handling.test.ts` proves each
-handling knob's effect the same way. Fixtures find map features by geometry, never by index
-(`BATTISTI` is the Via Cesare Battisti traffic edge nearest (-412, 438), eastbound), so they survive
-map rebuilds. Re-run `pnpm check` after any change.
+Gameplay changes need a test: the scenario tests in `src/sim/__tests__/index.test.ts`,
+`src/sim/__tests__/walls.test.ts`, `src/sim/__tests__/damage.test.ts` and
+`src/sim/__tests__/explosions.test.ts` stage exact situations with `src/sim/testing.ts`,
+`src/sim/__tests__/physics.test.ts` drives each model on flat, sloping and ramped test ground with
+`advance` (no walls), and `src/sim/__tests__/handling.test.ts` proves each handling knob's effect
+the same way. Fixtures find map features by geometry, never by index (`BATTISTI` is the Via Cesare
+Battisti traffic edge nearest (-412, 438), eastbound), so they survive map rebuilds. Re-run
+`pnpm check` after any change.

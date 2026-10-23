@@ -36,10 +36,30 @@ interface Plume {
  */
 export const PLUMES = {
   light: undefined,
-  medium: { hex: PALETTE.marbleWhite, rate: 10, lift: 0, look: { drift: [0.1, 0.3], rise: [0.8, 1.2], life: [1.5, 2.5], size: [0.5, 0.9] } },
-  severe: { hex: PALETTE.outline, rate: 12, lift: 0, look: { drift: [0.1, 0.3], rise: [1, 1.5], life: [2, 3], size: [0.5, 0.9] } },
-  destroyed: { hex: PALETTE.outline, rate: 12, lift: 0.5, look: { drift: [0.1, 0.4], rise: [1.4, 2], life: [2.5, 3.5], size: [0.6, 1] } },
-  burnt: { hex: PALETTE.cobbleDark, rate: 4, lift: 0, look: { drift: [0.1, 0.3], rise: [0.6, 1], life: [2, 3], size: [0.3, 0.5] } }
+  medium: {
+    hex: PALETTE.marbleWhite,
+    rate: 10,
+    lift: 0,
+    look: { drift: [0.1, 0.3], rise: [0.8, 1.2], life: [1.5, 2.5], size: [0.5, 0.9] },
+  },
+  severe: {
+    hex: PALETTE.outline,
+    rate: 12,
+    lift: 0,
+    look: { drift: [0.1, 0.3], rise: [1, 1.5], life: [2, 3], size: [0.5, 0.9] },
+  },
+  destroyed: {
+    hex: PALETTE.outline,
+    rate: 12,
+    lift: 0.5,
+    look: { drift: [0.1, 0.4], rise: [1.4, 2], life: [2.5, 3.5], size: [0.6, 1] },
+  },
+  burnt: {
+    hex: PALETTE.cobbleDark,
+    rate: 4,
+    lift: 0,
+    look: { drift: [0.1, 0.3], rise: [0.6, 1], life: [2, 3], size: [0.3, 0.5] },
+  },
 } as const satisfies Record<WreckState, Plume | undefined>
 /** At most this many damaged engines smoke at once (the burning first, then the nearest the player): the pools hold that many plumes and fires in full. */
 export const PLUMES_AT_ONCE = 8
@@ -48,7 +68,13 @@ export const PLUMES_AT_ONCE = 8
  * Flames a second from a burning engine, how far from its middle they lick up (m, either way across the bonnet), and how they rise
  * (m/s), last (s) and how big they start (m), each a [min, max] range.
  */
-export const FLAMES = { rate: 40, spread: 0.5, rise: [1.2, 2], life: [0.35, 0.7], size: [0.35, 0.6] } as const
+export const FLAMES = {
+  rate: 40,
+  spread: 0.5,
+  rise: [1.2, 2],
+  life: [0.35, 0.7],
+  size: [0.35, 0.6],
+} as const
 /** Engine smoke and flames spawn for no frame longer than this, s: a stalled tab does not dump a burst. */
 const LONGEST = 0.25
 
@@ -58,8 +84,14 @@ const FLAME_POOL = Math.ceil(PLUMES_AT_ONCE * FLAMES.rate * FLAMES.life[1])
 
 /** Floats per flame: its place off the engine it burns on (three x, z; m), birth and life (sim s), starting radius (m), rise (m/s), yaw. */
 const STRIDE = 7
-const matrix = new Matrix4(), at = new Vector3(), turn = new Quaternion(), size = new Vector3(), up = new Vector3(0, 1, 0), tint = new Color()
-const lean = new Vector3(), trail = new Vector3()
+const matrix = new Matrix4(),
+  at = new Vector3(),
+  turn = new Quaternion(),
+  size = new Vector3(),
+  up = new Vector3(0, 1, 0),
+  tint = new Color()
+const lean = new Vector3(),
+  trail = new Vector3()
 /** A body lying on its side or roof (its up axis under the sim's `WHEELS_DOWN`) smokes and burns from this far over its centre of mass, m. */
 const OVER = 0.6
 
@@ -83,10 +115,20 @@ class Flames {
   add(owner: VehicleNode, born: number): void {
     const i = this.flames.take()
     if (i < 0) return
-    const r = this.random, spread = 2 * FLAMES.spread
-    this.flames.data.set([
-      (r() - 0.5) * spread, (r() - 0.5) * spread, born, between(r, FLAMES.life), between(r, FLAMES.size), between(r, FLAMES.rise), r() * 2 * Math.PI
-    ], i * STRIDE)
+    const r = this.random,
+      spread = 2 * FLAMES.spread
+    this.flames.data.set(
+      [
+        (r() - 0.5) * spread,
+        (r() - 0.5) * spread,
+        born,
+        between(r, FLAMES.life),
+        between(r, FLAMES.size),
+        between(r, FLAMES.rise),
+        r() * 2 * Math.PI,
+      ],
+      i * STRIDE,
+    )
     this.owners[i] = owner
   }
 
@@ -96,16 +138,22 @@ class Flames {
     // Nothing alight now or last frame: nothing to upload.
     if (this.flames.idle) return
     for (let i = 0; i < mesh.count;) {
-      const o = i * STRIDE, age = Math.max(0, now - f[o + 2]!), u = age / f[o + 3]!
+      const o = i * STRIDE,
+        age = Math.max(0, now - f[o + 2]!),
+        u = age / f[o + 3]!
       if (u >= 1) {
         const last = this.flames.drop(i)
         this.owners[i] = this.owners[last]!
         this.owners.length = last
         continue
       }
-      const s = f[o + 4]! * (1 - u), engine = this.owners[i]!.smoked // a tongue licks up and shrinks away
+      const s = f[o + 4]! * (1 - u),
+        engine = this.owners[i]!.smoked // a tongue licks up and shrinks away
       at.set(engine.x + f[o]!, engine.y + f[o + 5]! * age, engine.z + f[o + 1]!)
-      mesh.setMatrixAt(i, matrix.compose(at, turn.setFromAxisAngle(up, f[o + 6]!), size.set(s, s * 1.6, s)))
+      mesh.setMatrixAt(
+        i,
+        matrix.compose(at, turn.setFromAxisAngle(up, f[o + 6]!), size.set(s, s * 1.6, s)),
+      )
       mesh.setColorAt(i, along(HOT, u, tint))
       i++
     }
@@ -143,18 +191,21 @@ export class Wrecks {
     node.updateWorldMatrix(true, false)
     const engine = at.copy(node.engine).applyMatrix4(node.matrixWorld)
     // Lying over, the engine bay faces the ground: the smoke and fire come out over the body.
-    if (lean.setFromMatrixColumn(node.matrixWorld, 1).y < WHEELS_DOWN) engine.y = Math.max(engine.y, node.position.y + OVER)
+    if (lean.setFromMatrixColumn(node.matrixWorld, 1).y < WHEELS_DOWN)
+      engine.y = Math.max(engine.y, node.position.y + OVER)
     const from = now - node.smokedAt <= dt + 1e-9 ? node.smoked : engine
     node.smokeDebt += plume.rate * dt
     for (; node.smokeDebt >= 1; node.smokeDebt--) {
-      const back = (node.smokeDebt - 1) / plume.rate, p = trail.copy(engine).lerp(from, Math.min(1, back / dt))
+      const back = (node.smokeDebt - 1) / plume.rate,
+        p = trail.copy(engine).lerp(from, Math.min(1, back / dt))
       this.smoke.puff(p.x, p.y + plume.lift, p.z, now - back, plume.hex, plume.look)
     }
     node.smoked.copy(engine)
     node.smokedAt = now
     if (state !== "destroyed") return
     node.flameDebt += FLAMES.rate * dt
-    for (; node.flameDebt >= 1; node.flameDebt--) this.flames.add(node, now - (node.flameDebt - 1) / FLAMES.rate)
+    for (; node.flameDebt >= 1; node.flameDebt--)
+      this.flames.add(node, now - (node.flameDebt - 1) / FLAMES.rate)
   }
 
   /** Moves every puff and flame to sim time `now` (s). */

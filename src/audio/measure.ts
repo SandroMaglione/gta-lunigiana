@@ -29,7 +29,8 @@ const fft = (re: Float64Array, im: Float64Array, cos: Float64Array, sin: Float64
     for (; j & bit; bit >>= 1) j ^= bit
     j ^= bit
     if (i < j) {
-      const r = re[i]!, m = im[i]!
+      const r = re[i]!,
+        m = im[i]!
       re[i] = re[j]!
       im[i] = im[j]!
       re[j] = r
@@ -37,11 +38,16 @@ const fft = (re: Float64Array, im: Float64Array, cos: Float64Array, sin: Float64
     }
   }
   for (let size = 2; size <= n; size <<= 1) {
-    const half = size / 2, stride = n / size
+    const half = size / 2,
+      stride = n / size
     for (let start = 0; start < n; start += size) {
       for (let k = 0; k < half; k++) {
-        const a = start + k, b = a + half, wr = cos[k * stride]!, wi = sin[k * stride]!
-        const tr = re[b]! * wr - im[b]! * wi, ti = re[b]! * wi + im[b]! * wr
+        const a = start + k,
+          b = a + half,
+          wr = cos[k * stride]!,
+          wi = sin[k * stride]!
+        const tr = re[b]! * wr - im[b]! * wi,
+          ti = re[b]! * wi + im[b]! * wr
         re[b] = re[a]! - tr
         im[b] = im[a]! - ti
         re[a] = re[a]! + tr
@@ -53,10 +59,19 @@ const fft = (re: Float64Array, im: Float64Array, cos: Float64Array, sin: Float64
 
 /** Measures `channels` sampled at `sampleRate`; the spectrum sums the Hann-windowed frames of every channel. */
 export const measure = (channels: ReadonlyArray<Float32Array>, sampleRate: number): Measure => {
-  const cos = Float64Array.from({ length: FRAME / 2 }, (_, k) => Math.cos((-2 * Math.PI * k) / FRAME))
-  const sin = Float64Array.from({ length: FRAME / 2 }, (_, k) => Math.sin((-2 * Math.PI * k) / FRAME))
-  const magnitude = new Float64Array(FRAME / 2 + 1), re = new Float64Array(FRAME), im = new Float64Array(FRAME)
-  let peak = 0, energy = 0, count = 0, nan = false
+  const cos = Float64Array.from({ length: FRAME / 2 }, (_, k) =>
+    Math.cos((-2 * Math.PI * k) / FRAME),
+  )
+  const sin = Float64Array.from({ length: FRAME / 2 }, (_, k) =>
+    Math.sin((-2 * Math.PI * k) / FRAME),
+  )
+  const magnitude = new Float64Array(FRAME / 2 + 1),
+    re = new Float64Array(FRAME),
+    im = new Float64Array(FRAME)
+  let peak = 0,
+    energy = 0,
+    count = 0,
+    nan = false
   for (const samples of channels) {
     count += samples.length
     for (let start = 0; start < samples.length; start += FRAME) {
@@ -75,7 +90,8 @@ export const measure = (channels: ReadonlyArray<Float32Array>, sampleRate: numbe
       for (let k = 0; k <= FRAME / 2; k++) magnitude[k]! += Math.hypot(re[k]!, im[k]!)
     }
   }
-  let weighted = 0, total = 0
+  let weighted = 0,
+    total = 0
   for (let k = 0; k <= FRAME / 2; k++) {
     weighted += ((k * sampleRate) / FRAME) * magnitude[k]!
     total += magnitude[k]!
@@ -84,6 +100,6 @@ export const measure = (channels: ReadonlyArray<Float32Array>, sampleRate: numbe
     peak,
     rms: energy > 0 ? Math.max(SILENCE_DB, 10 * Math.log10(energy / count)) : SILENCE_DB,
     centroid: total > 0 ? weighted / total : 0,
-    nan
+    nan,
   }
 }

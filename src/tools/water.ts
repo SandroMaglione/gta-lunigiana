@@ -25,7 +25,8 @@ const settle = (water: ReadonlyArray<WaterF>, wp: ReadonlyArray<Profile>) => {
     water.forEach((w, i) => {
       const mouth = w.pts.at(-1)!.id
       if (mouth === undefined) return
-      const p = wp[i]!, end = p.z.length - 1
+      const p = wp[i]!,
+        end = p.z.length - 1
       water.forEach((r, j) => {
         const v = r.pts.findIndex((q) => q.id === mouth)
         if (j === i || v < 0 || v === r.pts.length - 1) return // r ends there too: siblings, not a receiver
@@ -37,8 +38,10 @@ const settle = (water: ReadonlyArray<WaterF>, wp: ReadonlyArray<Profile>) => {
         if (p.z[end]! < level) for (let k = 0; k <= end; k++) p.z[k] = Math.max(p.z[k]!, level)
         else {
           // Drop the tail by an offset fading in over the last drop/TAIL m: still monotone, adds at most TAIL of slope.
-          const drop = p.z[end]! - level, fade = Math.max(20, drop / TAIL)
-          for (let k = 0; k <= end; k++) p.z[k] = p.z[k]! - drop * Math.max(0, 1 - (p.s[end]! - p.s[k]!) / fade)
+          const drop = p.z[end]! - level,
+            fade = Math.max(20, drop / TAIL)
+          for (let k = 0; k <= end; k++)
+            p.z[k] = p.z[k]! - drop * Math.max(0, 1 - (p.s[end]! - p.s[k]!) / fade)
         }
       })
     })
@@ -47,14 +50,21 @@ const settle = (water: ReadonlyArray<WaterF>, wp: ReadonlyArray<Profile>) => {
 }
 
 /** Water-surface profiles every 2 m from the uncarved ground (ground - depth/2), settled. */
-export const waterProfiles = (water: ReadonlyArray<WaterF>, ground: (x: number, y: number) => number): Array<Profile> => {
+export const waterProfiles = (
+  water: ReadonlyArray<WaterF>,
+  ground: (x: number, y: number) => number,
+): Array<Profile> => {
   const wp = water.map((w) => resample(w.pts, 2, (x, y) => ground(x, y) - w.depth / 2))
   settle(water, wp)
   return wp
 }
 
-export const carveAll = (g: Grid, water: ReadonlyArray<WaterF>, wp: ReadonlyArray<Profile>, keep?: (n: number) => boolean): void =>
-  water.forEach((w, i) => carve(g, wp[i]!, w.w, w.bed, w.depth, keep))
+export const carveAll = (
+  g: Grid,
+  water: ReadonlyArray<WaterF>,
+  wp: ReadonlyArray<Profile>,
+  keep?: (n: number) => boolean,
+): void => water.forEach((w, i) => carve(g, wp[i]!, w.w, w.bed, w.depth, keep))
 
 /**
  * Caps the samples within `half` m (along the water) of arc length `at` to `z`, fading the drop in
@@ -63,7 +73,8 @@ export const carveAll = (g: Grid, water: ReadonlyArray<WaterF>, wp: ReadonlyArra
  */
 const cap = (p: Profile, at: number, half: number, z: number, both = false) => {
   const inside = (k: number) => Math.abs(p.s[k]! - at) <= half
-  let first = -1, last = -1
+  let first = -1,
+    last = -1
   for (let k = 0; k < p.z.length; k++) if (inside(k)) [first, last] = [first < 0 ? k : first, k]
   if (first < 0) return
   const before = Float64Array.from(p.z)
@@ -72,14 +83,24 @@ const cap = (p: Profile, at: number, half: number, z: number, both = false) => {
     const drop = before[edge]! - z
     if (drop <= 0) return
     const reach = Math.max(20, drop / TAIL)
-    for (let k = edge + step; k >= 0 && k < p.z.length && Math.abs(p.s[k]! - p.s[edge]!) < reach; k += step)
+    for (
+      let k = edge + step;
+      k >= 0 && k < p.z.length && Math.abs(p.s[k]! - p.s[edge]!) < reach;
+      k += step
+    )
       p.z[k] = Math.min(p.z[k]!, before[k]! - drop * (1 - Math.abs(p.s[k]! - p.s[edge]!) / reach))
   }
   fade(first, -1)
   if (both) fade(last, 1)
 }
 
-export interface Crossed { readonly water: number; readonly at: number; readonly half: number; readonly deck: number; readonly bridge: boolean }
+export interface Crossed {
+  readonly water: number
+  readonly at: number
+  readonly half: number
+  readonly deck: number
+  readonly bridge: boolean
+}
 
 /**
  * After the roads: bridges keep BRIDGE_CLEAR over the water (settled again downstream, then
@@ -88,7 +109,14 @@ export interface Crossed { readonly water: number; readonly at: number; readonly
  * end at the road) drops to the terrain, except inside a wider channel it flows into, as long as it
  * still runs downhill there (a stream dropped into a river's carved bed never steps back up).
  */
-export const fitUnderDecks = (g: Grid, water: ReadonlyArray<WaterF>, wp: ReadonlyArray<Profile>, crossed: ReadonlyArray<Crossed>, keep: (n: number) => boolean, terrain: (x: number, y: number) => number): void => {
+export const fitUnderDecks = (
+  g: Grid,
+  water: ReadonlyArray<WaterF>,
+  wp: ReadonlyArray<Profile>,
+  crossed: ReadonlyArray<Crossed>,
+  keep: (n: number) => boolean,
+  terrain: (x: number, y: number) => number,
+): void => {
   const decks = () => {
     for (const c of crossed) if (c.bridge) cap(wp[c.water]!, c.at, c.half, c.deck - BRIDGE_CLEAR)
   }
@@ -103,15 +131,23 @@ export const fitUnderDecks = (g: Grid, water: ReadonlyArray<WaterF>, wp: Readonl
     const p = wp[i]!
     for (let k = 0; k < p.z.length; k++) {
       const top = terrain(p.x[k]!, p.y[k]!) + w.depth / 2
-      const joins = (k === 0 || p.z[k]! <= p.z[k - 1]!) && channels.covers(p.x[k]!, p.y[k]!, (j) => j !== i && water[j]!.w > w.w)
+      const joins =
+        (k === 0 || p.z[k]! <= p.z[k - 1]!) &&
+        channels.covers(p.x[k]!, p.y[k]!, (j) => j !== i && water[j]!.w > w.w)
       if (p.z[k]! > top + PERCH && !joins) p.z[k] = top
     }
   })
 }
 
 /** Output polyline of a water profile: every OSM vertex plus the samples that keep the dips under decks and culverts. */
-export const waterLine = (pts: ReadonlyArray<V>, p: Profile): { pts: Array<V>; z: Array<number> } => {
+export const waterLine = (
+  pts: ReadonlyArray<V>,
+  p: Profile,
+): { pts: Array<V>; z: Array<number> } => {
   const vertexAt = new Map(p.vertexSample.map((k, v) => [k, pts[v]!]))
   const keep = keepSamples(p, p.vertexSample, 0.1)
-  return { pts: keep.map((k) => vertexAt.get(k) ?? { x: p.x[k]!, y: p.y[k]! }), z: keep.map((k) => p.z[k]!) }
+  return {
+    pts: keep.map((k) => vertexAt.get(k) ?? { x: p.x[k]!, y: p.y[k]! }),
+    z: keep.map((k) => p.z[k]!),
+  }
 }

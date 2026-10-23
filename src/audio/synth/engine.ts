@@ -40,7 +40,12 @@ export interface Timbre {
   /** Extra waveshaper drive at full load. */
   readonly drive: number
   /** Mechanical noise: level, band swept with revs (Hz), Q, and how much the firing pulse gates it. */
-  readonly noise: { readonly level: number; readonly band: readonly [number, number]; readonly q: number; readonly pulse: number }
+  readonly noise: {
+    readonly level: number
+    readonly band: readonly [number, number]
+    readonly q: number
+    readonly pulse: number
+  }
   /** Turbo whine level at full boost; 0 for none. */
   readonly turbo: number
   /** Idle and redline, rpm. */
@@ -62,22 +67,44 @@ export interface Timbre {
  */
 const CYCLES = {
   petrol: {
-    wave: "sawtooth", harmonics: 20, noise: { level: 0.05, band: [800, 3000], q: 1.1, pulse: 0 }, q: [2.5, 3], gains: [0.6, 0.25], spacing: 3.3,
-    idle: 2.7, highpass: 1 / 8, drive: 2.5
+    wave: "sawtooth",
+    harmonics: 20,
+    noise: { level: 0.05, band: [800, 3000], q: 1.1, pulse: 0 },
+    q: [2.5, 3],
+    gains: [0.6, 0.25],
+    spacing: 3.3,
+    idle: 2.7,
+    highpass: 1 / 8,
+    drive: 2.5,
   },
   diesel: {
-    wave: 0.3, harmonics: 11, noise: { level: 0.075, band: [1500, 2500], q: 1.5, pulse: 0.6 }, q: [2.5, 3], gains: [0.6, 0.25], spacing: 3.3,
-    idle: 2.7, highpass: 1 / 8, drive: 2.5
+    wave: 0.3,
+    harmonics: 11,
+    noise: { level: 0.075, band: [1500, 2500], q: 1.5, pulse: 0.6 },
+    q: [2.5, 3],
+    gains: [0.6, 0.25],
+    spacing: 3.3,
+    idle: 2.7,
+    highpass: 1 / 8,
+    drive: 2.5,
   },
   // A short, sharp port-timed pulse through an expansion chamber: thin, bright, buzzy.
   twoStroke: {
-    wave: 0.12, harmonics: 66, noise: { level: 0.1, band: [1500, 4500], q: 1, pulse: 0.15 }, q: [3, 4], gains: [0.7, 0.35], spacing: 2.3,
-    idle: 2, highpass: 1 / 5, drive: 4
-  }
+    wave: 0.12,
+    harmonics: 66,
+    noise: { level: 0.1, band: [1500, 4500], q: 1, pulse: 0.15 },
+    q: [3, 4],
+    gains: [0.7, 0.35],
+    spacing: 2.3,
+    idle: 2,
+    highpass: 1 / 5,
+    drive: 4,
+  },
 } as const
 
 /** The first exhaust formant of a 1242 cm³ four (Hz); it scales as the cube root of the swept volume (a resonance goes as 1/length). */
-const F1 = 330, F1_CC = 1242
+const F1 = 330,
+  F1_CC = 1242
 /** A two-stroke's expansion chamber rings this much higher than a four-stroke's pipe of its size. */
 const CHAMBER = 1.3
 
@@ -89,15 +116,23 @@ const CHAMBER = 1.3
  * formants for an exhaust voiced unlike its size; `trim` is the measured 1 / peak, `knock` the measured knock.
  */
 export const timbreOf = (engine: EngineSpec, trim = 1, exhaust = 1, knock = 0): Timbre => {
-  const cycle = engine.strokes === 2 ? CYCLES.twoStroke : CYCLES[engine.fuel], turbo = engine.aspiration === "turbo"
+  const cycle = engine.strokes === 2 ? CYCLES.twoStroke : CYCLES[engine.fuel],
+    turbo = engine.aspiration === "turbo"
   const pulses = engine.strokes === 4 ? engine.cylinders / 2 : engine.cylinders
-  const f1 = F1 * (engine.displacement / F1_CC) ** (-1 / 3) * (engine.strokes === 2 ? CHAMBER : 1) * exhaust
+  const f1 =
+    F1 * (engine.displacement / F1_CC) ** (-1 / 3) * (engine.strokes === 2 ? CHAMBER : 1) * exhaust
   const tight = turbo ? 0.8 : 1
   return {
     pulses,
     wave: cycle.wave,
-    sub: Math.min(0.4, Math.max(0.1, 0.25 + 0.15 * Math.log10(engine.displacement / engine.cylinders / 310))),
-    formants: [[f1, cycle.q[0] * tight, turbo ? 0.8 : cycle.gains[0]], [f1 * cycle.spacing, cycle.q[1] * tight, turbo ? 0.35 : cycle.gains[1]]],
+    sub: Math.min(
+      0.4,
+      Math.max(0.1, 0.25 + 0.15 * Math.log10(engine.displacement / engine.cylinders / 310)),
+    ),
+    formants: [
+      [f1, cycle.q[0] * tight, turbo ? 0.8 : cycle.gains[0]],
+      [f1 * cycle.spacing, cycle.q[1] * tight, turbo ? 0.35 : cycle.gains[1]],
+    ],
     lowpass: [cycle.idle * f1, cycle.harmonics * (engine.redline / 60) * pulses],
     highpass: Math.max(30, f1 * cycle.highpass),
     drive: cycle.drive + (turbo ? 1 : 0),
@@ -107,7 +142,7 @@ export const timbreOf = (engine: EngineSpec, trim = 1, exhaust = 1, knock = 0): 
     idle: engine.idle,
     redline: engine.redline,
     trim,
-    knock
+    knock,
   }
 }
 
@@ -116,24 +151,39 @@ export const timbreOf = (engine: EngineSpec, trim = 1, exhaust = 1, knock = 0): 
  * {rpm: redline, load: 1} in headless Chrome (three runs within 0.001 of each other; `window.lab.renderAll()`
  * flags a row off the nominal 0.42–0.6). Re-measure after any change to `timbreOf` or the graph.
  */
-const TRIM = { panda: 0.488, ape: 0.316, truck: 0.371, carabinieri: 0.469 } as const satisfies Record<VehicleModel, number>
+const TRIM = {
+  panda: 0.488,
+  ape: 0.316,
+  truck: 0.371,
+  carabinieri: 0.469,
+} as const satisfies Record<VehicleModel, number>
 /**
  * MEASURED: each model's knock at full damage (`Timbre.knock`), so that idling at damage 0.9 it plays 16 dB (RMS) under the
  * firing tone (the seeded render with the knock against the same without it, in headless Chrome). A thin Ape needs little, the
  * truck's loud diesel much. Re-measure after any change to the graph.
  */
-const KNOCK = { panda: 4, ape: 1.5, truck: 8, carabinieri: 5.5 } as const satisfies Record<VehicleModel, number>
+const KNOCK = { panda: 4, ape: 1.5, truck: 8, carabinieri: 5.5 } as const satisfies Record<
+  VehicleModel,
+  number
+>
 /** Voicing where size alone is wrong: the Giulia's sports exhaust plays a quarter lower than its 2 l would (210 Hz, not 282). */
-const EXHAUST = { panda: 1, ape: 1, truck: 1, carabinieri: 0.75 } as const satisfies Record<VehicleModel, number>
+const EXHAUST = { panda: 1, ape: 1, truck: 1, carabinieri: 0.75 } as const satisfies Record<
+  VehicleModel,
+  number
+>
 
 /** The timbre of `model`'s engine. */
-export const timbre = (model: VehicleModel): Timbre => timbreOf(VEHICLES[model].engine, TRIM[model], EXHAUST[model], KNOCK[model])
+export const timbre = (model: VehicleModel): Timbre =>
+  timbreOf(VEHICLES[model].engine, TRIM[model], EXHAUST[model], KNOCK[model])
 
 /** The own engine heard from the driver's seat, behind the firewall (physics.md §10). */
 export const CABIN = { lowpass: 2500, shelf: 4 } as const
 
 /** How one vehicle differs from another of its model, from its `variant` 0…1: ±2 % in pitch, ±4 % in its exhaust formants. */
-export const variation = (variant: number) => ({ pitch: 1 + 0.04 * (variant - 0.5), formant: 1 + 0.08 * (variant - 0.5) })
+export const variation = (variant: number) => ({
+  pitch: 1 + 0.04 * (variant - 0.5),
+  formant: 1 + 0.08 * (variant - 0.5),
+})
 
 /** Where every param of an engine graph heads. */
 interface EngineTargets {
@@ -168,11 +218,23 @@ interface EngineTargets {
  * output gain only falls with damage; the knock (halved under load) and the backfires are sized so
  * a worn engine still peaks under its nominal (the audition page's worn rows).
  */
-const WORN = { dull: 0.35, soft: 0.3, weak: 2, rough: 0.4, jitter: 40, roughFrom: 0.2, cut: 0.15, cutTau: 0.005, backfire: 4, glide: 0.3 } as const
+const WORN = {
+  dull: 0.35,
+  soft: 0.3,
+  weak: 2,
+  rough: 0.4,
+  jitter: 40,
+  roughFrom: 0.2,
+  cut: 0.15,
+  cutTau: 0.005,
+  backfire: 4,
+  glide: 0.3,
+} as const
 /** The brown noise's playback rate for the wobble (its corner falls from 154 to 77 Hz: lumps, not hiss). */
 const LUMPS = 0.5
 /** Waveshaper curves: clamped to ±1 (the wobble never lifts the output past its unity gain); the positive half only (a gate). */
-const CLIP = Float32Array.of(-1, 1), POSITIVE = Float32Array.of(0, 0, 1)
+const CLIP = Float32Array.of(-1, 1),
+  POSITIVE = Float32Array.of(0, 0, 1)
 
 /**
  * The output gain at idle against the redline under full load, dB. The lowpass closing and the light
@@ -181,7 +243,8 @@ const CLIP = Float32Array.of(-1, 1), POSITIVE = Float32Array.of(0, 0, 1)
 const IDLE_DB = -11
 
 /** Revs as a share of the way from idle (0) to the redline (1). */
-const revsOf = (timbre: Timbre, rpm: number): number => Math.min(1, Math.max(0, (rpm - timbre.idle) / (timbre.redline - timbre.idle)))
+const revsOf = (timbre: Timbre, rpm: number): number =>
+  Math.min(1, Math.max(0, (rpm - timbre.idle) / (timbre.redline - timbre.idle)))
 
 /** The gain law's dB under the nominal peak (0 at the redline under full load as new, 11 at idle, `WORN.weak` more at full damage): masking and the voice caps count it. */
 const quietOf = (timbre: Timbre, rpm: number, load: number, damage: number): number =>
@@ -191,18 +254,31 @@ const quietOf = (timbre: Timbre, rpm: number, load: number, damage: number): num
  * How many dB `model`'s engine plays under its nominal peak at `rpm` and `load`, worn by `damage`, by its gain law (the
  * filters' share at idle, ~9 dB, and a worn engine's duller tone are not counted).
  */
-export const engineQuiet = (model: VehicleModel, rpm: number, load: number, damage = 0): number => quietOf(timbre(model), rpm, load, damage)
+export const engineQuiet = (model: VehicleModel, rpm: number, load: number, damage = 0): number =>
+  quietOf(timbre(model), rpm, load, damage)
 
 /**
  * The engine law: revs set pitch and brightness, load sets drive and level (revs weigh 60 % of the level range, load 40 %);
  * `damage` dulls, softens, roughens and knocks it (`WORN`), and a `misfire` closes its gate.
  */
-export const engineTargets = (timbre: Timbre, rpm: number, load: number, inside: boolean, variant: number, damage = 0, misfire = false): EngineTargets => {
-  const revs = revsOf(timbre, rpm), w = unit(damage), rough = smoothstep(WORN.roughFrom, 1, w)
+export const engineTargets = (
+  timbre: Timbre,
+  rpm: number,
+  load: number,
+  inside: boolean,
+  variant: number,
+  damage = 0,
+  misfire = false,
+): EngineTargets => {
+  const revs = revsOf(timbre, rpm),
+    w = unit(damage),
+    rough = smoothstep(WORN.roughFrom, 1, w)
   return {
     hz: (rpm / 60) * timbre.pulses * variation(variant).pitch,
     drive: 0.4 + load * timbre.drive * (1 - WORN.soft * w),
-    lowpass: (timbre.lowpass[0] + (timbre.lowpass[1] - timbre.lowpass[0]) * revs * (0.5 + 0.5 * load)) * (1 - WORN.dull * w),
+    lowpass:
+      (timbre.lowpass[0] + (timbre.lowpass[1] - timbre.lowpass[0]) * revs * (0.5 + 0.5 * load)) *
+      (1 - WORN.dull * w),
     noiseHz: timbre.noise.band[0] + (timbre.noise.band[1] - timbre.noise.band[0]) * revs,
     noise: timbre.noise.level * (0.3 + 0.7 * load) * (0.4 + revs),
     turboHz: 2500 + 6000 * load * revs,
@@ -213,13 +289,14 @@ export const engineTargets = (timbre: Timbre, rpm: number, load: number, inside:
     rough: WORN.rough * rough,
     jitter: WORN.jitter * rough,
     knock: timbre.knock * smoothstep(STAGE_FROM.medium, 1, w) * (1 - 0.5 * load),
-    gate: misfire ? WORN.cut : 1
+    gate: misfire ? WORN.cut : 1,
   }
 }
 
 /** A band-limited pulse of duty cycle `duty`: x(t) = Σ 2/(kπ)·sin(kπD)·cos(kωt) (the DC term is dropped). */
 const pulseWave = (ctx: BaseAudioContext, duty: number, harmonics = 48): PeriodicWave => {
-  const real = new Float32Array(harmonics), imag = new Float32Array(harmonics)
+  const real = new Float32Array(harmonics),
+    imag = new Float32Array(harmonics)
   for (let k = 1; k < harmonics; k++) real[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty)
   return new PeriodicWave(ctx, { real, imag })
 }
@@ -228,9 +305,12 @@ const pulseWave = (ctx: BaseAudioContext, duty: number, harmonics = 48): Periodi
 const SPOOL = 0.6
 
 const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
-  const { ctx } = io, spec = timbre(first.model), shift = variation(first.variant).formant
+  const { ctx } = io,
+    spec = timbre(first.model),
+    shift = variation(first.variant).formant
   const firing = new ConstantSourceNode(ctx, { offset: 0 })
-  const sources: Array<AudioScheduledSourceNode> = [firing], tones: Array<OscillatorNode> = []
+  const sources: Array<AudioScheduledSourceNode> = [firing],
+    tones: Array<OscillatorNode> = []
   const tone = (options: OscillatorOptions, ratio: number) => {
     const osc = new OscillatorNode(ctx, { ...options, frequency: 0 })
     firing.connect(new GainNode(ctx, { gain: ratio })).connect(osc.frequency)
@@ -243,27 +323,56 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
   // engine is worn; the output gain is last, so `stop` detaches the whole voice.
   const cabin = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 20000 })
   const shelf = new BiquadFilterNode(ctx, { type: "lowshelf", frequency: 120, gain: 0 })
-  const lump = new GainNode(ctx, { gain: 1 }), gate = new GainNode(ctx, { gain: 1 }), output = new GainNode(ctx, { gain: 0 })
+  const lump = new GainNode(ctx, { gain: 1 }),
+    gate = new GainNode(ctx, { gain: 1 }),
+    output = new GainNode(ctx, { gain: 0 })
   cabin.connect(shelf).connect(lump).connect(gate).connect(output).connect(io.out)
 
-  const pre = new GainNode(ctx, { gain: 0.4 }), lowpass = new BiquadFilterNode(ctx, { type: "lowpass", frequency: spec.lowpass[0] })
+  const pre = new GainNode(ctx, { gain: 0.4 }),
+    lowpass = new BiquadFilterNode(ctx, { type: "lowpass", frequency: spec.lowpass[0] })
   const shaper = new WaveShaperNode(ctx, { curve: tanhCurve(), oversample: "2x" })
-  const main = tone(spec.wave === "sawtooth" ? { type: "sawtooth" } : { periodicWave: pulseWave(ctx, spec.wave) }, 1)
+  const main = tone(
+    spec.wave === "sawtooth" ? { type: "sawtooth" } : { periodicWave: pulseWave(ctx, spec.wave) },
+    1,
+  )
   main.connect(pre)
-  tone({ type: "triangle" }, 0.5).connect(new GainNode(ctx, { gain: spec.sub })).connect(pre)
-  pre.connect(shaper).connect(lowpass).connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: spec.highpass })).connect(cabin)
+  tone({ type: "triangle" }, 0.5)
+    .connect(new GainNode(ctx, { gain: spec.sub }))
+    .connect(pre)
+  pre
+    .connect(shaper)
+    .connect(lowpass)
+    .connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: spec.highpass }))
+    .connect(cabin)
   for (const [frequency, Q, gain] of spec.formants) {
-    shaper.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: frequency * shift, Q })).connect(new GainNode(ctx, { gain })).connect(cabin)
+    shaper
+      .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: frequency * shift, Q }))
+      .connect(new GainNode(ctx, { gain }))
+      .connect(cabin)
   }
 
-  const hiss = loop(ctx, io.kit.white), band = new BiquadFilterNode(ctx, { type: "bandpass", frequency: spec.noise.band[0], Q: spec.noise.q })
+  const hiss = loop(ctx, io.kit.white),
+    band = new BiquadFilterNode(ctx, {
+      type: "bandpass",
+      frequency: spec.noise.band[0],
+      Q: spec.noise.q,
+    })
   const hissGain = new GainNode(ctx, { gain: 0 })
   io.cents.connect(hiss.detune)
   hiss.connect(band).connect(hissGain).connect(cabin)
   // Firing-synchronous bursts: the diesel's clatter, the two-stroke's rattle.
-  if (spec.noise.pulse > 0) tone({ periodicWave: pulseWave(ctx, 0.1) }, 1).connect(new GainNode(ctx, { gain: spec.noise.pulse })).connect(hissGain.gain)
+  if (spec.noise.pulse > 0)
+    tone({ periodicWave: pulseWave(ctx, 0.1) }, 1)
+      .connect(new GainNode(ctx, { gain: spec.noise.pulse }))
+      .connect(hissGain.gain)
 
-  const turbo = spec.turbo > 0 ? { whine: new OscillatorNode(ctx, { frequency: 2500 }), gain: new GainNode(ctx, { gain: 0 }) } : undefined
+  const turbo =
+    spec.turbo > 0
+      ? {
+          whine: new OscillatorNode(ctx, { frequency: 2500 }),
+          gain: new GainNode(ctx, { gain: 0 }),
+        }
+      : undefined
   if (turbo) {
     io.cents.connect(turbo.whine.detune)
     turbo.whine.connect(turbo.gain).connect(cabin)
@@ -276,16 +385,30 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
   /** A worn engine's own nodes, built on its first update with damage: few engines ever take any. */
   const wear = () => {
     // Slow brown noise wobbles the output under its unity gain and jitters the firings' pitch.
-    const lumps = loop(ctx, io.kit.brown, LUMPS), rough = new GainNode(ctx, { gain: 0 }), wobble = new GainNode(ctx, { gain: 0 })
-    lumps.connect(new GainNode(ctx, { gain: 2.5 })).connect(new WaveShaperNode(ctx, { curve: CLIP })).connect(rough).connect(lump.gain)
+    const lumps = loop(ctx, io.kit.brown, LUMPS),
+      rough = new GainNode(ctx, { gain: 0 }),
+      wobble = new GainNode(ctx, { gain: 0 })
+    lumps
+      .connect(new GainNode(ctx, { gain: 2.5 }))
+      .connect(new WaveShaperNode(ctx, { curve: CLIP }))
+      .connect(rough)
+      .connect(lump.gain)
     lumps.connect(wobble)
     for (const osc of tones) wobble.connect(osc.detune)
     // The knock: a narrow band of noise struck once a crank turn.
-    const clatter = loop(ctx, io.kit.white), knock = new GainNode(ctx, { gain: 0 }), struck = new GainNode(ctx, { gain: 0 })
+    const clatter = loop(ctx, io.kit.white),
+      knock = new GainNode(ctx, { gain: 0 }),
+      struck = new GainNode(ctx, { gain: 0 })
     io.cents.connect(clatter.detune)
-    clatter.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1400, Q: 3 })).connect(struck).connect(cabin)
+    clatter
+      .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1400, Q: 3 }))
+      .connect(struck)
+      .connect(cabin)
     const crank = tone({ periodicWave: pulseWave(ctx, 0.1) }, 1 / spec.pulses)
-    crank.connect(new WaveShaperNode(ctx, { curve: POSITIVE })).connect(knock).connect(struck.gain)
+    crank
+      .connect(new WaveShaperNode(ctx, { curve: POSITIVE }))
+      .connect(knock)
+      .connect(struck.gain)
     crank.start()
     // Backfires play past the gate, at the engine's own level: 1 / trim is its nominal peak before the output gain.
     const pops = new GainNode(ctx, { gain: 1 / spec.trim })
@@ -299,12 +422,22 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
     burst(ctx, io.kit.white, out, t, 0.0005, 0.005, 1500 * jitter(0.2), 0.8, WORN.backfire / 2)
   }
 
-  let fresh = true, misfiring = false, worn: ReturnType<typeof wear> | undefined
+  let fresh = true,
+    misfiring = false,
+    worn: ReturnType<typeof wear> | undefined
   return {
     update: (sound, now) => {
       const jump = fresh
       fresh = false
-      const t = engineTargets(spec, sound.rpm, sound.load, sound.inside, first.variant, sound.damage, sound.misfire)
+      const t = engineTargets(
+        spec,
+        sound.rpm,
+        sound.load,
+        sound.inside,
+        first.variant,
+        sound.damage,
+        sound.misfire,
+      )
       glide(firing.offset, t.hz, now, jump, 0.04)
       glide(pre.gain, t.drive, now, jump, 0.04)
       glide(lowpass.frequency, t.lowpass, now, jump, 0.04)
@@ -330,7 +463,7 @@ const build = (io: VoiceIo, first: EngineSound): Voice<EngineSound> => {
         if (misfiring && worn !== undefined) backfire(worn.pops, now)
       }
     },
-    stop: (now) => fadeOut(output, sources, now)
+    stop: (now) => fadeOut(output, sources, now),
   }
 }
 

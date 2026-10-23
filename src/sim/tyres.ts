@@ -31,16 +31,25 @@ const GRIP = {
   gravel: { mu: 0.62, slide: 0.9, roll: 0.03 },
   dirt: { mu: 0.6, slide: 0.85, roll: 0.045 },
   grass: { mu: 0.45, slide: 0.8, roll: 0.07 },
-  leaves: { mu: 0.5, slide: 0.8, roll: 0.06 }
+  leaves: { mu: 0.5, slide: 0.8, roll: 0.06 },
 } as const satisfies Record<Surface, Grip>
 
 /** Every surface's grip with loose ground's difference from asphalt scaled by `loose`: 1 is `GRIP`, 0 grips and rolls like asphalt everywhere. */
 export const gripsFor = (loose: number): Readonly<Record<Surface, Grip>> => {
   const { asphalt } = GRIP
   const blend = (g: Grip): Grip => ({
-    mu: asphalt.mu + (g.mu - asphalt.mu) * loose, slide: asphalt.slide + (g.slide - asphalt.slide) * loose, roll: asphalt.roll + (g.roll - asphalt.roll) * loose
+    mu: asphalt.mu + (g.mu - asphalt.mu) * loose,
+    slide: asphalt.slide + (g.slide - asphalt.slide) * loose,
+    roll: asphalt.roll + (g.roll - asphalt.roll) * loose,
   })
-  return { asphalt, stone: blend(GRIP.stone), gravel: blend(GRIP.gravel), dirt: blend(GRIP.dirt), grass: blend(GRIP.grass), leaves: blend(GRIP.leaves) } satisfies Record<Surface, Grip>
+  return {
+    asphalt,
+    stone: blend(GRIP.stone),
+    gravel: blend(GRIP.gravel),
+    dirt: blend(GRIP.dirt),
+    grass: blend(GRIP.grass),
+    leaves: blend(GRIP.leaves),
+  } satisfies Record<Surface, Grip>
 }
 
 /** A tyre grips this much less per unit of load over its static load (and more under less): a loaded tyre's friction coefficient falls. */
@@ -94,7 +103,8 @@ interface TyreOut {
 }
 
 /** Sideways force as a share of the peak at `x` = slip angle / peak slip angle: a smooth rise to 1 at the peak, then a fall toward `slide`. */
-export const lateralCurve = (x: number, slide: number): number => (x <= 1 ? x * (1.5 - 0.5 * x * x) : slide + (1 - slide) / (1 + 0.5 * (x - 1) * (x - 1)))
+export const lateralCurve = (x: number, slide: number): number =>
+  x <= 1 ? x * (1.5 - 0.5 * x * x) : slide + (1 - slide) / (1 + 0.5 * (x - 1) * (x - 1))
 
 const clampTo = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v))
 
@@ -102,13 +112,15 @@ const clampTo = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v
 const holding = (t: TyreIn, free: boolean): TyreOut => {
   const max = t.mu * t.load
   const hx = free ? clampTo(t.holdX, t.roll * t.load) + t.drive : t.holdX + t.drive
-  const length = Math.sqrt(hx * hx + t.holdY * t.holdY), scale = length > max ? max / length : 1
+  const length = Math.sqrt(hx * hx + t.holdY * t.holdY),
+    scale = length > max ? max / length : 1
   return { fx: hx * scale, fy: t.holdY * scale, amount: 0, slip: 0 }
 }
 
 /** Rolling or sliding: the slip model. */
 const slipping = (t: TyreIn): TyreOut => {
-  const max = t.mu * t.load, sliding = max * t.slide
+  const max = t.mu * t.load,
+    sliding = max * t.slide
   const speed = Math.sqrt(t.vx * t.vx + t.vy * t.vy)
   const angle = Ops.atan2(Math.abs(t.vy), Math.max(Math.abs(t.vx), CRAWL))
   const x = angle / t.peak
@@ -117,23 +129,41 @@ const slipping = (t: TyreIn): TyreOut => {
   const along = Math.sign(t.vx)
   // A locked wheel slides against its motion, whichever way that is.
   const lock = t.locked || (!t.abs && t.brake > max && Math.abs(t.vx) > STATIC)
-  if (lock && speed > 1e-6) return { fx: (-sliding * t.vx) / speed, fy: (-sliding * t.vy) / speed, amount: 1, slip: speed }
+  if (lock && speed > 1e-6)
+    return { fx: (-sliding * t.vx) / speed, fy: (-sliding * t.vy) / speed, amount: 1, slip: speed }
   const brake = Math.min(t.brake, t.abs ? ABS * max : t.brake)
   // Traction control leaves the tyre what it needs to corner: the drive takes only the rest of the ellipse.
-  const drive = t.traction ? clampTo(t.drive, ABS * Math.sqrt(Math.max(0, max * max - side * side))) : t.drive
+  const drive = t.traction
+    ? clampTo(t.drive, ABS * Math.sqrt(Math.max(0, max * max - side * side)))
+    : t.drive
   const fx = clampTo(drive - along * (brake + t.roll * t.load), max)
   const ellipse = Math.sqrt(Math.max(0, 1 - (fx / max) * (fx / max)))
   const abs = t.abs && t.brake > ABS * max && Math.abs(t.vx) > STATIC ? 0.25 : 0
-  return { fx, fy: side * ellipse, amount: Math.max(past, abs), slip: past > 0 ? Math.abs(t.vy) : abs > 0 ? Math.abs(t.vx) * 0.1 : 0 }
+  return {
+    fx,
+    fy: side * ellipse,
+    amount: Math.max(past, abs),
+    slip: past > 0 ? Math.abs(t.vy) : abs > 0 ? Math.abs(t.vx) * 0.1 : 0,
+  }
 }
 
 /** Wheelspin: the drive asks more than the grip, and the patch slips along the tyre at about the excess. */
 const spinning = (t: TyreIn, speed: number): TyreOut => {
-  const max = t.mu * t.load, sliding = max * t.slide
-  const side = speed < STATIC
-    ? clampTo(t.holdY, sliding * SPIN_SIDE)
-    : -Math.sign(t.vy) * sliding * SPIN_SIDE * lateralCurve(Ops.atan2(Math.abs(t.vy), Math.max(Math.abs(t.vx), CRAWL)) / t.peak, t.slide)
-  return { fx: Math.sign(t.drive) * sliding, fy: side, amount: 1, slip: Math.min(15, 2 + 8 * (Math.abs(t.drive) / max - 1)) }
+  const max = t.mu * t.load,
+    sliding = max * t.slide
+  const side =
+    speed < STATIC
+      ? clampTo(t.holdY, sliding * SPIN_SIDE)
+      : -Math.sign(t.vy) *
+        sliding *
+        SPIN_SIDE *
+        lateralCurve(Ops.atan2(Math.abs(t.vy), Math.max(Math.abs(t.vx), CRAWL)) / t.peak, t.slide)
+  return {
+    fx: Math.sign(t.drive) * sliding,
+    fy: side,
+    amount: 1,
+    slip: Math.min(15, 2 + 8 * (Math.abs(t.drive) / max - 1)),
+  }
 }
 
 /** The force of one tyre this substep. */
@@ -148,5 +178,10 @@ export const tyreForce = (t: TyreIn): TyreOut => {
   const blend = speed / STATIC
   if (blend === 0) return hold
   const slip = slipping(t)
-  return { fx: hold.fx + (slip.fx - hold.fx) * blend, fy: hold.fy + (slip.fy - hold.fy) * blend, amount: slip.amount * blend, slip: slip.slip * blend }
+  return {
+    fx: hold.fx + (slip.fx - hold.fx) * blend,
+    fy: hold.fy + (slip.fy - hold.fy) * blend,
+    amount: slip.amount * blend,
+    slip: slip.slip * blend,
+  }
 }

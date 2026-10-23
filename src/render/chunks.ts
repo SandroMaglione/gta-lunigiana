@@ -29,7 +29,7 @@ const ORIGIN = { x: hm.x0 - APRON * hm.cell, y: hm.y0 - APRON * hm.cell } as con
 /** Chunk counts along x and y, apron included. */
 export const CHUNKS = {
   x: Math.ceil((CELLS.x + 2 * APRON) / CHUNK_CELLS),
-  y: Math.ceil((CELLS.y + 2 * APRON) / CHUNK_CELLS)
+  y: Math.ceil((CELLS.y + 2 * APRON) / CHUNK_CELLS),
 } as const
 
 /** Chunk key of a map point (any static piece goes in the chunk holding its anchor); clamps to the grid. */
@@ -40,9 +40,17 @@ export const chunkOf = (x: number, y: number): number => {
 }
 
 /** Heightmap cells [i0, i1) × [j0, j1) of chunk `key`; apron cells lie outside the grid (negative or past the end). */
-export const chunkCells = (key: number): { readonly i0: number; readonly j0: number; readonly i1: number; readonly j1: number } => {
-  const i0 = -APRON + (key % CHUNKS.x) * CHUNK_CELLS, j0 = -APRON + Math.floor(key / CHUNKS.x) * CHUNK_CELLS
-  return { i0, j0, i1: Math.min(i0 + CHUNK_CELLS, CELLS.x + APRON), j1: Math.min(j0 + CHUNK_CELLS, CELLS.y + APRON) }
+export const chunkCells = (
+  key: number,
+): { readonly i0: number; readonly j0: number; readonly i1: number; readonly j1: number } => {
+  const i0 = -APRON + (key % CHUNKS.x) * CHUNK_CELLS,
+    j0 = -APRON + Math.floor(key / CHUNKS.x) * CHUNK_CELLS
+  return {
+    i0,
+    j0,
+    i1: Math.min(i0 + CHUNK_CELLS, CELLS.x + APRON),
+    j1: Math.min(j0 + CHUNK_CELLS, CELLS.y + APRON),
+  }
 }
 
 /** Room above a chunk's highest terrain node for what stands on it (towers, roofs, trees), m. */
@@ -59,13 +67,25 @@ export const chunkBoxes = (): Float32Array => {
   const out = new Float32Array(CHUNKS.x * CHUNKS.y * 6)
   for (let key = 0; key < CHUNKS.x * CHUNKS.y; key++) {
     const { i0, j0, i1, j1 } = chunkCells(key)
-    let low = Number.MAX_VALUE, high = -Number.MAX_VALUE
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const h = terrainNodeY(i, j)
-      low = Math.min(low, h)
-      high = Math.max(high, h)
-    }
-    out.set([hm.x0 + i0 * hm.cell, hm.x0 + i1 * hm.cell, hm.y0 + j0 * hm.cell, hm.y0 + j1 * hm.cell, low - FOOTROOM, high + HEADROOM], key * 6)
+    let low = Number.MAX_VALUE,
+      high = -Number.MAX_VALUE
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const h = terrainNodeY(i, j)
+        low = Math.min(low, h)
+        high = Math.max(high, h)
+      }
+    out.set(
+      [
+        hm.x0 + i0 * hm.cell,
+        hm.x0 + i1 * hm.cell,
+        hm.y0 + j0 * hm.cell,
+        hm.y0 + j1 * hm.cell,
+        low - FOOTROOM,
+        high + HEADROOM,
+      ],
+      key * 6,
+    )
   }
   return out
 }
@@ -74,14 +94,28 @@ export const chunkBoxes = (): Float32Array => {
  * The screen-plane rectangle of every chunk box of `boxes` for a camera with axes `right` and `up`
  * (three space), written into `out`: flat (right0, right1, up0, up1) per key.
  */
-export const screenRects = (boxes: Float32Array, right: Vector3, up: Vector3, out: Float32Array): Float32Array => {
+export const screenRects = (
+  boxes: Float32Array,
+  right: Vector3,
+  up: Vector3,
+  out: Float32Array,
+): Float32Array => {
   for (let key = 0; key < out.length / 4; key++) {
-    let r0 = Number.MAX_VALUE, r1 = -Number.MAX_VALUE, u0 = Number.MAX_VALUE, u1 = -Number.MAX_VALUE
+    let r0 = Number.MAX_VALUE,
+      r1 = -Number.MAX_VALUE,
+      u0 = Number.MAX_VALUE,
+      u1 = -Number.MAX_VALUE
     for (let corner = 0; corner < 8; corner++) {
-      const x = boxes[key * 6 + (corner & 1)]!, y = boxes[key * 6 + 2 + ((corner >> 1) & 1)]!, h = boxes[key * 6 + 4 + (corner >> 2)]!
+      const x = boxes[key * 6 + (corner & 1)]!,
+        y = boxes[key * 6 + 2 + ((corner >> 1) & 1)]!,
+        h = boxes[key * 6 + 4 + (corner >> 2)]!
       // three space: (x, h, -y)
-      const r = x * right.x + h * right.y - y * right.z, u = x * up.x + h * up.y - y * up.z
-      r0 = Math.min(r0, r); r1 = Math.max(r1, r); u0 = Math.min(u0, u); u1 = Math.max(u1, u)
+      const r = x * right.x + h * right.y - y * right.z,
+        u = x * up.x + h * up.y - y * up.z
+      r0 = Math.min(r0, r)
+      r1 = Math.max(r1, r)
+      u0 = Math.min(u0, u)
+      u1 = Math.max(u1, u)
     }
     out[key * 4] = r0
     out[key * 4 + 1] = r1
@@ -92,16 +126,25 @@ export const screenRects = (boxes: Float32Array, right: Vector3, up: Vector3, ou
 }
 
 /** Screen distance (m) from the point (r, u) to each rectangle of `rects`, written into `out`. */
-export const screenDistances = (rects: Float32Array, r: number, u: number, out: Float32Array): Float32Array => {
+export const screenDistances = (
+  rects: Float32Array,
+  r: number,
+  u: number,
+  out: Float32Array,
+): Float32Array => {
   for (let key = 0; key < out.length; key++) {
-    const dr = Math.max(rects[key * 4]! - r, 0, r - rects[key * 4 + 1]!), du = Math.max(rects[key * 4 + 2]! - u, 0, u - rects[key * 4 + 3]!)
+    const dr = Math.max(rects[key * 4]! - r, 0, r - rects[key * 4 + 1]!),
+      du = Math.max(rects[key * 4 + 2]! - u, 0, u - rects[key * 4 + 3]!)
     out[key] = Math.hypot(dr, du)
   }
   return out
 }
 
 /** Load and unload radii, screen metres; `unload` > `load` keeps a chunk at the rim from flickering in and out. */
-interface Radii { readonly load: number; readonly unload: number }
+interface Radii {
+  readonly load: number
+  readonly unload: number
+}
 
 /** Screen metres kept loaded beyond what the view shows: a chunk is built well before it comes into sight. */
 const MARGIN = 64
@@ -110,15 +153,23 @@ const MARGIN = 64
  * Radii for a view that shows `reach` screen metres from its centre: load within the margin,
  * drop one chunk side further out.
  */
-export const radiiFor = (reach: number): Radii => ({ load: reach + MARGIN, unload: reach + MARGIN + CHUNK })
+export const radiiFor = (reach: number): Radii => ({
+  load: reach + MARGIN,
+  unload: reach + MARGIN + CHUNK,
+})
 
 /**
  * The streaming plan for chunk `distances` (by key): chunks to build (not loaded, within
  * `load`), nearest first, and loaded chunks to drop (beyond `unload`). Chunks between the two
  * radii stay as they are.
  */
-export const plan = (distances: ArrayLike<number>, loaded: { has: (key: number) => boolean }, radii: Radii) => {
-  const build: Array<number> = [], drop: Array<number> = []
+export const plan = (
+  distances: ArrayLike<number>,
+  loaded: { has: (key: number) => boolean },
+  radii: Radii,
+) => {
+  const build: Array<number> = [],
+    drop: Array<number> = []
   for (let key = 0; key < distances.length; key++) {
     const d = distances[key]!
     if (loaded.has(key)) {

@@ -34,9 +34,11 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
  */
 export const fullTorque = (engine: EngineSpec, rpm: number): number => {
   if (rpm >= engine.redline) return 0
-  const peak = engine.torque, power = engine.power * 1000
+  const peak = engine.torque,
+    power = engine.power * 1000
   const plateau = Math.min(engine.powerRpm, (power / peak) * RPM)
-  if (rpm <= engine.torqueRpm) return peak * lerp(0.6, 1, Math.max(0, (rpm - engine.idle) / (engine.torqueRpm - engine.idle)))
+  if (rpm <= engine.torqueRpm)
+    return peak * lerp(0.6, 1, Math.max(0, (rpm - engine.idle) / (engine.torqueRpm - engine.idle)))
   if (rpm <= plateau) return peak
   const atPower = (power / engine.powerRpm) * RPM
   if (rpm <= engine.powerRpm) return (power / rpm) * RPM
@@ -45,17 +47,23 @@ export const fullTorque = (engine: EngineSpec, rpm: number): number => {
 
 /** Engine braking torque at `rpm` with the pedal up, N·m (negative). */
 const dragTorque = (engine: EngineSpec, rpm: number): number =>
-  -ENGINE_BRAKE * engine.torque * (0.2 + 0.8 * Math.max(0, (rpm - engine.idle) / (engine.redline - engine.idle)))
+  -ENGINE_BRAKE *
+  engine.torque *
+  (0.2 + 0.8 * Math.max(0, (rpm - engine.idle) / (engine.redline - engine.idle)))
 
 /** Overall ratio (gearbox × final drive) of `gear` (−1: reverse). */
 const overall = (spec: VehicleSpec, gear: number): number =>
-  (gear < 0 ? spec.gearbox.reverse : spec.gearbox.ratios[Math.min(gear, spec.gearbox.ratios.length - 1)]!) * spec.gearbox.final
+  (gear < 0
+    ? spec.gearbox.reverse
+    : spec.gearbox.ratios[Math.min(gear, spec.gearbox.ratios.length - 1)]!) * spec.gearbox.final
 
 /** Engine rpm the wheels turn it at in `gear` at road `speed` (m/s, either sign). */
-const wheelRpm = (spec: VehicleSpec, gear: number, speed: number): number => (Math.abs(speed) / spec.wheelRadius) * overall(spec, gear) * RPM
+const wheelRpm = (spec: VehicleSpec, gear: number, speed: number): number =>
+  (Math.abs(speed) / spec.wheelRadius) * overall(spec, gear) * RPM
 
 /** The pedal the way `gear` drives, 0…1 (throttle against it is the brake, not the engine's). */
-const pedalOf = (gear: number, throttle: number): number => Math.min(1, Math.max(0, gear < 0 ? -throttle : throttle))
+const pedalOf = (gear: number, throttle: number): number =>
+  Math.min(1, Math.max(0, gear < 0 ? -throttle : throttle))
 
 /** The gear a vehicle already rolling at `speed` would hold under full pedal: the highest whose revs stay over the full-pedal downshift point. */
 export const gearFor = (spec: VehicleSpec, speed: number): number => {
@@ -74,19 +82,37 @@ export const gearFor = (spec: VehicleSpec, speed: number): number => {
  * also stops a car rolling back. A shift takes the gearbox's `shift` seconds, during which the
  * drive is cut and no other shift starts.
  */
-export const shiftGear = (spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number) => {
+export const shiftGear = (
+  spec: VehicleSpec,
+  chassis: Pick<ChassisValue, "gear" | "shiftUntil">,
+  speed: number,
+  throttle: number,
+  step: number,
+) => {
   const top = spec.gearbox.ratios.length - 1
   let gear = chassis.gear
   if ((throttle < 0 && speed < BRAKING) || (throttle === 0 && speed < -STILL)) gear = -1
-  else if (gear < 0) gear = (throttle > 0 && speed > -BRAKING) || (throttle === 0 && speed > STILL) ? 0 : gear
+  else if (gear < 0)
+    gear = (throttle > 0 && speed > -BRAKING) || (throttle === 0 && speed > STILL) ? 0 : gear
   else if (step >= chassis.shiftUntil) {
     const pedal = pedalOf(gear, throttle)
-    const up = lerp(UP[0], UP[1], pedal) * spec.engine.redline, down = lerp(DOWN[0], DOWN[1], pedal) * spec.engine.redline
+    const up = lerp(UP[0], UP[1], pedal) * spec.engine.redline,
+      down = lerp(DOWN[0], DOWN[1], pedal) * spec.engine.redline
     if (gear < top && wheelRpm(spec, gear, speed) > up) gear++
-    else if (gear > 0 && wheelRpm(spec, gear, speed) < down && wheelRpm(spec, gear - 1, speed) < up * 0.9) gear--
+    else if (
+      gear > 0 &&
+      wheelRpm(spec, gear, speed) < down &&
+      wheelRpm(spec, gear - 1, speed) < up * 0.9
+    )
+      gear--
   }
   const changed = gear !== chassis.gear && gear >= 0 && chassis.gear >= 0
-  return { gear, shiftUntil: changed ? step + Math.max(1, Math.round(spec.gearbox.shift / STEP.dt)) : chassis.shiftUntil }
+  return {
+    gear,
+    shiftUntil: changed
+      ? step + Math.max(1, Math.round(spec.gearbox.shift / STEP.dt))
+      : chassis.shiftUntil,
+  }
 }
 
 /** What the engine does: rpm, load 0…1 (the pedal's share of full torque; 0 while shifting, braking or on the limiter), and whether it misfires (no drive). */
@@ -103,14 +129,24 @@ interface Revs {
  * redline. A destroyed engine is dead: no revs, no load.
  */
 export const engineRevs = (
-  spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number, wear: Wear
+  spec: VehicleSpec,
+  chassis: Pick<ChassisValue, "gear" | "shiftUntil">,
+  speed: number,
+  throttle: number,
+  step: number,
+  wear: Wear,
 ): Revs => {
   if (destroyed(wear.damage)) return { rpm: 0, load: 0, misfire: false }
-  const pedal = pedalOf(chassis.gear, throttle), { idle, redline } = spec.engine
+  const pedal = pedalOf(chassis.gear, throttle),
+    { idle, redline } = spec.engine
   const clutch = chassis.gear <= 0 ? idle + pedal * (spec.gearbox.launch - idle) : idle
   const rpm = Math.min(redline, Math.max(wheelRpm(spec, chassis.gear, speed), clutch))
   const limited = spec.limiter !== undefined && Math.abs(speed) >= spec.limiter
-  return { rpm, load: step < chassis.shiftUntil || limited ? 0 : pedal, misfire: misfires(wear, step) }
+  return {
+    rpm,
+    load: step < chassis.shiftUntil || limited ? 0 : pedal,
+    misfire: misfires(wear, step),
+  }
 }
 
 /**
@@ -120,12 +156,29 @@ export const engineRevs = (
  * first, or from a dead engine).
  */
 export const driveForce = (
-  spec: VehicleSpec, chassis: Pick<ChassisValue, "gear" | "shiftUntil">, speed: number, throttle: number, step: number, wear: Wear
+  spec: VehicleSpec,
+  chassis: Pick<ChassisValue, "gear" | "shiftUntil">,
+  speed: number,
+  throttle: number,
+  step: number,
+  wear: Wear,
 ): number => {
   if (destroyed(wear.damage)) return 0
   const { rpm, load, misfire } = engineRevs(spec, chassis, speed, throttle, step, wear)
   const ratio = (overall(spec, chassis.gear) * EFFICIENCY) / spec.wheelRadius
-  if (load > 0) return misfire ? 0 : (chassis.gear < 0 ? -1 : 1) * load * wornTorque(wear.damage) * fullTorque(spec.engine, rpm) * ratio
-  if (pedalOf(chassis.gear, throttle) > 0 || step < chassis.shiftUntil || wheelRpm(spec, chassis.gear, speed) < spec.engine.idle) return 0
+  if (load > 0)
+    return misfire
+      ? 0
+      : (chassis.gear < 0 ? -1 : 1) *
+          load *
+          wornTorque(wear.damage) *
+          fullTorque(spec.engine, rpm) *
+          ratio
+  if (
+    pedalOf(chassis.gear, throttle) > 0 ||
+    step < chassis.shiftUntil ||
+    wheelRpm(spec, chassis.gear, speed) < spec.engine.idle
+  )
+    return 0
   return Math.sign(speed) * dragTorque(spec.engine, rpm) * ratio
 }
