@@ -31,3 +31,7 @@ jobs:
           plugins: "code-review@claude-code-plugins"
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # Temporary: prints Claude's full output so the log shows why every
+          # run ends with "is_error:true" after one turn. The repo is public, so
+          # anyone can read it; turn it off once the cause is fixed.
+          show_full_output: true
