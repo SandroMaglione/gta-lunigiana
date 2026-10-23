@@ -186,6 +186,23 @@ test("explosions: the player on foot by a wreck dies too; inside another car the
   assert.equal(seated.view()?.mode, "driving")
 })
 
+test("explosions: the blast reaches people from the wreck's body, not its centre: beside a truck's tail or flank is death, farther off a knockdown", () => {
+  // The truck is 7.6 m long and 2.45 m wide: its tail is 3.8 m behind its centre and its flank 1.225 m beside it.
+  const modeAt = (along: number, out = 0) => {
+    const { run, view } = start([], [on(along, out), { cars: [burning("truck", on(30), 10)] }])
+    run(12)
+    return view()?.mode
+  }
+  assert.equal(modeAt(30 - 3.8 - 1.3), "dead", "1.3 m off its tail, 5.1 m from its centre")
+  assert.equal(modeAt(30 + 3.8 + 11), "down", "11 m off its nose, 14.8 m from its centre")
+  assert.equal(modeAt(30, 6), "dead", "4.8 m off its flank, 6 m from its centre")
+  assert.equal(
+    modeAt(30, 7.5),
+    "down",
+    "6.3 m off its flank: a body as wide as the truck, not as long",
+  )
+})
+
 test("explosions: a body is removed once out of view", () => {
   const { runtime, run, world } = start(
     [],

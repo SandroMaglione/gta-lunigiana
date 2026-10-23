@@ -406,12 +406,14 @@ vehicles on the map in that time (210 at once) took any damage, at most 0.17.
   A Panda parked bumper to bumper (0.8 m) is destroyed and blows up in turn 5–10 s later, one 6.3 m
   off takes 0.22, and the laden truck 2.35 m behind 0.41; the shove sends a Panda off at up to 12
   m/s and the truck at under 0.5.
-- **People.** On foot within 5 m of the blast they die (`Dead`), within 12 m they are knocked down
-  for 2.5 s, and both are thrown away from it at up to 9 m/s; walkers within 30 m run off for 4 s.
-  The player sitting in the wreck dies with it, thrown out at a door. Anyone sitting in another
-  vehicle is shielded by it. The dead lie where they fall and never get up; traffic does not wait
-  for them (a car nudges a body aside) and `Populate` removes a body once it is out of view
-  (beyond 90 m). Nothing scores.
+- **People.** On foot within 5 m of the wreck's body they die (`Dead`), within 12 m of it they are
+  knocked down for 2.5 s, and both are thrown away from its centre at up to 9 m/s; walkers within
+  30 m of its centre run off for 4 s. The reach is from the body (`offBody`: the hull its collision
+  circles sweep), not the centre, so standing 1.3 m off a truck's tail, 5.1 m from its centre, is
+  as deadly as standing beside a Panda. The player sitting in the wreck dies with it, thrown out at
+  a door. Anyone sitting in another vehicle is shielded by it. The dead lie where they fall and
+  never get up; traffic does not wait for them (a car nudges a body aside) and `Populate` removes a
+  body once it is out of view (beyond 90 m). Nothing scores.
 - **Dying and coming back.** Killed, the player lies still for 4 s (`WASTED`) under the HUD's "Sei
   morto", unable to act, then `Respawn` brings them back on foot at the start, where a new game
   begins (in front of the Carabinieri station). The score, the world and its wrecks stay as they

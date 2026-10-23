@@ -34,6 +34,16 @@ export const carCircles = (model: VehicleModel, angle: number): ReadonlyArray<Ve
   })
 }
 
+/** How far (x, y) is from the body of `model` at `pose`, m, 0 inside it: the hull its circles sweep along its axis. */
+export const offBody = (model: VehicleModel, pose: PoseValue, x: number, y: number): number => {
+  const r = carRadius(model),
+    k = VEHICLES[model].length / 2 - r,
+    fx = Ops.cos(pose.angle) * k,
+    fy = Ops.sin(pose.angle) * k
+  const axis = { ax: pose.x - fx, ay: pose.y - fy, bx: pose.x + fx, by: pose.y + fy }
+  return Math.max(0, segmentDistance(axis, x, y) - r)
+}
+
 /** Wall segments that may touch a body of half-extent `pad` moving from (x, y) by (dx, dy). */
 export const wallsAlong = (
   kind: "walk" | "drive",

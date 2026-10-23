@@ -1,6 +1,7 @@
 import { Clock } from "@typeonce/ritmo"
 import { Random, Vec2 } from "@typeonce/ritmo-math"
 
+import { offBody } from "../body.ts"
 import { afterHit, destroyed } from "../damage.ts"
 import { MAP } from "../map/index.ts"
 import {
@@ -17,6 +18,7 @@ import {
   Person,
   Player,
   Pose,
+  type PoseValue,
   PrevPose,
   Rng,
   Route,
@@ -24,7 +26,7 @@ import {
   Time,
   Vehicle,
 } from "../schema.ts"
-import { VEHICLES } from "../vehicles.ts"
+import { VEHICLES, type VehicleModel } from "../vehicles.ts"
 import { DOWN_TIME } from "./contacts.ts"
 import { freeDoor } from "./enter-exit.ts"
 import { FLEE_TIME, runFrom } from "./pedestrians.ts"
@@ -32,10 +34,11 @@ import { FLEE_TIME, runFrom } from "./pedestrians.ts"
 /** A wreck burns 5–10 s before it blows up: drawn from the world's Rng when it catches fire. */
 const FUSE = [Clock.duration(STEP, 5), Clock.duration(STEP, 10)] as const
 /**
- * The blast, from the wreck's centre: people within `kill` m die, within `knock` m are knocked down, and both are thrown, up to
- * `throw` m/s right by it and less with distance; walkers within `scare` m flee. A vehicle whose body is within `reach` m of the
- * wreck's (their lengths' halves apart) takes a hit as hard as a crash at up to `speed` m/s (barrier-equivalent) and a shove of up
- * to `impulse` N·s away from it and a third as much again upward; the wreck itself leaps `leap` m/s and tumbles at up to `tumble` rad/s.
+ * The blast: people on foot within `kill` m of the wreck's body die (beside a truck's tail as beside a Panda's), within `knock` m
+ * are knocked down, and both are thrown away from its centre, up to `throw` m/s right by it and less with distance; walkers
+ * within `scare` m of its centre flee. A vehicle whose body is within `reach` m of the wreck's (their lengths' halves apart) takes
+ * a hit as hard as a crash at up to `speed` m/s (barrier-equivalent) and a shove of up to `impulse` N·s away from it and a third
+ * as much again upward; the wreck itself leaps `leap` m/s and tumbles at up to `tumble` rad/s.
  */
 const BLAST = {
   kill: 5,
@@ -111,7 +114,11 @@ export const Explode = Game.System(
   ({ queries, resources, events, commands }) => {
     const { step } = resources.time.get()
     const vehicles = queries.vehicles.each()
-    const blasts: Array<{ readonly id: number; readonly at: Vec2.Vec2; readonly half: number }> = []
+    const blasts: Array<{
+      readonly id: number
+      readonly at: PoseValue
+      readonly model: VehicleModel
+    }> = []
     for (const { entity, data } of vehicles) {
       const damage = data.damage.get()
       if (!destroyed(damage.amount) || damage.exploded) continue
@@ -138,7 +145,7 @@ export const Explode = Game.System(
         rollRate: chassis.rollRate + random.range(-1, 1) * BLAST.tumble,
       })
       events.explosion.emit({ car: entity.id, model, x: pose.x, y: pose.y, z: chassis.z })
-      blasts.push({ id: entity.id, at: pose, half: VEHICLES[model].length / 2 })
+      blasts.push({ id: entity.id, at: pose, model })
     }
     if (blasts.length === 0) return
 
@@ -153,7 +160,7 @@ export const Explode = Game.System(
           spec = VEHICLES[model]
         const away = Vec2.subtract(pose, blast.at),
           centre = Vec2.length(away),
-          gap = Math.max(0, centre - spec.length / 2 - blast.half)
+          gap = Math.max(0, centre - spec.length / 2 - VEHICLES[blast.model].length / 2)
         if (gap >= BLAST.reach) continue
         const near = 1 - gap / BLAST.reach,
           dir = centre > 1e-6 ? Vec2.scale(away, 1 / centre) : { x: 1, y: 0 }
@@ -163,17 +170,19 @@ export const Explode = Game.System(
         data.motion.set({ ...motion, vx: motion.vx + dir.x * kick, vy: motion.vy + dir.y * kick })
         data.chassis.update((chassis) => ({ ...chassis, vz: chassis.vz + kick / 3 }))
       }
-      // People on foot: killed, knocked down, thrown.
+      // People on foot: killed, knocked down, thrown away from its centre, by how near the wreck's body they stand.
       for (const { entity, data } of queries.people.each()) {
-        const away = Vec2.subtract(data.pose.get(), blast.at),
-          dist = Vec2.length(away)
-        if (dist >= BLAST.knock) continue
+        const at = data.pose.get(),
+          gap = offBody(blast.model, blast.at, at.x, at.y)
+        if (gap >= BLAST.knock) continue
         hit.add(entity.id)
-        const dir = dist > 1e-6 ? Vec2.scale(away, 1 / dist) : { x: 1, y: 0 },
-          fling = BLAST.throw * (1 - dist / BLAST.knock),
+        const away = Vec2.subtract(at, blast.at),
+          dist = Vec2.length(away),
+          dir = dist > 1e-6 ? Vec2.scale(away, 1 / dist) : { x: 1, y: 0 },
+          fling = BLAST.throw * (1 - gap / BLAST.knock),
           motion = data.motion.get()
         data.motion.set({ ...motion, vx: motion.vx + dir.x * fling, vy: motion.vy + dir.y * fling })
-        if (dist < BLAST.kill && !data.dead.present)
+        if (gap < BLAST.kill && !data.dead.present)
           commands.insert(entity, [Down, { until: step }], [Dead, { at: step }])
         else if (!data.down.present)
           commands.insert(entity, [Down, { until: step + Clock.steps(DOWN_TIME) }])
