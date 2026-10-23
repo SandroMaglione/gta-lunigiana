@@ -166,7 +166,7 @@ Every script runs with `pnpm`:
 | `pnpm format:check` | `oxfmt --check`: fails on any unformatted file |
 | `pnpm typecheck` | `tsc` (no emit) |
 | `pnpm lint` | type-aware `oxlint` with the Ritmo plugin, warnings failing, then `ritmo-devtools lint src/sim/index.ts` |
-| `pnpm test` | `node --test` over `src/**/*.test.ts` |
+| `pnpm test` | `node --test` over `src/**/*.test.ts`, each in a `__tests__` folder beside the module it tests |
 | `pnpm map` | rebuilds `src/sim/map/monzone.bin` from `data/raw` |
 | `pnpm fetch-osm` | downloads the OpenStreetMap extract again into `data/raw/lunigiana.osm.gz` |
 | `pnpm fetch-rt` | downloads the Regione Toscana sources again into `data/raw/rt` |
@@ -190,6 +190,7 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
 | `docs/` | architecture, map pipeline, gameplay and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `.oxlintrc.json`, `.oxfmtrc.json`, `lefthook.yml` | lint rules, formatter settings, and the git hooks that format and lint each commit and check each push |
 
 ## Rebuilding the map
 

@@ -4,6 +4,9 @@ How branches, commits and PRs are written:
 
 - **Commit, push and merge** only when the user asks.
 - **Branches** are `feat/…`, `fix/…`, `docs/…`, `ci/…` or `chore/…`.
+- **Hooks** (`lefthook.yml`) format and lint the staged files before each commit, and run the
+  format, type and lint checks before each push. Fix what they report; never skip them with
+  `--no-verify`.
 - **Commits** follow Conventional Commits, `type(scope): imperative subject`, with the part of the
   game as the scope (`git log --oneline` shows the ones in use). The body gives the why and any
   measured numbers.

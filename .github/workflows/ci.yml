@@ -28,5 +28,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Typecheck, lint, and tests.
-      - run: pnpm check
+      # The steps of `pnpm check`, one per step so a failure names its gate.
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test

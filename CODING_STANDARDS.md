@@ -9,7 +9,7 @@ Every change follows these principles and steps; step 2 routes it to the checks 
 
 ## Every change
 
-1. Rebase onto `origin/main`, then, in a new worktree, run `pnpm install --frozen-lockfile`: the Ritmo skill links (`.claude/skills/ritmo`, `.agents/skills/ritmo`) point into `node_modules`, so they resolve only after the install.
+1. Rebase onto `origin/main`, then, in a new worktree, run `pnpm install --frozen-lockfile`: the Ritmo skill links (`.claude/skills/ritmo`, `.agents/skills/ritmo`) point into `node_modules`, so they resolve only after the install, and the install sets up the git hooks.
 2. Before writing code, read:
    - the `ritmo` skill and the playbook it routes the change to. When no skill tool lists it, read `node_modules/@typeonce/ritmo/skills/ritmo/SKILL.md` directly;
    - the `docs/` sections that AGENTS.md routes the change to;
