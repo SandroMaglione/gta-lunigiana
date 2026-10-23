@@ -5,7 +5,7 @@
  * since the last frame, each impact with the bodies it struck; the horn key) and hands it to the
  * `Audio` service. No acoustics here: the director behind the service decides what is loud enough
  * and where it sits.
- * Read-only towards the world, like render (render/index.test.ts checks every described schedule).
+ * Read-only towards the world, like render (render/__tests__/index.test.ts checks every described schedule).
  *
  * @module audio
  */

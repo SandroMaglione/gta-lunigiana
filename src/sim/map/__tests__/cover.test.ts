@@ -1,0 +1,54 @@
+import assert from "node:assert/strict"
+import { test } from "node:test"
+
+import { coverName, rasterCover } from "../cover.ts"
+import { AREA_KINDS } from "../index.ts"
+
+// 10 × 10 cells of 4 m from (0, 0); row 0 = south.
+const heightmap = { cell: 4, cols: 11, rows: 11, x0: 0, y0: 0, data: Array.from({ length: 121 }, () => 2000) }
+const at = (raster: Uint8Array, x: number, y: number) => coverName(raster[Math.floor(y / 4) * 10 + Math.floor(x / 4)]!)
+const bare = { roads: [], buildings: [] }
+
+test("areas fill even-odd (holes stay meadow) and later kinds draw over forest", () => {
+  const raster = rasterCover({
+    ...bare,
+    heightmap,
+    water: [],
+    areas: [
+      { kind: "parking", rings: [[20, 20, 28, 20, 28, 28, 20, 28]] },
+      { kind: "forest", rings: [[0, 0, 40, 0, 40, 40, 0, 40], [4, 4, 4, 12, 12, 12, 12, 4]] }
+    ]
+  })
+  assert.equal(at(raster, 2, 2), "forest")
+  assert.equal(at(raster, 6, 6), "meadow")
+  assert.equal(at(raster, 22, 22), "parking")
+})
+
+test("wide water gets a pebble bed, narrow streams none", () => {
+  const raster = rasterCover({
+    ...bare,
+    heightmap,
+    areas: [],
+    water: [
+      { id: 1, kind: "river", w: 14, pts: [0, 30, 40, 30], z: [200, 200] },
+      { id: 2, kind: "stream", w: 2, pts: [0, 6, 40, 6], z: [200, 200] }
+    ]
+  })
+  assert.equal(at(raster, 10, 30), "pebble")
+  assert.equal(at(raster, 10, 37), "pebble") // cell centre 8 m out: past the water (7 m), inside the bed (12 m)
+  assert.equal(at(raster, 10, 6), "meadow")
+})
+
+test("every area kind paints as its own cover", () => {
+  for (const kind of AREA_KINDS) assert.equal(at(rasterCover({ ...bare, heightmap, water: [], areas: [{ kind, rings: [[0, 0, 8, 0, 8, 8, 0, 8]] }] }), 2, 2), kind)
+})
+
+test("open ground between a house and a road is paved; a garden behind the house stays meadow", () => {
+  // A road along y = 10 (4 m wide), a house from y = 15 to y = 25, nothing else.
+  const house = { id: 1, kind: "house", h: 6, z0: 200, style: "plaster", tint: 0, outer: [8, 15, 32, 15, 32, 25, 8, 25] }
+  const road = { id: 1, cls: "residential", w: 4, surface: "asphalt", pts: [0, 10, 40, 10], z: [200, 200] }
+  const raster = rasterCover({ heightmap, water: [], areas: [], roads: [road], buildings: [house] })
+  assert.equal(at(raster, 18, 13), "paved") // the 3 m between the road edge and the house
+  assert.equal(at(raster, 18, 35), "meadow") // 10 m behind it
+  assert.equal(at(raster, 38, 38), "meadow")
+})

@@ -455,20 +455,20 @@ the `PlayerView` inspector (`src/sim/views.ts`) and the map; the handling store 
   `event-never-written`. It also fails if a module the sim loads is not covered by the oxlint
   simulation override.
 - `node --test`. Beside the unit tests, these guard the architecture:
-  - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
+  - `determinism` (`src/sim/__tests__/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
     twice, with the handling off its real values (`SetHandling`), and requires identical state,
     transient components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, goes through JSON, restores
     into a fresh runtime, and plays on identically.
-  - `src/sim/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
+  - `src/sim/__tests__/handling.test.ts`: each handling knob's effect, each preset's behaviour, and
     `SetHandling` kept in range and through a save.
-  - `src/hud/handling.test.ts`: the handling store (what it stores, restores and sends);
-    `src/hud/settings.test.ts`: the settings' keys (Esc on to the router, every other key kept
-    from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
+  - `src/hud/__tests__/handling.test.ts`: the handling store (what it stores, restores and sends);
+    `src/hud/__tests__/settings.test.ts`: the settings' keys (Esc on to the router, every other key kept
+    from the game) and the preset they show (Custom for a hand-set mix); `src/hud/__tests__/hud.test.ts`:
     the Esc and M routing (`overlayKey`) and the pause.
-  - `src/render/index.test.ts`: every system of every described schedule (`render` and `audio`)
+  - `src/render/__tests__/index.test.ts`: every system of every described schedule (`render` and `audio`)
     declares no writes.
-  - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
+  - `src/sim/map/__tests__/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 
 `src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with

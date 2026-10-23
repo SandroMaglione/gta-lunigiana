@@ -3,7 +3,7 @@
  * between fixed steps (PrevPose → Pose at the loop's alpha), people on the ground or road under
  * them and vehicles at their centre of mass from their Chassis, marks the player's car for the
  * x-ray silhouette, and lays tyre marks and smoke from the Skid events. Read-only towards the
- * world (index.test.ts checks every system's declared access); the host ticks it once per
+ * world (__tests__/index.test.ts checks every system's declared access); the host ticks it once per
  * animation frame after writing `RenderClock.alpha`.
  *
  * @module render
