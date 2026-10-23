@@ -4,7 +4,7 @@ import { Random } from "@typeonce/ritmo-math"
 
 import type { HandlingKey } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
-import { type Regime, REGIMES } from "./sky/regimes.ts"
+import { EVENTS, FOGS, INTENSITIES, type Regime, REGIMES, SKIES } from "./sky/regimes.ts"
 import { VEHICLE_MODELS, type VehicleModel } from "./vehicles.ts"
 
 /**
@@ -134,24 +134,42 @@ export type GameClockValue = Descriptor.Descriptor.Value<typeof GameClock>
 /** The weather's own random stream (saved), apart from `Rng` so the weather never changes traffic, pedestrians or parking. */
 export const WeatherRng = Descriptor.ConstructedResource(Random)("Lunigiana/WeatherRng")
 /**
- * The weather (sky/weather.ts): the `regime` it is moving toward, the game seconds `left` until the next
- * regime is drawn (counted down by the clock's rate), and whether the dev menu `forced` the regime (no
- * draws then). Then what eases toward the regime's targets: the sky's `cloud` cover (0…1), `precip`
- * (mm/h liquid-equivalent on the valley floor at 250 m; `orographic` scales it with height), `storm`
- * (thunderstorm activity 0…1), the valley `wind` at 10 m (m/s) and its `windAngle` (rad counter-clockwise
- * from east, where the air moves), the `gust` factor (≥ 1, peak over mean), `fog` (the regime's mist and
- * low cloud, 0…1) and the air mass's temperature `anomaly` (°C over the month's normal). Then the ground:
- * its wetness `wet` (0…1, where no snow lies) and the `snowLine` (m a.s.l., the lowest ground with snow
- * cover; `NO_SNOW` when none lies on the map). Last the thunderstorm cell's centre (`cellX`, `cellY`, m;
- * far off the map when no storm is near). Saved; forced only through `SetWeather`.
+ * A day of weather as the weather plans it at Rome's midnight (sky/plan.ts), times as seconds since that
+ * Rome day's midnight (a day the clocks change lasts 23 or 25 hours): the `day` (Rome's calendar day, days
+ * since 1970-01-01), whether it has been `drawn` (not yet in a new game before its first step) and `from`
+ * when it holds (before it, a new game's calm, clear start; 0 on any other day).
+ * Whether the day is `wet` (at least 1 mm at sea level); a wet day's `event` regime between `start` and
+ * `end` at `precip` mm/h at sea level, its `intensity` class; the day's `sky` (a dry day's regime, a wet
+ * day's around its rain); a dry day's `fog` until `lift`, and its strong wind from `windyFrom` to
+ * `windyTo`; and the day's `airMass`, its departure from the normal temperature (°C).
+ */
+const Plan = Decode.struct({
+  day: Decode.integer, drawn: Decode.boolean, from: Decode.integer, wet: Decode.boolean,
+  event: Decode.literal(...EVENTS), intensity: Decode.literal(...INTENSITIES), start: Decode.integer, end: Decode.integer, precip: Decode.number,
+  sky: Decode.literal(...SKIES), fog: Decode.literal(...FOGS), lift: Decode.integer, windyFrom: Decode.integer, windyTo: Decode.integer, airMass: Decode.number
+})
+/**
+ * The weather (sky/weather.ts): the weather `seed` the game drew it from (`WeatherRng`'s first state,
+ * never changed; each day's plan draws from it and the day alone), the `regime` it is moving toward (the
+ * day's plan's at this hour, or the one the dev menu `forced`). Then what eases toward the regime's
+ * targets: the sky's `cloud` cover (0…1), `precip` (mm/h liquid-equivalent at sea level; `orographic`
+ * scales it with height), `storm` (thunderstorm activity 0…1), the `wind` on the map's low ground at 10 m
+ * (m/s) and its `windAngle` (rad counter-clockwise from east, where the air moves), the `gust` factor (≥ 1,
+ * peak over mean), `fog` (the regime's mist and low cloud, 0…1) and the air's temperature `anomaly` (°C
+ * over the normal). Then the ground: its wetness `wet` (0…1, where no snow lies) and the `snowLine` (m
+ * a.s.l., the lowest ground with snow cover; `NO_SNOW` when none lies). The thunderstorm cell's centre
+ * (`cellX`, `cellY`, m; far off the map when no storm is near). Last the day's `plan`. Saved; forced only
+ * through `SetWeather`.
  */
 export const Weather = Descriptor.ConstructedResource(Decode.struct({
-  regime: Decode.literal(...REGIMES), left: Decode.integer, forced: Decode.boolean,
+  seed: Decode.integer, regime: Decode.literal(...REGIMES), forced: Decode.boolean,
   cloud: Decode.number, precip: Decode.number, storm: Decode.number, wind: Decode.number, windAngle: Decode.number, gust: Decode.number, fog: Decode.number,
-  anomaly: Decode.number, wet: Decode.number, snowLine: Decode.number, cellX: Decode.number, cellY: Decode.number
+  anomaly: Decode.number, wet: Decode.number, snowLine: Decode.number, cellX: Decode.number, cellY: Decode.number, plan: Plan
 }))("Lunigiana/Weather")
 /** A Weather value. */
 export type WeatherValue = Descriptor.Descriptor.Value<typeof Weather>
+/** A day's plan (`WeatherValue["plan"]`). */
+export type PlanValue = WeatherValue["plan"]
 /**
  * A request to set the game time (Unix UTC seconds) and/or its rate (game seconds per step), from two
  * senders: the host, which holds the clock at rate 0 behind the title card and sends rate 1 when the
@@ -159,7 +177,7 @@ export type WeatherValue = Descriptor.Descriptor.Value<typeof Weather>
  * range. Not saved.
  */
 export const SetClock = Descriptor.Event<{ readonly seconds?: number; readonly rate?: number }>()("Lunigiana/SetClock")
-/** A request from the dev debug menu to force a regime (`settle`: jump straight to its steady state) or hand the weather back to chance (`regime` null); `ApplyWeather` checks it. Not saved. */
+/** A request from the dev debug menu to force a regime or hand the weather back to its day's plan (`regime` null), `settle` jumping straight to the targets; `ApplyWeather` checks it. Not saved. */
 export const SetWeather = Descriptor.Event<{ readonly regime: Regime | null; readonly settle?: boolean }>()("Lunigiana/SetWeather")
 
 /**

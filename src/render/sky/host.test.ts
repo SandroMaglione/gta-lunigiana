@@ -4,7 +4,9 @@ import { test } from "node:test"
 import { Color, Group, Vector2, Vector3 } from "three"
 
 import { heightAt } from "../../sim/map/index.ts"
+import { moonAt, sunAt } from "../../sim/sky/astro.ts"
 import { DAY, daysFromCivil, utcFromRome } from "../../sim/sky/calendar.ts"
+import { place, providePlace } from "../../sim/sky/place.ts"
 import { initialWeather, setWeather } from "../../sim/sky/weather.ts"
 import type { Regime } from "../../sim/sky/regimes.ts"
 import { yOf } from "../ground.ts"
@@ -26,7 +28,7 @@ const renderer = () => ({ shadowMap: { autoUpdate: true, needsUpdate: false }, c
 /** UTC second of Rome's `hour` on 22 October 2026. */
 const at = (hour: number) => utcFromRome(daysFromCivil(2026, 10, 22) * DAY + hour * 3600)
 /** The weather settled on `regime` at `t`. */
-const weather = (regime: Regime, t: number) => setWeather(initialWeather(t), { regime, settle: true }, t)!
+const weather = (regime: Regime, t: number) => setWeather(initialWeather(t, 1), { regime, settle: true }, t)!
 
 /** One drawn frame of a fresh host: game time `t`, the weather settled on `regime`, the view at map point `at` (the spawn). */
 const drawn = (t: number, regime: Regime, at: readonly [number, number] = [X, Y]) => {
@@ -35,6 +37,22 @@ const drawn = (t: number, regime: Regime, at: readonly [number, number] = [X, Y]
   host.draw(v, r)
   return { host, r, post: v.post }
 }
+
+// Regression: the moon was worked out over `MAP.origin` and the sun over the sky's place, so on another map the two would part.
+test("the sun and the moon stand over the loaded map's place, wherever it lies", () => {
+  // Cesena's origin (PR #37), 2.1° east of the shipped map's: the moon there differs by about a degree.
+  const home = place(), cesena = { ...home, lat: 44.1391, lon: 12.2429 }, t = at(21)
+  const there = moonAt(t, cesena.lat, cesena.lon), sun = sunAt(t, cesena.lat, cesena.lon)
+  assert.ok(Math.abs(moonAt(t, home.lat, home.lon).azimuth - there.azimuth) > 0.5, "the two places' moons differ")
+  providePlace(cesena)
+  try {
+    const look = drawn(t, "clear").host.look!
+    assert.ok(Math.abs(look.moon.azimuth - there.azimuth) < 1e-9 && Math.abs(look.moon.elevation - there.elevation) < 1e-9, `moon ${look.moon.azimuth}° vs ${there.azimuth}°`)
+    assert.ok(Math.abs(look.sun.azimuth - sun.azimuth) < 1e-9 && Math.abs(look.sun.elevation - sun.elevation) < 1e-9, "the sun too")
+  } finally {
+    providePlace(home)
+  }
+})
 
 // Regression: puddles and rain rings mirrored the hemisphere's sky colour itself, π times the sky's radiance, so wet roads showed white blots.
 test("puddles and rain rings mirror the sky's radiance: the hemisphere's sky light over π", () => {

@@ -3,8 +3,12 @@ import { test } from "node:test"
 
 import { Vector2, Vector3 } from "three"
 
+import { DAY, daysFromCivil, utcFromRome } from "../../sim/sky/calendar.ts"
+import { NO_SNOW, orographic } from "../../sim/sky/climate.ts"
+import { calmPlan, planFor } from "../../sim/sky/plan.ts"
 import { viewAxes } from "../pipeline.ts"
 import { advanceScroll, dropCount, dropDensity, MOST, planeVelocity, Precipitation, wrapBox } from "./precipitation.ts"
+import { stream } from "./random.ts"
 import { NOON } from "./testing.ts"
 
 const { right, up } = viewAxes(0)
@@ -26,16 +30,37 @@ test("drop counts grow with the rate, none in a dry sky, capped at the buffer; s
   assert.ok(texelsPerStreak > 80 && texelsPerStreak < 130, `${texelsPerStreak.toFixed(0)} texels per streak`)
 })
 
-test("heavy rain and snow on the ridges still thicken over the widest view, 16:9 and 21:9", () => {
+/** The heaviest rain or snow any day's plan sends over 30 years of days, mm/h of water at sea level (the plan holds it at a cap). */
+const heaviestPlanned = (): number => {
+  const first = utcFromRome(daysFromCivil(2001, 1, 1) * DAY)
+  let plan = calmPlan(first), most = 0
+  for (let day = 0; day < 30 * 365; day++) {
+    plan = planFor(plan, first + day * DAY, 1)
+    most = Math.max(most, plan.precip)
+  }
+  return most
+}
+
+test("rain and snow keep thickening over the widest view, 16:9 and 21:9, up to the heaviest the weather sends on high ground", () => {
+  // The day plan's heaviest falls up to twice as hard on high ground (`orographic`'s cap): 30 mm/h of water, rain or snow.
+  const heaviest = heaviestPlanned() * orographic(NO_SNOW)
+  assert.ok(heaviest >= 20, `${heaviest} mm/h: the plan's cloudbursts reach the cap`)
   // The widest zoom (5 texels/m) at 1080 px tall: 96 × 54 m at 16:9, 128 × 54 m at 21:9.
   for (const [width, height] of [[96, 54], [128, 54]] as const) {
     const box = wrapBox(width, height, new Vector2()), area = box.x * box.y
-    // A thunderstorm's 5 mm/h on the valley floor falls 2.3 times as hard on the crests (orographic), and a cloudburst harder still.
-    assert.ok(dropCount("rain", 20, area) > dropCount("rain", 11.5, area), `rain at ${width}:${height}`)
-    assert.ok(dropCount("rain", 11.5, area) > dropCount("rain", 5, area))
-    // The snow regime's 1.5 mm/h is 3.45 mm/h of water on the crests.
-    assert.ok(dropCount("snow", 6, area) > dropCount("snow", 3.45, area), `snow at ${width}:${height}`)
+    for (const kind of ["rain", "snow"] as const) {
+      const count = dropCount(kind, heaviest, area)
+      assert.ok(count < MOST[kind], `${kind} at ${heaviest} mm/h over ${width} × ${height} m: ${count} drops of the buffer's ${MOST[kind]}`)
+    }
   }
+})
+
+test("the flakes are laid in one stream after the streaks: a bigger buffer only adds flakes, so lighter snow draws the same ones", () => {
+  const seeds = new Precipitation().snow.geometry.getAttribute("position").array, r = stream(1)
+  for (let k = 0; k < MOST.rain * 3; k++) r()
+  let moved = 0
+  for (let k = 0; k < seeds.length; k++) if (seeds[k] !== Math.fround(r())) moved++
+  assert.equal(moved, 0, `${moved} of ${seeds.length} flake seeds off the stream`)
 })
 
 test("the fall scrolls on the camera plane, wrapped into the box in float64, the same after an hour of sim time", () => {

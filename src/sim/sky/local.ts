@@ -9,8 +9,9 @@
 import { Ops } from "@typeonce/ritmo-math"
 
 import type { WeatherValue } from "../schema.ts"
-import { DAY, romeOffset } from "./calendar.ts"
-import { type Air, airAt, celsiusAt, monthOf, NO_SNOW, orographic, SEASONS, snowShare } from "./climate.ts"
+import { romeDay } from "./calendar.ts"
+import { type Air, airAt, celsiusAt, NO_SNOW, orographic, snowShare } from "./climate.ts"
+import { place } from "./place.ts"
 
 /** The ground under a wheel or a foot: how wet (0…1, where no snow lies) and how snow-covered (0…1). */
 export interface GroundWeather {
@@ -74,16 +75,13 @@ export const groundAt = (weather: Pick<WeatherValue, "wet" | "snowLine">, x: num
   return { wet: Math.max(wet, thaw * Math.max(0, Math.min(1, 1 + above / MELT_BAND))) * (1 - snow), snow }
 }
 
-/** The fog over the map: the valleys' fog up to `valleyTop` m a.s.l. at `valleyDensity` (0…1), and the cloud down to `cloudBase` m a.s.l. at `cloudDensity` (0…1). */
+/** The fog over the map: the low ground's fog up to `valleyTop` m a.s.l. at `valleyDensity` (0…1), and the cloud down to `cloudBase` m a.s.l. at `cloudDensity` (0…1). */
 export interface FogLayers {
   readonly valleyTop: number
   readonly valleyDensity: number
   readonly cloudBase: number
   readonly cloudDensity: number
 }
-
-/** A day's hash in [0, 1): which mornings of a month bring radiation fog. */
-const dayChance = (day: number): number => (lattice(day, 0x5f3759df) + 1) / 2
 
 /** `x` past `from` toward `to`, smoothed, 0…1. */
 const smooth = (from: number, to: number, x: number): number => {
@@ -92,36 +90,36 @@ const smooth = (from: number, to: number, x: number): number => {
 }
 
 /**
- * The cloud base (m a.s.l.): far above the ridges under a clear sky, lower as the cover thickens, a thunderstorm's raised again, and
- * down to a low stratus in thick mist. Each regime settles on its own: clear 2575, cloudy 1675, overcast 1225, rain 1150, snow about
- * 1100, storm 1400, fog 600. Design values that keep most of the valley and village roads out of the cloud in rain and in a storm
- * (weather.test.ts), and the crests (1700–1800 m) in it under any full cover.
+ * The cloud base, m above the map's low ground (`place().floor`): far above the hills under a clear sky, lower as the cover thickens,
+ * a thunderstorm's raised again, and down to a low stratus in thick mist. Each regime settles on its own: clear 2325, cloudy 1425,
+ * overcast 975, rain 900, storm 1150, fog 350. Design values: they keep the low ground out of the cloud in rain and in a storm, and
+ * hills 1500 m above it in the cloud under any full cover (weather.test.ts).
  */
-const BASE = { clear: 2650, cover: 1500, storm: 250, stratus: 700 } as const
+const BASE = { clear: 2400, cover: 1500, storm: 250, stratus: 700 } as const
 /** Inside the cloud the fog reaches this much of its full thickness, all of it in thick mist (the fog regime). */
 const CLOUD_FOG = 0.6
+/** Radiation fog stands up to this high over the map's low ground (m), a stratus up to this high for each unit of the regime's mist. */
+const FOG_TOP = { radiation: 150, stratus: 450 } as const
 
 /**
- * The fog layers at UTC second `t` under `weather`. Radiation fog fills the valleys below about 400 m on
- * clear, calm mornings, on the month's share of days (`SEASONS[...].valleyFog`, most from October to
- * February): it forms from 01:00, is thickest from 05:00 and burns off from 09:00 to 11:00 local time.
- * The fog regime's low stratus fills them up to about 700 m. Above the cloud base (`BASE`) the hill fog
- * is `CLOUD_FOG` thick under a full cover, thick fog only in the fog regime's mist.
+ * The fog layers at UTC second `t` under `weather`. Radiation fog fills the low ground up to `FOG_TOP.radiation` over the map's floor
+ * on the mornings the day's plan brings it (plan.ts), while the sky stays clear and the air calm: it forms from 01:00, is thickest
+ * from 05:00 and burns off from 09:00 to 11:00 local time. The fog regime's low stratus fills it up to `FOG_TOP.stratus` × its mist.
+ * Above the cloud base (`BASE`) the hill fog is `CLOUD_FOG` thick under a full cover, thick fog only in the fog regime's mist.
  */
-export const fogLayers = (t: number, weather: Pick<WeatherValue, "cloud" | "storm" | "wind" | "fog">): FogLayers => {
-  const local = t + romeOffset(t), day = Math.floor(local / DAY), hour = (local - day * DAY) / 3600
-  const chance = SEASONS[monthOf(t)]!.valleyFog
+export const fogLayers = (t: number, weather: Pick<WeatherValue, "cloud" | "storm" | "wind" | "fog" | "plan">): FogLayers => {
+  const { day, second } = romeDay(t), hour = second / 3600, { floor } = place(), { plan } = weather
   const clear = 1 - smooth(0.25, 0.55, weather.cloud), calm = 1 - smooth(2, 3.5, weather.wind)
-  const radiation = dayChance(day) < chance ? clear * calm * smooth(1, 5, hour) * (1 - smooth(9, 11, hour)) : 0
-  const valleyTop = Math.max(250 + 150 * radiation, 250 + 450 * weather.fog), mist = smooth(0.3, 0.9, weather.fog)
+  const radiation = plan.drawn && plan.day === day && plan.fog === "morning" ? clear * calm * smooth(1, 5, hour) * (1 - smooth(9, 11, hour)) : 0
+  const valleyTop = floor + Math.max(FOG_TOP.radiation * radiation, FOG_TOP.stratus * weather.fog), mist = smooth(0.3, 0.9, weather.fog)
   return {
     valleyTop, valleyDensity: Math.max(radiation, weather.fog),
-    cloudBase: BASE.clear - BASE.cover * weather.cloud + BASE.storm * weather.storm - BASE.stratus * mist,
+    cloudBase: floor + BASE.clear - BASE.cover * weather.cloud + BASE.storm * weather.storm - BASE.stratus * mist,
     cloudDensity: smooth(0.5, 0.9, weather.cloud) * (CLOUD_FOG + (1 - CLOUD_FOG) * mist)
   }
 }
 
-/** How thick the fog is at `z` m a.s.l. in `layers`, 0…1: the valley fog's below its top, the cloud's above its base, each fading in over 50 m. */
+/** How thick the fog is at `z` m a.s.l. in `layers`, 0…1: the low ground's fog below its top, the cloud's above its base, each fading in over 50 m. */
 export const fogAt = (layers: FogLayers, z: number): number =>
   Math.max(layers.valleyDensity * (1 - smooth(layers.valleyTop - 50, layers.valleyTop, z)), layers.cloudDensity * smooth(layers.cloudBase, layers.cloudBase + 50, z))
 
@@ -143,15 +141,14 @@ export const conditionsAt = (t: number, weather: WeatherValue, x: number, y: num
 }
 
 /**
- * How much stronger the wind blows on exposed ground than on the valley floor: ×1 at 250 m, rising in a straight line to ×2.5 on the
- * 1800 m crests (×1.76 at 1040 m). A design value a little under the Aeronautica Militare's own pair (Atlante Climatico 1971–2000,
- * wind classes of 1–10, 11–20 and over 20 knots taken at 5.5, 15.5 and 25 kn): about 6.1 m/s at Passo della Cisa (1048 m) against
- * 3.0 m/s at Sarzana-Luni on the coast (whose 00 UTC table is empty), ×1.9–2.1 as the top class is taken at 22.5–30 kn.
+ * How much stronger the wind blows on exposed ground than on the map's low ground: ×1 at its floor, rising in a straight line to ×2.5
+ * 1550 m above it. A national design value, ×2–2.5 on crests: the Aeronautica Militare's exposed capes, islands and hill stations see a
+ * wind over 20 knots about three times as often as its lowland airports (2.7–3.9 by month; Atlante Climatico 1971–2000).
  */
-const WIND_UP = { floor: 250, crest: 1800, most: 2.5 } as const
+const WIND_UP = { over: 1550, most: 2.5 } as const
 
-/** The wind at `z` m a.s.l. under `weather`, m/s (x east, y north: the way the air moves): the valley's, stronger on exposed ground (`WIND_UP`). */
+/** The wind at `z` m a.s.l. under `weather`, m/s (x east, y north: the way the air moves): the low ground's, stronger on exposed ground (`WIND_UP`). */
 export const windAt = (weather: Pick<WeatherValue, "wind" | "windAngle">, z: number): { readonly x: number; readonly y: number } => {
-  const speed = weather.wind * Math.max(1, Math.min(WIND_UP.most, 1 + ((WIND_UP.most - 1) * (z - WIND_UP.floor)) / (WIND_UP.crest - WIND_UP.floor)))
+  const speed = weather.wind * Math.max(1, Math.min(WIND_UP.most, 1 + ((WIND_UP.most - 1) * (z - place().floor)) / WIND_UP.over))
   return { x: Ops.cos(weather.windAngle) * speed, y: Ops.sin(weather.windAngle) * speed }
 }

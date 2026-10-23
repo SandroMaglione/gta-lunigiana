@@ -83,7 +83,7 @@ html.touch .debug-toggle { top: 148px; top: anchor(--ritmo-monitor top, 148px); 
 .debug .debug-choices button[aria-pressed="false"] { color: var(--accent); background: transparent; border-color: var(--accent); }
 .debug-settle { display: grid; gap: 2px; justify-items: start; margin-top: 8px; }
 .debug-readouts { margin: 8px 0 0; font-size: 12px; }
-.debug-readouts div { display: grid; grid-template-columns: 10ch 1fr; gap: 12px; }
+.debug-readouts div { display: grid; grid-template-columns: 12ch 1fr; gap: 12px; }
 .debug-readouts dt { color: var(--accent); }
 .debug-readouts dd { margin: 0; }
 .debug .debug-reset-all { margin-top: 16px; }

@@ -16,7 +16,7 @@ export type WeatherWord = (typeof WEATHER_WORDS)[number]
 /**
  * Thresholds: a thunderstorm needs this activity and this much falling (mm/h); rain or snow from this much, drizzle (or a few flakes)
  * from this; snow when this share of what falls is snow, sleet between the two shares; fog from this thickness; windy from this
- * valley wind (m/s); and the sky's cover (0…1) up to which it reads clear, fair or cloudy.
+ * wind on the map's low ground (m/s); and the sky's cover (0…1) up to which it reads clear, fair or cloudy.
  */
 const STORM = { activity: 0.3, falling: 0.5 } as const
 const FALLING = { steady: 0.2, drizzle: 0.02 } as const

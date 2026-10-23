@@ -13,12 +13,12 @@
  */
 import { Color, DirectionalLight, HemisphereLight, type Object3D, Vector2, Vector3 } from "three"
 
-import { MAP } from "../../sim/map/index.ts"
 import { type LightningValue, STEP, type WeatherValue } from "../../sim/index.ts"
 import { moonAt, moonPhase } from "../../sim/sky/astro.ts"
 import { airAt } from "../../sim/sky/climate.ts"
 import { sunOver } from "../../sim/sky/day.ts"
 import { conditionsAt, type FogLayers, fogLayers, windAt } from "../../sim/sky/local.ts"
+import { place } from "../../sim/sky/place.ts"
 import { linear } from "../geometry.ts"
 import { terrainY, yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
@@ -151,7 +151,8 @@ export class SkyHost {
     const jumped = last === undefined || Math.abs(seconds - last.seconds) > JUMP + (Math.abs(read.rate) * dt) / STEP.dt
     this.last = read
 
-    const sun = sunOver(seconds), moon = moonAt(seconds, MAP.origin.lat, MAP.origin.lon), lit = moonPhase(sun, moon).illuminated
+    // The sun and the moon over the loaded map's origin (`sunOver` reads the same place).
+    const { lat, lon } = place(), sun = sunOver(seconds), moon = moonAt(seconds, lat, lon), lit = moonPhase(sun, moon).illuminated
     const here = conditionsAt(seconds, weather, x, y, z), fog = fogLayers(seconds, weather)
     const light = skyLight({ sun, moon, moonLit: lit, cloud: weather.cloud, precip: here.rain + here.snow, storm: weather.storm, fog: here.fog, snowCover: here.snowCover })
     this.exposure = jumped ? light.exposure : easeLog(this.exposure, light.exposure, dt, ADAPT_TAU)

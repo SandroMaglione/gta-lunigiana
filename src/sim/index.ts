@@ -127,12 +127,12 @@ export const makeRuntime = <const Services extends RuntimeServices<any>>(options
   readonly services: Services
   readonly debug?: { readonly hostClock: HostClock.HostClock }
 }) => {
-  const start = options.start ?? DEFAULT_START
+  const start = options.start ?? DEFAULT_START, weatherSeed = Random.seed(options.seed ^ WEATHER_SEED)
   return Game.Runtime.make({
     services: options.services,
     resources: {
-      Time: Clock.start(STEP), Rng: Random.seed(options.seed), WeatherRng: Random.seed(options.seed ^ WEATHER_SEED), Score: { stolen: 0, knocked: 0 }, View: { turns: 0 },
-      Handling: DEFAULT_HANDLING, GameClock: { seconds: start, rate: 1 }, Weather: initialWeather(start), Input: Keyboard.idle(bindings)
+      Time: Clock.start(STEP), Rng: Random.seed(options.seed), WeatherRng: weatherSeed, Score: { stolen: 0, knocked: 0 }, View: { turns: 0 },
+      Handling: DEFAULT_HANDLING, GameClock: { seconds: start, rate: 1 }, Weather: initialWeather(start, weatherSeed), Input: Keyboard.idle(bindings)
     },
     debug: options.debug
   })

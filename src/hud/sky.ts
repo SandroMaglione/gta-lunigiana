@@ -11,6 +11,7 @@
 import type { SkyViewModel } from "../sim/index.ts"
 import { type CivilDate, civilFromDays, DAY, daysFromCivil, type RomeTime, romeTime, utcFromRome } from "../sim/sky/calendar.ts"
 import { type ClockRequest, setClock } from "../sim/sky/clock.ts"
+import { regimeAt } from "../sim/sky/plan.ts"
 import { isRegime, type Regime } from "../sim/sky/regimes.ts"
 import type { WeatherRequest } from "../sim/sky/weather.ts"
 
@@ -43,7 +44,7 @@ export interface SkyStoreHost {
  */
 const moved = (from: SkyViewModel, game: SkyViewModel): boolean =>
   game.seconds !== from.seconds || game.rate !== from.rate
-  || game.weather.regime !== from.weather.regime || game.weather.forced !== from.weather.forced || game.weather.left !== from.weather.left
+  || game.weather.regime !== from.weather.regime || game.weather.forced !== from.weather.forced
 
 /**
  * The store over the game's sky. The game takes a request on its next step, and not at all while paused (the full map, the
@@ -63,8 +64,8 @@ export const makeSkyStore = ({ read, setClock: sendClock, setWeather: sendWeathe
       }
     }
   }
-  // A time and a rate sent, the regime held (null: Auto) and the last regime forced: Auto then still moves toward it.
-  const time = unapplied<number>(), pace = unapplied<number>(), held = unapplied<Regime | null>(), toward = unapplied<Regime>()
+  // A time and a rate sent, and the regime held (null: Auto).
+  const time = unapplied<number>(), pace = unapplied<number>(), held = unapplied<Regime | null>()
   const tell = () => {
     for (const listener of listeners) listener()
   }
@@ -77,8 +78,10 @@ export const makeSkyStore = ({ read, setClock: sendClock, setWeather: sendWeathe
     return sent !== undefined ? sent.value : game.weather.forced ? game.weather.regime : null
   }
   const heading = (): Regime => {
-    const game = read()
-    return regime() ?? toward.get(game)?.value ?? game.weather.regime
+    const game = read(), pinned = regime()
+    if (pinned !== null) return pinned
+    // Auto: the game hands a forced weather back to its day's plan at once (the sim's `setWeather`), so it heads where the plan is.
+    return game.weather.forced ? regimeAt(game.weather.plan, now().seconds) : game.weather.regime
   }
   /** Sets the game time to UTC second `seconds`, kept in range; one that is not a number is dropped. */
   const setSeconds = (seconds: number): void => {
@@ -97,7 +100,7 @@ export const makeSkyStore = ({ read, setClock: sendClock, setWeather: sendWeathe
     rate: (): number => now().rate,
     /** The regime the weather is held at, or null when it is left to chance (Auto). */
     regime,
-    /** The regime the weather moves toward once the game takes what the store sent: the one held, else the last one forced, else the game's. */
+    /** The regime the weather moves toward once the game takes what the store sent: the one held, else (Auto) the day's plan's now. */
     heading,
     setSeconds,
     /** Sets Rome's wall clock to `secondOfDay` on the date shown. */
@@ -116,16 +119,11 @@ export const makeSkyStore = ({ read, setClock: sendClock, setWeather: sendWeathe
     force: (to: Regime | null): void => {
       if (to !== null && !isRegime(to)) return
       held.send(to)
-      if (to !== null) toward.send(to)
       sendWeather({ regime: to })
       tell()
     },
-    /** Jumps the weather to its regime's steady state: the regime held, else (Auto) the one it is moving toward, still left to chance. */
-    settle: (): void => {
-      const pinned = regime()
-      sendWeather({ regime: heading(), settle: true })
-      if (pinned === null) sendWeather({ regime: null })
-    },
+    /** Jumps the weather to its regime's steady state: the regime held, else (Auto) the day's plan's now, still left to the plan. */
+    settle: (): void => sendWeather({ regime: regime(), settle: true }),
     /** Calls `listener` after every change, so an open UI shows it. */
     subscribe: (listener: () => void): void => void listeners.push(listener)
   }

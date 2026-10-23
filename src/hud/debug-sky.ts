@@ -1,20 +1,23 @@
 /**
  * The debug menu's Time and Weather areas, through the sky store (`hud/sky.ts`) that `gta.sky` shares:
- * the clock's rate, the time of day, the date, sunrise and sunset; a regime held or left to chance
- * (Auto) and "Settle now"; and live readouts of the sun, the moon and the weather at the player,
+ * the clock's rate, the time of day, the date, sunrise and sunset; a regime held or left to the day's
+ * plan (Auto) and "Settle now"; and live readouts of the sun, the moon, the weather at the player, the
+ * weather seed and this month's odds (the sim's `oddsAt`, which each day's plan is drawn from),
  * refreshed each frame while the menu is open and never announced (no live region). Every regime's
  * name and description comes from `REGIME_SPECS` (src/sim/sky/regimes.ts).
  *
  * @module hud/debug-sky
  */
 import type { SkyViewModel } from "../sim/index.ts"
-import { ORIGIN } from "../sim/map/kinds.ts"
 import { moonAt, moonPhase } from "../sim/sky/astro.ts"
 import { civilFromDays, DAY, romeTime } from "../sim/sky/calendar.ts"
 import { NO_SNOW } from "../sim/sky/climate.ts"
 import { SECONDS_RANGE } from "../sim/sky/clock.ts"
 import { sunOver, sunTimes } from "../sim/sky/day.ts"
 import { conditionsAt, windAt } from "../sim/sky/local.ts"
+import { type DayOdds, oddsAt, romeMonth } from "../sim/sky/odds.ts"
+import { place } from "../sim/sky/place.ts"
+import { untilChange } from "../sim/sky/plan.ts"
 import { describeWeather } from "../sim/sky/readout.ts"
 import { type Regime, REGIME_SPECS, REGIMES } from "../sim/sky/regimes.ts"
 import { clockText } from "./clock.ts"
@@ -67,6 +70,49 @@ export const fallingText = (rain: number, snow: number): string => {
 
 /** The snow line as the menu reads it: its height, or none while it stands above the map. */
 export const snowLineText = (snowLine: number): string => (snowLine >= NO_SNOW ? "none" : `${Math.round(snowLine)} m`)
+
+/** The weather seed as the menu reads it, the 32-bit state it is, in hex: "0x9e3779b8". */
+export const seedText = (seed: number): string => `0x${(seed >>> 0).toString(16).padStart(8, "0")}`
+
+/** A day's chance as the menu reads it: whole from 10 %, to the tenth under it, and one too small to show not as none: "27 %", "4.6 %", "< 0.1 %". */
+const percentText = (chance: number): string => {
+  const tenths = Math.round(chance * 1000) / 10
+  if (tenths >= 10) return `${Math.round(chance * 100)} %`
+  if (tenths > 0) return `${tenths.toFixed(1)} %`
+  return chance > 0 ? "< 0.1 %" : "0 %"
+}
+
+/** The events the odds list, each by its name in the menu, in the menu's order. */
+const ODDS = {
+  rain: "Rain", heavy: "Heavy rain", rainstorm: "Rainstorm", thunder: "Thunder", snow: "Snowfall", fog: "Fog", clear: "Clear-ish", overcast: "Overcast",
+  windy: "Windy"
+} as const satisfies Record<keyof DayOdds, string>
+
+/** Each event's chance in `odds` as the menu reads it, with what it counts; snowfall at `z` m a.s.l., the height it was worked out for: "27 %, 1 mm or more". */
+export const oddsText = (odds: DayOdds, z: number): Readonly<Record<keyof DayOdds, string>> => {
+  const p = (key: keyof DayOdds) => percentText(odds[key])
+  return {
+    rain: `${p("rain")}, 1 mm or more`, heavy: `${p("heavy")}, 10 mm or more`, rainstorm: `${p("rainstorm")}, 20 mm or more`, thunder: p("thunder"),
+    snow: `${p("snow")} at ${Math.round(z)} m`, fog: `${p("fog")}, on the low ground`, clear: `${p("clear")}, 4/8 cloud or less`,
+    overcast: `${p("overcast")}, rain days included`, windy: `${p("windy")}, over 20 knots`
+  }
+}
+
+/** The month names, January first. */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const
+
+/**
+ * The odds as the menu shows them at UTC second `t` with the player at `z` m a.s.l.: headed by Rome's month (the one a day's plan
+ * belongs to), what they are, and each event's chance from the sim's `oddsAt` at the map's latitude, snowfall at `z`.
+ */
+export const oddsReadout = (t: number, z: number) => {
+  const { lat } = place()
+  return {
+    title: `Odds (${MONTHS[romeMonth(t)]})`,
+    about: `A day's chances this month at the map's latitude, ${lat.toFixed(2)}° N, snowfall at the player's height. Auto draws each day from them.`,
+    rows: oddsText(oddsAt(t, lat, z), z)
+  }
+}
 
 /** A list of readouts named by `names`: the list and the value cell of each. */
 const readouts = <K extends string>(make: Make, names: Readonly<Record<K, string>>) => {
@@ -139,7 +185,7 @@ export const timeArea = (make: Make, sky: SkyStore): Area => {
       set(sunset, `Sunset ${at(times?.sunset)}`)
     }
     if (focused !== date && date.value !== day) date.value = day
-    const sun = sunOver(seconds), moon = moonAt(seconds, ORIGIN.lat, ORIGIN.lon), phase = moonPhase(sun, moon)
+    const sun = sunOver(seconds), moon = moonAt(seconds, place().lat, place().lon), phase = moonPhase(sun, moon)
     set(values.sun, `elevation ${sun.elevation.toFixed(1)}°, azimuth ${Math.round(sun.azimuth)}°`)
     set(values.moon, `elevation ${moon.elevation.toFixed(1)}°, ${Math.round(phase.illuminated * 100)} % lit, ${phase.waxing ? "waxing" : "waning"}`)
   }
@@ -159,20 +205,23 @@ export const timeArea = (make: Make, sky: SkyStore): Area => {
 }
 
 /**
- * The Weather area's regime line for the game's `weather`, the regime the store holds it at (null: Auto) and the one it moves toward
- * (`SkyStore.heading`): the regime and its next draw or its hold, or, while the game has not taken what the store sent (the full map
- * or the settings pause it), what it takes on resume.
+ * The Weather area's regime line for the game's `weather` at UTC second `seconds`, the regime the store holds it at (null: Auto) and
+ * the one it moves toward (`SkyStore.heading`): the regime and when the day's plan may next change it, or its hold, or, while the game
+ * has not taken what the store sent (the full map or the settings pause it), what it takes on resume.
  */
-export const regimeText = (weather: Pick<SkyViewModel["weather"], "regime" | "forced" | "left">, pinned: Regime | null, heading: Regime): string => {
+export const regimeText = (weather: Pick<SkyViewModel["weather"], "regime" | "forced" | "plan">, pinned: Regime | null, heading: Regime, seconds: number): string => {
   const label = REGIME_SPECS[heading].label
   if (pinned !== (weather.forced ? weather.regime : null) || heading !== weather.regime) return `${label}, ${pinned === null ? "left to chance" : "held"} (on resume)`
-  return weather.forced ? `${label}, held` : `${label}, next draw in ${spanText(weather.left)}`
+  return weather.forced ? `${label}, held` : `${label}, next change in ${spanText(untilChange(weather.plan, seconds))}`
 }
 
 /** What "Auto" does. */
-const AUTO = "The weather left to chance: each regime lasts its while, then the month's odds draw the next."
+const AUTO = "The weather left to chance: each day is drawn from the month's odds with the weather seed, and its plan sets the regime hour by hour."
 
-/** The Weather area: the regime held (or Auto), "Settle now", and the weather now at the player (where `here` stands, z m a.s.l., when there is a player). */
+/**
+ * The Weather area: the regime held (or Auto), "Settle now", the weather now at the player (where `here` stands, z m a.s.l., when there
+ * is a player), the weather seed, and this month's odds, snowfall at the player's height (the map's low ground before there is one).
+ */
 export const weatherArea = (make: Make, sky: SkyStore, here: () => { readonly x: number; readonly y: number; readonly z: number } | undefined): Area => {
   const choices = [null, ...REGIMES].map((regime) => {
     const button = make("button", {
@@ -194,12 +243,19 @@ export const weatherArea = (make: Make, sky: SkyStore, here: () => { readonly x:
   })
   settle.setAttribute("aria-describedby", about.id)
   settle.addEventListener("click", () => sky.settle())
-  const { list, values } = readouts(make, { regime: "Regime", air: "Air here", ground: "Ground", snowLine: "Snow line", wind: "Wind here", sky: "Sky" })
+  const { list, values } = readouts(make, {
+    regime: "Regime", air: "Air here", ground: "Ground", snowLine: "Snow line", wind: "Wind here", sky: "Sky", seed: "Weather seed"
+  })
+  const odds = readouts(make, ODDS), oddsTitle = make("h4", { textContent: "Odds" }), oddsAbout = make("p")
   const live = () => {
-    const { seconds, weather } = sky.now()
-    set(values.regime, regimeText(weather, sky.regime(), sky.heading()))
+    const { seconds, weather } = sky.now(), at = here()
+    set(values.regime, regimeText(weather, sky.regime(), sky.heading(), seconds))
     set(values.snowLine, snowLineText(weather.snowLine))
-    const at = here()
+    set(values.seed, seedText(weather.seed))
+    const shown = oddsReadout(seconds, at?.z ?? place().floor)
+    set(oddsTitle, shown.title)
+    set(oddsAbout, shown.about)
+    for (const key of Object.keys(ODDS) as Array<keyof DayOdds>) set(odds.values[key], shown.rows[key])
     if (at === undefined) return
     const { x, y, z } = at, conditions = conditionsAt(seconds, weather, x, y, z)
     const falling = fallingText(conditions.rain, conditions.snow)
@@ -210,7 +266,10 @@ export const weatherArea = (make: Make, sky: SkyStore, here: () => { readonly x:
   }
   return {
     title: "Weather",
-    nodes: [make("div", { className: "debug-choices" }, ...choices.map(({ button }) => button)), make("div", { className: "debug-settle" }, settle, about), list],
+    nodes: [
+      make("div", { className: "debug-choices" }, ...choices.map(({ button }) => button)), make("div", { className: "debug-settle" }, settle, about), list,
+      oddsTitle, oddsAbout, odds.list
+    ],
     first: choices[0]!.button,
     live
   }

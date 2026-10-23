@@ -4,6 +4,7 @@ import { test } from "node:test"
 import type { SkyViewModel } from "../sim/index.ts"
 import { DAY, daysFromCivil, romeTime } from "../sim/sky/calendar.ts"
 import { type ClockRequest, MAX_RATE, SECONDS_RANGE, setClock } from "../sim/sky/clock.ts"
+import { calmPlan } from "../sim/sky/plan.ts"
 import type { Regime } from "../sim/sky/regimes.ts"
 import { initialWeather, setWeather, type WeatherRequest } from "../sim/sky/weather.ts"
 import { dateText, makeSkyStore, parseDate, romeSeconds } from "./sky.ts"
@@ -12,7 +13,7 @@ import { dateText, makeSkyStore, parseDate, romeSeconds } from "./sky.ts"
 const START = 1792648800
 
 /** The sky a game at `seconds` and `rate` shows, the weather a new game's unless given. */
-const sky = (seconds: number, rate = 1, weather = initialWeather(START)): SkyViewModel => ({ seconds, rate, local: romeTime(seconds), weather })
+const sky = (seconds: number, rate = 1, weather = initialWeather(START, 1)): SkyViewModel => ({ seconds, rate, local: romeTime(seconds), weather })
 
 /** A store over a fake game whose sky stays `game` until `become` moves it, as the real one's does until its next step: what the store sends is collected. */
 const fakes = (game: SkyViewModel = sky(START)) => {
@@ -26,7 +27,7 @@ test("a new store shows the game's sky, its rate and its regime left to chance, 
   const { store, clocks, weathers } = fakes()
   assert.deepEqual(store.now(), sky(START))
   assert.deepEqual([store.rate(), store.regime(), clocks, weathers], [1, null, [], []])
-  const forced = fakes(sky(START, 0, { ...initialWeather(START), regime: "fog", forced: true })).store
+  const forced = fakes(sky(START, 0, { ...initialWeather(START, 1), regime: "fog", forced: true })).store
   assert.deepEqual([forced.rate(), forced.regime()], [0, "fog"], "a game already pinned shows its pins")
 })
 
@@ -48,7 +49,7 @@ test("each request is kept in range exactly as the sim keeps it, and one the sim
   store.force("rain")
   store.force(null)
   assert.deepEqual(weathers, [{ regime: "rain" }, { regime: null }])
-  for (const regime of ["tornado", "toString", "", "RAIN"]) assert.equal(setWeather(initialWeather(START), { regime: regime as Regime }, START), undefined, "the sim drops it too")
+  for (const regime of ["tornado", "toString", "", "RAIN"]) assert.equal(setWeather(initialWeather(START, 1), { regime: regime as Regime }, START), undefined, "the sim drops it too")
 })
 
 test("every change tells each listener once; a request dropped tells no one", () => {
@@ -83,37 +84,38 @@ test("the store keeps what it sent while the game lags, and shows the game's sky
   assert.equal(store.now().seconds, stepped.seconds + 3600, "a time set later from elsewhere (a restored save) shows")
 })
 
-test("Settle now settles the pinned regime; in Auto it settles the regime the weather is moving toward and leaves it to chance", () => {
-  const { store, weathers } = fakes(sky(START, 1, { ...initialWeather(START), regime: "cloudy" }))
+/** A drawn plan for START's day: cloudy, and rain from 07:00 to 11:00 (at START, 08:00, it rains). */
+const RAINY = { ...calmPlan(START), drawn: true, from: 0, wet: true, event: "rain", start: 7 * 3600, end: 11 * 3600, precip: 2, sky: "cloudy" } as const
+
+/** `weather` after the game has taken each of `requests` in turn at START, as `ApplyWeather` takes them. */
+const taken = (weather: SkyViewModel["weather"], requests: ReadonlyArray<WeatherRequest>) => requests.reduce((at, request) => setWeather(at, request, START) ?? at, weather)
+
+test("Settle now settles the pinned regime; in Auto it hands the weather to the day's plan and settles on the plan's regime", () => {
+  const auto = { ...initialWeather(START, 1), plan: RAINY, regime: "rain" as const }
+  const { store, weathers } = fakes(sky(START, 1, auto))
   store.settle()
-  assert.deepEqual(weathers, [{ regime: "cloudy", settle: true }, { regime: null }])
+  assert.deepEqual(weathers, [{ regime: null, settle: true }])
+  const settled = taken(auto, weathers)
+  assert.deepEqual([settled.regime, settled.forced, settled.precip], ["rain", false, RAINY.precip], "the plan's rain, at its rate")
   store.force("storm")
   store.settle()
-  assert.deepEqual(weathers.slice(2), [{ regime: "storm" }, { regime: "storm", settle: true }])
+  assert.deepEqual(weathers.slice(1), [{ regime: "storm" }, { regime: "storm", settle: true }])
 })
 
-// Regression: over the paused map (or in one console line), Rain then Auto then Settle now re-forced and settled the regime before
-// Rain, which the game still showed, and Rain was lost.
-test("Settle now in Auto, after a regime forced and handed back to chance that the game has not taken yet, settles that regime", () => {
-  const before = { ...initialWeather(START), regime: "overcast" as const }
-  const { store, weathers, become } = fakes(sky(START, 1, before))
-  store.force("rain")
+// Regression: the day's plan hands a forced weather back to its own regime at once, but over the paused map (or in one console line)
+// Clear held, then Auto, then Settle now showed "Clear, left to chance" and settled Clear, which the game then left at once for the
+// plan's Rain.
+test("Auto sent but not taken yet heads for the day's plan, and Settle now settles that, whatever was held before", () => {
+  const held = { ...initialWeather(START, 1), plan: RAINY, regime: "clear" as const, forced: true }
+  const { store, weathers } = fakes(sky(START, 1, held))
   store.force(null)
   assert.deepEqual([store.regime(), store.heading()], [null, "rain"])
   store.settle()
-  assert.deepEqual(weathers, [{ regime: "rain" }, { regime: null }, { regime: "rain", settle: true }, { regime: null }])
-  // The game stepped, took Rain, and its chance has drawn on since: the regime it moves toward now is the one to settle.
-  for (const game of [sky(START + 60, 1, { ...before, regime: "cloudy" }), sky(START, 0, { ...before, regime: "cloudy", left: 3 * 3600 })]) {
-    const next = fakes(sky(START, game.rate, before))
-    next.store.force("rain")
-    next.store.force(null)
-    next.become(game)
-    assert.equal(next.store.heading(), "cloudy", `rate ${game.rate}`)
-    next.store.settle()
-    assert.deepEqual(next.weathers.slice(2), [{ regime: "cloudy", settle: true }, { regime: null }], `rate ${game.rate}`)
-  }
-  become(sky(START + 60, 1, { ...before, regime: "rain" }))
-  assert.equal(store.regime(), null, "Auto, as the game holds it")
+  assert.deepEqual(taken(held, weathers), setWeather(held, { regime: null, settle: true }, START), "where the game lands: the plan's rain, settled")
+  const forced = fakes(sky(START, 0, { ...held, forced: false, regime: "rain" }))
+  forced.store.force("fog")
+  forced.store.force(null)
+  assert.deepEqual([forced.store.regime(), forced.store.heading()], [null, "rain"], "Fog then Auto: the plan, not Fog")
 })
 
 // The host stands the clock still behind the title card (rate 0 after setup, 1 when the card goes) without the store: a rate the store

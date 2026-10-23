@@ -20,11 +20,12 @@ import { phaseLocked, TIME_WRAP } from "./uniforms.ts"
 type Kind = "rain" | "snow"
 
 /**
- * Most drops drawn at once, per kind (the static buffers' size: 12288 streaks and 16384 flakes, 0.6 MB): over the widest
+ * Most drops drawn at once, per kind (the static buffers' size: 12288 streaks and 36864 flakes, 0.84 MB): over the widest
  * 1080p view (a 112 × 64 m box at 16:9, 144 × 64 m at 21:9) rain keeps thickening to ≈ 57 (21:9: 38) mm/h and snow to
- * ≈ 11 (6.5) mm/h of water, past a thunderstorm on the crests (5 mm/h × 2.3 orographic).
+ * ≈ 54 (33) mm/h of water, past the heaviest the weather sends on high ground (the day plan's 15 mm/h at sea level, twice that
+ * from about 1700 m up: `orographic`). The flakes are laid in order, so snow under ≈ 11 (6.5) mm/h draws only the first 16384.
  */
-export const MOST = { rain: 12288, snow: 16384 } as const satisfies Record<Kind, number>
+export const MOST = { rain: 12288, snow: 36864 } as const satisfies Record<Kind, number>
 /** Fall speed, m/s: rain at its terminal speed (2–5 mm drops fall 6.5–9 m/s), snow ≈ 1 m/s. */
 const FALL = { rain: 8, snow: 1 } as const satisfies Record<Kind, number>
 /** Speed of each of the three depth layers × the kind's fall: a slower far layer, a faster near one (drops pick one by seed). */

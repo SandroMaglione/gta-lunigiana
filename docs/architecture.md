@@ -23,8 +23,9 @@ keys, touch ──► KeyboardInput service ──► CaptureInput ──► Inp
 resources: `Time` (60 Hz clock), `Rng` (seeded from `seed`), `WeatherRng` (seeded from
 `seed ^ 0x9e3779b9`), `Score` (zeroed), `View` (home view), `Handling` (a new game's knobs,
 `DEFAULT_HANDLING`: the Balanced preset), `GameClock` (`start` at rate 1), `Weather`
-(`initialWeather(start)`: clear and calm, dry ground, the month's snow line, 90 game minutes before
-the first regime draw, so the tests' first 600 steps stay storm-free) and `Input` (idle keys).
+(`initialWeather(start, weatherSeed)`, `weatherSeed` being `WeatherRng`'s first state: clear and
+calm, dry ground, the season's snow line, and a calm plan the first step draws that holds clear for
+90 game minutes, so the tests' first 600 steps stay storm-free) and `Input` (idle keys).
 
 - `start` is the game time a new game begins at, in whole Unix UTC seconds: a fraction fails to
   decode and no runtime is made. Without it the game starts at `DEFAULT_START`, 1792648800
@@ -32,7 +33,9 @@ the first regime draw, so the tests' first 600 steps stay storm-free) and `Input
 - The weather draws from its own stream so that it never changes traffic, pedestrians or parking.
   mulberry32 runs through every 32-bit state in one cycle, so the two streams are one sequence at
   an offset the seed sets: at least 7,179 draws apart over all 2³² seeds, and at least 1.2 million
-  for seeds 0–200,000.
+  for seeds 0–200,000. Only the storm cell and its lightning draw from `WeatherRng`; each day's
+  plan comes from the weather seed (kept in `Weather.seed`) and the day alone, so a storm never
+  changes the days after it.
 - The clock, the sun and moon, the climate and the weather are pure functions in `src/sim/sky/`
   ([weather.md](weather.md)). The host calls the same functions to draw, play and show them, so the
   snow it draws is the snow the tyres feel.
@@ -63,9 +66,9 @@ whichever schedule ticked first.
 | 4 | `TurnView` | `index.ts` | turn keys: the view's quarter turns (`View`) |
 | 5 | `ApplyHandling` | `index.ts` | each `SetHandling` request sets its knob in `Handling`, kept in the knob's range |
 | 6 | `ApplyClock` | `index.ts` | each `SetClock` request sets the game time and/or its rate in `GameClock`, kept in range (2000-01-01 to 2100-01-01, rate a whole 0–3600) |
-| 7 | `ApplyWeather` | `index.ts` | each `SetWeather` request forces a regime, settled at once when asked, or hands the weather back to chance |
+| 7 | `ApplyWeather` | `index.ts` | each `SetWeather` request forces a regime or hands the weather back to the day's plan, settled at once when asked, under the plan of the day the clock is on |
 | 8 | `AdvanceClock` | `systems/sky.ts` | moves `GameClock` on by its rate (a game second a step at rate 1); at rate 0 it stands still, unwritten |
-| 9 | `AdvanceWeather` | `systems/sky.ts` | over the step's game seconds, counts down to the next regime draw and eases `Weather` toward its regime, wetting, drying, snowing and thawing the ground; over its real time, drifts a thunderstorm's cell and emits `Lightning`; every draw from `WeatherRng` |
+| 9 | `AdvanceWeather` | `systems/sky.ts` | over the step's game seconds, draws the day's plan from the weather seed when a new Rome day begins (at rate 0 only that), moves toward the regime it sets for the hour and eases `Weather` toward it, wetting, drying, snowing and thawing the ground; over its real time, drifts a thunderstorm's cell and emits `Lightning`, drawing from `WeatherRng` |
 | 10 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
 | 11 | `applyDeferred` | | applies the enter/exit commands before anything moves |
 | 12 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
@@ -119,12 +122,12 @@ Saved resources:
 |---|---|
 | `Time` | the fixed step's count and length (Ritmo's clock) |
 | `Rng` | the world's random stream: traffic, pedestrians, parking |
-| `WeatherRng` | the weather's own random stream: regime draws, the storm cell, lightning |
+| `WeatherRng` | the weather's own random stream: the storm cell and lightning (its first state is the weather seed) |
 | `Score` | `stolen`, `knocked` |
 | `View` | `turns`, the net quarter turns of the camera |
 | `Handling` | the 16 handling knobs ([gameplay.md](gameplay.md#handling)) |
 | `GameClock` | `seconds`, the game time in whole Unix UTC seconds, and `rate`, the game seconds each step adds: 1 in play (a game minute per real second, a 24-minute day), 0 standing still, up to 3600 from the dev debug menu |
-| `Weather` | the `regime` it moves toward, the game seconds `left` to the next draw, whether it is `forced`; the eased `cloud`, `precip` (mm/h at 250 m), `storm`, `wind` and `windAngle`, `gust`, `fog` and temperature `anomaly`; the ground's `wet` and `snowLine` (m a.s.l.); the storm cell's centre (`cellX`, `cellY`) |
+| `Weather` | the weather `seed` (never changed); the `regime` it moves toward and whether it is `forced`; the eased `cloud`, `precip` (mm/h at sea level), `storm`, `wind` (on the map's low ground) and `windAngle`, `gust`, `fog` and temperature `anomaly`; the ground's `wet` and `snowLine` (m a.s.l.); the storm cell's centre (`cellX`, `cellY`); and the day's `plan` (its Rome `day`, whether `drawn`, `from` when it holds, `wet`, a wet day's `event`, `intensity`, `start`, `end` and `precip`, the `sky`, a dry day's `fog` until `lift` and strong wind from `windyFrom` to `windyTo`, and the `airMass`; times in seconds since the Rome day's midnight) |
 
 `Input` is transient: it is rebuilt every step and never saved.
 
@@ -146,8 +149,8 @@ emits and the host sends with `runtime.send`:
 - `SetClock` (set the game time and/or its rate): the host sends it to hold the clock behind the
   title card (`holdClock`, see [Host loop](#host-loop)), and the dev sky store for the debug menu;
   `ApplyClock` reads it.
-- `SetWeather` (force a regime, `settle` to jump to its steady state, or `null` for chance): the
-  dev sky store sends it; `ApplyWeather` reads it.
+- `SetWeather` (force a regime, or `null` to hand the weather back to the day's plan, `settle` to
+  jump to its steady state): the dev sky store sends it; `ApplyWeather` reads it.
 
 Snapshots hold no events, and emitting them changes neither the determinism nor the saves test.
 
@@ -158,11 +161,15 @@ threshold) are built once at load and never change, so they are safe to share be
 A rig under a handling off its real values (`rigFor`) is a pure function of the model and the
 `Handling`, derived on first use and cached (the whole cache empties once it holds 64 rigs, 16
 for each of the four models), so it is safe to share too.
-The sky's tables (the monthly climate normals, the regimes' `REGIME_SPECS`, the calibrated
-`SEASONS`) are module content as well. `ORIGIN` (lat 44.16175, lon 10.13), where the sun and the
-moon are worked out for, lives in `src/sim/map/kinds.ts`, so the sky modules the schema and the
-HUD import (`regimes`, `clock`, `calendar`, `astro`, `day`, `climate`, `local`, `readout`) decode
-no map (`sky/mapfree.test.ts` asserts it); `sky/weather.ts` does, for the heights and the bounds.
+The sky's tables (the national temperature normals, the odds' rows, the regimes' `REGIME_SPECS`)
+are module content as well. The map's place (`place()`, `src/sim/sky/place.ts`: its origin, its
+5th-percentile height and the way its ground falls) is per-load map content: `src/sim/map/index.ts`
+works it out once it decodes the map (13–20 ms) and hands it over with `providePlace`, as the host
+hands the map file to `provideMap`; with no map loaded it is the reference site, the shipped map's
+place. So the sky modules the schema and the HUD import (`regimes`, `clock`, `calendar`, `astro`,
+`place`, `day`, `climate`, `odds`, `plan`, `local`, `readout`) decode no map, and every Italian map
+gets its own sun and climate (`sky/mapfree.test.ts` asserts both); `sky/weather.ts` decodes it,
+for the heights and the bounds. `ORIGIN` in `src/sim/map/kinds.ts` now serves only the build.
 The land-cover raster (`mapCover` in `src/sim/map/cover.ts`, ≈ 105 ms and 4.9 MB) and the road
 index of `surfaceAt` (`src/sim/map/surface.ts`) are built on first use: pure functions of `MAP`,
 never written after; `main.ts` builds the raster in its "Painting land cover" loading step, so
@@ -445,8 +452,9 @@ atmosphere and the weather on screen every frame; the parts it drives live besid
   sun and moon, the light, the exposure, whether shadows are drawn, the fog layers and the weather
   at the focus.
 - **Each frame**, once the camera has moved, `draw(view, renderer)`:
-  1. works out the sun (`sunOver`), the moon and its phase (`moonAt`, `moonPhase`), the weather at
-     the focus (`conditionsAt`) and the fog layers (`fogLayers`), all the sim's pure functions;
+  1. works out the sun (`sunOver`), the moon and its phase (`moonAt` over `place()`, the place
+     `sunOver` reads, and `moonPhase`), the weather at the focus (`conditionsAt`) and the fog layers
+     (`fogLayers`), all the sim's pure functions;
   2. takes this frame's light (`skyLight`) and eases the exposure (time constant 1.5 s, in log
      space) and the lamps (1.2 s), landing both at once after a clock jump of more than 1,800 game
      seconds beyond the clock's own run (the dev menu);
@@ -588,13 +596,16 @@ first frame.
 
 Precipitation and bolts are scene objects the sky host makes, drawn after the world.
 
-- **Rain and snow** (`precipitation.ts`): static buffers of 12,288 one-texel streaks and 16,384
-  one- to two-texel flakes, anchored to the world on the camera plane and wrapped by the vertex
-  shader in a box around the focus (the widest zoom's view plus 4 m a side, in 16 m steps), so
-  nothing is uploaded per frame and zooming never reshuffles them. The count shown is the draw
+- **Rain and snow** (`precipitation.ts`): static buffers of 12,288 one-texel streaks and 36,864
+  one- to two-texel flakes (0.84 MB), anchored to the world on the camera plane and wrapped by the
+  vertex shader in a box around the focus (the widest zoom's view plus 4 m a side, in 16 m steps),
+  so nothing is uploaded per frame and zooming never reshuffles them. The count shown is the draw
   range, from the mm/h at the focus; the fall is integrated on the CPU in float64 from sim seconds,
-  slanted by the wind. In this orthographic view rain falls in front of what it falls on, so the
-  drops ignore depth.
+  slanted by the wind. Over the widest 1080p view the buffers keep thickening past the heaviest the
+  weather sends on high ground, 30 mm/h of water: rain to about 57 mm/h at 16:9 and 38 at 21:9,
+  snow to about 54 and 33. The flakes are laid in order, so snow under about 11 mm/h (6.5 at 21:9)
+  draws only the first 16,384, as before the buffer grew. In this orthographic view rain falls in
+  front of what it falls on, so the drops ignore depth.
 - **Bolts** (`lightning.ts`): a fixed pool of 3 `LineSegments` in an HDR colour, depth-tested but
   writing no depth; each channel is drawn from its flash's seed and timed at the event's
   `step · STEP.dt`. The scene flash is one smooth pulse per flash, carried by the hemisphere, and a
@@ -669,9 +680,10 @@ sky store `SkyView`:
   `driving`, `down`), the driven vehicle's label and speed, the vehicle in reach (label,
   occupied, stolen), the score, and the view's quarter turns.
 - `SkyView` returns a `SkyViewModel`: the game time (`seconds`) and `rate`, the Rome wall clock at
-  that time (`local`), and the `Weather` value. Host code calls the sim's pure sky functions on it
-  itself (`conditionsAt`, `sunOver`, `describeWeather`), so the HUD reads the weather as the
-  physics and the sound do.
+  that time (`local`), and the `Weather` value, its seed and day plan included. Host code calls the
+  sim's pure sky functions on it itself (`conditionsAt`, `sunOver`, `describeWeather`, `regimeAt`,
+  `untilChange`), so the HUD reads the weather as the physics and the sound do; the month's odds
+  are module content, which the menu reads with `oddsAt` at `place()`'s latitude.
 - The clock and weather readout (`src/hud/clock.ts`, `.when` in `index.html`): `#hud-clock`, a
   `<time>`, shows Rome's time as a 24-hour "HH:MM" (`clockText`), and `#hud-weather` (`lang="en"`)
   the sim's word for the weather where the player stands and the air's temperature at the ground
@@ -736,9 +748,13 @@ sky store `SkyView`:
   - Time (`debug-sky.ts`): the rates Stopped, Normal (a game minute a second), ×10 and ×60, a
     time-of-day slider, a date, and Sunrise and Sunset buttons from the sim's `sunTimes`, with the
     sun and moon read out.
-  - Weather (`debug-sky.ts`): Auto and a button for each regime (`REGIME_SPECS`), "Settle now", and
-    readouts of the regime, the air, the ground, the snow line, the wind and the sky where the
-    player stands. Over the paused map a regime sent but not yet taken reads "(on resume)".
+  - Weather (`debug-sky.ts`): Auto and a button for each regime (`REGIME_SPECS`), "Settle now",
+    readouts of the regime (and when the day's plan next changes it, `untilChange`), the air, the
+    ground, the snow line, the wind and the sky where the player stands, and the weather seed in
+    hex (`seedText`); then an Odds group, an h4 headed with Rome's month ("Odds (October)"), a line
+    naming the map's latitude, and one row per `DayOdds` field from `oddsAt` through `oddsReadout`,
+    snowfall at the player's ground height ([weather.md](weather.md#the-hud-and-the-dev-menu)).
+    Over the paused map a regime sent but not yet taken reads "(on resume)".
   - Handling (`debug-handling.ts`, [gameplay.md](gameplay.md#handling)): a button for each preset,
     Custom shown when the knobs match none, and a control for every knob. It reads the handling
     from the store, not from the game: the game applies a `SetHandling` event only on its next
@@ -751,9 +767,11 @@ sky store `SkyView`:
   only until the game has stepped (the game takes requests on its next step, and not while
   paused), then the game's own state, whoever set it: the host holds the clock behind the title
   card, so it reads Stopped there. `heading()` is the regime the weather moves toward: the one held,
-  else the last one forced that the game has not taken yet, else the game's; "Settle now" in Auto
-  settles that one and leaves the weather to chance. It stores nothing: the clock and the weather
-  are saved sim state.
+  else (Auto) the game's, or, while a hand-back to Auto has not been taken yet, the day's plan's
+  regime now (`regimeAt`); "Settle now" sends one request, `{ regime, settle: true }` with the
+  regime held, or in Auto `{ regime: null, settle: true }`, which hands the weather back to the
+  day's plan settled on its values. It stores nothing: the clock and the weather are saved sim
+  state.
 - Mobile mode: an inline script in `index.html`'s head marks the page `touch` when a touch screen
   is the main pointer (`(pointer: coarse)`), before the first paint, so the title card shows right.
   hud.css then shows the touch controls and a smaller HUD (the minimap top left, the speedometer
@@ -804,8 +822,8 @@ sky store `SkyView`:
 - `node --test`. Beside the unit tests, these guard the architecture:
   - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
     twice, with the handling off its real values (`SetHandling`) and the clock at ten game minutes
-    a step (`SetClock { rate: 600 }`: 100 game hours of weather, its regimes drawn from
-    `WeatherRng`, the roads wetting and drying under the car), and requires identical state,
+    a step (`SetClock { rate: 600 }`: 100 game hours of weather, its days planned from the weather
+    seed, the roads wetting and drying under the car), and requires identical state,
     transient components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, the clock at rate 600 and a
     forced, settled thunderstorm, goes through JSON, restores into a fresh runtime, and plays on
@@ -813,13 +831,16 @@ sky store `SkyView`:
   - `src/sim/sky.test.ts`: the clock in the runtime (08:00 in Rome on the start day, each step's
     rate, none at rate 0, through a save), `SetClock` and `SetWeather` sent before the first
     update still applied, a forced storm's lightning (bolts on the map, with the clock stopped,
-    the same in the same game), the weather's stream never reaching traffic or pedestrians, and a
-    car braking further on a wet road.
+    the same in the same game), the weather seed kept through a save and replaying the same days,
+    the seed alone planning the days whatever the storms drew, the weather's stream never reaching
+    traffic or pedestrians, and a car braking further on a wet road.
   - `src/sim/sky/*.test.ts`: the calendar (every day from 1900 to 2100, the summer-time switches),
-    the sun and the moon against JPL Horizons and USNO, the climate against its stations and the
-    regime chain's 16-year calibration, the weather's steps, ground, fog, wind, storm cell and
-    lightning, and the readout's words; `mapfree.test.ts`: the schema and the map-free sky
-    modules decode no map, and `ORIGIN` is the shipped map's origin.
+    the sun and the moon against JPL Horizons and USNO, the national normals, the odds and the day
+    plan against their tables (300 years at 38, 42 and 45.5 N), the weather as it falls against the
+    table and the snow targets (30 years, `calibration.test.ts`), the weather's steps, ground, fog,
+    wind, storm cell and lightning, and the readout's words; `mapfree.test.ts`: the schema and the
+    map-free sky modules decode no map, and once the map is decoded `place()` is its origin, its
+    5th-percentile height and its slope.
   - `src/sim/handling.test.ts`: each handling knob's effect, the weather grip loss's included (a
     Panda brakes about 1.3 times further on a wet road and 3 times on packed snow, and turns its
     wheels less at speed; at 0 the weather changes nothing), each preset's behaviour, and
@@ -832,8 +853,10 @@ sky store `SkyView`:
     from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
     the Esc and M routing (`overlayKey`) and the pause.
   - `src/hud/clock.test.ts`: the clock's and the weather's texts; `src/hud/sky.test.ts`: the sky
-    store (clamped as the sim clamps, what it sent shown until the game steps, Settle in Auto, the
-    title card's hold); `src/hud/debug-sky.test.ts`: the menu's rates and readouts;
+    store (clamped as the sim clamps, what it sent shown until the game steps, Auto heading for and
+    settling on the day's plan, the title card's hold); `src/hud/debug-sky.test.ts`: the menu's
+    rates and readouts, the odds and seed texts, the odds readout equal to `oddsAt`, and the
+    regime's countdown;
     `src/hud/title.test.ts`: the clock held behind the title card while the world moves on.
   - `src/render/index.test.ts`: every system of every described schedule (`render`, 7 systems, and
     `audio`) declares no writes; people and vehicles draw with the actor material; traffic and the
@@ -841,9 +864,11 @@ sky store `SkyView`:
   - `src/render/sky/*.test.ts`: the light (the settled look at 50.4°, the key turned with the view
     at three yaws, clouds taking the sun only under their shadows), the post pass against a mirror
     of its GLSL (fog, grades, the limit), the surface shader's key lines verbatim and its port
-    against the sim's snow cover and wetness, the host (the shadow skip, the fog's colour, the
-    puddles' mirror), the lamps' placement and lanterns, the bolts and the flash's limits, the drop
-    counts and wrap, the light pool, and the phase-locked sines; `stand-ins.test.ts`: every
+    against the sim's snow cover and wetness (its melt band's straight line equal to `celsiusAt`),
+    the host (the shadow skip, the fog's colour, the puddles' mirror, the sun and the moon over the
+    loaded map's place), the lamps' placement and lanterns, the bolts and the flash's limits, the
+    drop counts and wrap (both buffers under their cap at 30 mm/h), the light pool, and the
+    phase-locked sines; `stand-ins.test.ts`: every
     material a world build and the actors draw has a stand-in; `pipeline.test.ts`: `compile`
     builds into the scene's target; `actors.test.ts`: the vehicle lamps and the x-ray's yellow;
     `buildings.test.ts`: lit panes on homes only; `world.test.ts`: the glow and water meshes.

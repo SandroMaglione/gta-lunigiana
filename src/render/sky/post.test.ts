@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { DAY, daysFromCivil, utcFromRome } from "../../sim/sky/calendar.ts"
+import { fogLayers } from "../../sim/sky/local.ts"
+import type { Regime } from "../../sim/sky/regimes.ts"
+import { initialWeather, setWeather } from "../../sim/sky/weather.ts"
 import { linear } from "../geometry.ts"
 import { yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
@@ -61,6 +65,11 @@ const onScreen = (() => {
 
 const lit = { key: [2, 1.74, 1.37] as const, sky: [1.27, 1.45, 1.64] as const, ground: [0.58, 0.45, 0.25] as const }
 const none = { valleyTop: 250, valleyDensity: 0, cloudBase: 2600, cloudDensity: 0 }
+/** The sim's fog layers with the weather settled on `regime`, at noon on 15 January 2027, over the reference site's low ground. */
+const settled = (regime: Regime) => {
+  const t = utcFromRome(daysFromCivil(2027, 1, 15) * DAY + 12 * 3600)
+  return fogLayers(t, setWeather(initialWeather(t, 1), { regime, settle: true }, t)!)
+}
 
 test("a clear, dry sky leaves the picture alone: no fog, no haze", () => {
   const a = atmosphere(none, { rain: 0, snow: 0 }, lit)
@@ -78,11 +87,12 @@ test("valley fog: a white sea in the valleys, thick under its top, thin a little
   assert.ok(deep > 0.85, `deep ${deep}`)
   assert.ok(edge > 0.1 && edge < deep, `at the top ${edge}`)
   assert.ok(over < 0.01, `200 m over it ${over}`)
-  const thick = atmosphere({ valleyTop: 655, valleyDensity: 0.9, cloudBase: 2600, cloudDensity: 0 }, { rain: 0, snow: 0 }, lit)
+  // The fog regime: its stratus 405 m deep over the low ground at 0.9, the cloud down into it.
+  const thick = atmosphere(settled("fog"), { rain: 0, snow: 0 }, lit)
   assert.ok(thick.most <= 0.75 && fogVeil(thick, yOf(200), 500, 200) === thick.most, "the veil is capped at the focus plane")
   assert.ok(fogVeil(thick, yOf(200), 500, 0) < 0.75 * thick.most, "thinner around the player")
   assert.ok(fogVeil(thick, yOf(200), 450, 200) < fogVeil(thick, yOf(200), 560, 200), "nearer the eye (down the screen) less, deeper more")
-  const mist = atmosphere({ valleyTop: 385, valleyDensity: 0.3, cloudBase: 2600, cloudDensity: 0 }, { rain: 0, snow: 0 }, lit)
+  const mist = atmosphere(settled("rain"), { rain: 0, snow: 0 }, lit)
   assert.ok(fogVeil(mist, yOf(200), 500, 200) < 0.2, "a rain regime's mist is a light haze")
 })
 

@@ -63,7 +63,7 @@ export const at = (hour: number, minute = 0, days = 0): number => utcFromRome((d
 /** The tests' sky: 10:10 on 22 October, the sun 22° up, past the dawn chorus. */
 export const MORNING = skyAt(at(10, 10))
 /** The tests' weather: clear and dry, no snow on the map, the wind the law was tuned for with the valley's usual gusts. */
-export const CALM: WeatherValue = { ...initialWeather(MORNING.seconds), wind: USUAL_WIND, gust: 1.5, snowLine: NO_SNOW }
+export const CALM: WeatherValue = { ...initialWeather(MORNING.seconds, 1), wind: USUAL_WIND, gust: 1.5, snowLine: NO_SNOW }
 
 /** A small deterministic random source. */
 const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)

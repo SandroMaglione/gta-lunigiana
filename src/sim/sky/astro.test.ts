@@ -1,12 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { ORIGIN } from "../map/kinds.ts"
 import { moonAt, moonPhase, skyDirection, sunAt } from "./astro.ts"
 import { DAY, daysFromCivil } from "./calendar.ts"
 import { SUNRISE_ELEVATION, sunOver, sunTimes } from "./day.ts"
+import { place, REFERENCE_PLACE } from "./place.ts"
 
-const { lat, lon } = ORIGIN
+// The reference values belong to the reference site, not to whichever map is loaded; this file loads none, so the sky's place is it.
+const { lat, lon } = REFERENCE_PLACE
+assert.deepEqual(place(), REFERENCE_PLACE)
 /** UTC second of `year`-`month`-`day` `hour`:`minute` UTC. */
 const utc = (year: number, month: number, day: number, hour = 0, minute = 0) => daysFromCivil(year, month, day) * DAY + hour * 3600 + minute * 60
 /** `a − b` in degrees, the short way round. */

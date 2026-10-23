@@ -488,7 +488,7 @@ farther than `VIEW_REACH` (90 m, the farthest ground the camera shows).
 | `src/sim/systems/populate.ts` | `TRAFFIC`, `PEDESTRIANS` population limits, `PEOPLED` (where pedestrians spawn), spawn model mix |
 | `src/sim/systems/spawn.ts` | parked cars (`PARKED`), trucks (`TRUCKS`) |
 | `src/sim/systems/*.ts` | each system's own constants at the top of its file (physics: steering rates and the speed-sensitive lock; traffic: comfort, leaning, turning room, the cone's `CONE_CLEARANCE`, backing's `BACK_GAP` and `ALONGSIDE`; pedestrians, contacts, foot, enter/exit) |
-| `src/sim/sky/` | the clock, the climate, the regimes and the ground's weather (see [weather.md](weather.md#tuning)) |
+| `src/sim/sky/` | the clock, the map's place, the climate, the odds, the day plan, the regimes and the ground's weather (see [weather.md](weather.md#tuning)) |
 | `src/sim/map/kinds.ts` | road widths and which classes carry traffic, the player's car, or only people |
 | `src/render/pipeline.ts` | `zoomFor` zoom levels, `turnToward` view turn speed |
 | `src/audio/director/levels.ts` | how loud each sound is and how far it carries (see [audio.md](audio.md#known-limits-and-tuning)) |

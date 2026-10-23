@@ -13,10 +13,11 @@ export const AdvanceClock = Game.System("Lunigiana/AdvanceClock", {
 })
 
 /**
- * The weather over this step: over the clock's game seconds it counts down to the next regime and eases
- * toward the regime's targets, wetting, drying, snowing and thawing the ground (nothing moves at rate 0);
- * over the step's real time a thunderstorm's cell drifts downwind and throws Lightning around it, now and
- * then in front of the camera. Every draw comes from `WeatherRng`.
+ * The weather over this step: over the clock's game seconds it follows the day's plan (drawn from the
+ * weather seed) and eases toward the regime's targets, wetting, drying, snowing and thawing the ground
+ * (nothing moves at rate 0; a clock moved to another day only takes that day's plan); over the step's real
+ * time a thunderstorm's cell drifts downwind and throws Lightning around it, now and then in front of the
+ * camera. The storm's draws come from `WeatherRng`.
  */
 export const AdvanceWeather = Game.System("Lunigiana/AdvanceWeather", {
   queries: { player: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Player] }) },
@@ -28,7 +29,7 @@ export const AdvanceWeather = Game.System("Lunigiana/AdvanceWeather", {
 }, ({ queries, resources, events }) => {
   const { seconds, rate } = resources.clock.get(), { dt, step } = resources.time.get()
   const random = Random.draw(resources.rng), weather = resources.weather.get()
-  let next = advanceWeather(weather, seconds, rate, random)
+  let next = advanceWeather(weather, seconds, rate)
   const found = queries.player.singleOptional()
   if (found.ok && found.value !== undefined) {
     const at = found.value.data.pose.get()

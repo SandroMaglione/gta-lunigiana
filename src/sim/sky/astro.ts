@@ -4,7 +4,7 @@
  * refraction). The sun follows NOAA's Solar Calculator equations (Meeus, Astronomical Algorithms ch. 25;
  * https://gml.noaa.gov/grad/solcalc/main.js), the moon the Astronomical Almanac's low-precision series
  * with the topocentric parallax, both turned to the horizon through Greenwich mean sidereal time.
- * Checked against JPL Horizons and USNO at the map's `ORIGIN`: the sun within 0.02°, the moon within 0.7° (see
+ * Checked against JPL Horizons and USNO at the reference site, 44.16175 N, 10.13 E: the sun within 0.02°, the moon within 0.7° (see
  * astro.test.ts). Time is Unix UTC seconds; TT − UT (about 69 s) is ignored.
  *
  * @module astro

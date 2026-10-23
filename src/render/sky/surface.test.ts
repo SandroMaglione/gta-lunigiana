@@ -4,8 +4,8 @@ import { test } from "node:test"
 import { Color, type IUniform, MeshLambertMaterial, ShaderChunk, ShaderLib, Vector2, Vector3 } from "three"
 
 import { DAY, daysFromCivil, utcFromRome } from "../../sim/sky/calendar.ts"
-import { airAt, type Air, celsiusAt } from "../../sim/sky/climate.ts"
-import { EDGE, groundAt, snowCoverAt, snowEdge } from "../../sim/sky/local.ts"
+import { airAt, type Air, celsiusAt, NO_SNOW, normalsAt } from "../../sim/sky/climate.ts"
+import { EDGE, groundAt, MELT_BAND, REACH, snowCoverAt, snowEdge } from "../../sim/sky/local.ts"
 import { actorMaterial, decalMaterial, solidMaterial, treeMaterial, waterMaterial } from "../geometry.ts"
 import { yOf } from "../ground.ts"
 import { viewAxes } from "../pipeline.ts"
@@ -143,11 +143,11 @@ test("the white edge on screen is where the tyres lose grip: the shader's snow c
   for (const [x, y] of [[0, 0], [2364, -5129], [-412.9, 438.1], [17.5, -80.25], [-1751, 3360], [4210, -2454], [79.99, 20.01]] as const) {
     assert.ok(Math.abs(mirror.edgeAt(x, y) - snowEdge(x, y)) < 1e-9, `edge at (${x}, ${y})`)
   }
-  // Points around a snow line on Monte Sagro's flanks, in three space (x, render y, −north), in a thaw and in a frost; the lower
-  // line's meltwater band crosses the knee of the air's lapse rate (1100 m).
+  // Points around a snow line on Monte Sagro's flanks, in three space (x, render y, −north), in a thaw and in a frost, and around a
+  // low line in a thaw.
   const wet = 0.3
   let edges = 0, melting = 0, worst = 0
-  for (const [snowLine, air] of [[1500, january(14, 6)], [1500, january(7, -4)], [1150, january(14, 4)]] as const) {
+  for (const [snowLine, air] of [[1500, january(14, 6)], [1500, january(7, -4)], [600, january(14, 0)]] as const) {
     applySurface({ ...calm, snowLine, wet, air })
     for (let k = 0; k < 2000; k++) {
       const x = 2000 + ((k * 7919) % 900), north = -5400 + ((k * 104729) % 700), z = snowLine - 200 + ((k * 31) % 320)
@@ -160,12 +160,33 @@ test("the white edge on screen is where the tyres lose grip: the shader's snow c
       if (sim.wet > wet + 0.05) melting++
     }
   }
-  assert.ok(worst < 0.03, `wetness within ${worst.toFixed(4)} of the sim's (its air as a line across the band)`)
+  assert.ok(worst < 1e-9, `wetness ${worst} off the sim's: the air is a straight line across the band`)
   assert.ok(edges > 100 && melting > 100, `${edges} points in the edge's feather, ${melting} wetted by meltwater`)
   assert.ok(celsiusAt(january(7, -4), 1500) < 0 && celsiusAt(january(14, 6), 1500) > 1, "one frost, one thaw")
   // No snow anywhere, and the plain wetness, under the sim's no-snow line.
-  applySurface({ ...calm, snowLine: 3000, wet: 0.4, air: january(14, 6) })
+  applySurface({ ...calm, snowLine: NO_SNOW, wet: 0.4, air: january(14, 6) })
   assert.deepEqual(mirror.ground(2364, yOf(1748), 5129), { cover: 0, wet: 0.4 })
+})
+
+test("the meltwater band's air is the sim's: a straight line in height wherever snow can lie in Italy, in every month, hour and weather", () => {
+  // `celsiusAt` bends only where the daily range reaches its floor: above 5.2 km in every month from 35.5 to 47.1 N (7.6 km north
+  // of 44 N), over Italy's highest ground (4808 m); a snow line above a map's top is the sim's `NO_SNOW`, over no ground at all.
+  let worst = 0
+  for (const lat of [35.5, 38, 42, 44.16, 45.5, 47.1]) {
+    for (let day = 0; day < 365; day += 5) {
+      const t = utcFromRome((daysFromCivil(2027, 1, 1) + day) * DAY + ((day * 7) % 24) * 3600)
+      // The day's swing of the range, from the coldest hour under a clear calm sky to the warmest (`rangeShare` up to 1.15).
+      for (const swing of [-0.575, 0, 0.575]) {
+        const air: Air = { normals: normalsAt(t, lat), swing, anomaly: -3 }
+        for (let snowLine = 0; snowLine <= 4810; snowLine += 370) {
+          applySurface({ ...calm, snowLine, air })
+          const { x: atLine, y: perMetre } = SKY_UNIFORMS.uMelt.value
+          for (let z = snowLine - REACH - MELT_BAND; z <= snowLine + REACH; z += 10) worst = Math.max(worst, Math.abs(atLine + perMetre * (z - snowLine) - celsiusAt(air, z)))
+        }
+      }
+    }
+  }
+  assert.ok(worst < 1e-9, `the band's line is ${worst} °C off the sim's air`)
 })
 
 /** The cloud field of the shader, mirrored: three octaves of periodic value noise over 240 m cells. */
@@ -194,7 +215,7 @@ const clouds = (() => {
 })()
 
 const calm: Surface = {
-  snowLine: 3000, wet: 0, air: january(12, 0), cloudCover: 0, cloudOffset: { x: 0, y: 0 }, wind: { x: 0, y: 0 }, rain: 0, texelsPerMetre: 8,
+  snowLine: NO_SNOW, wet: 0, air: january(12, 0), cloudCover: 0, cloudOffset: { x: 0, y: 0 }, wind: { x: 0, y: 0 }, rain: 0, texelsPerMetre: 8,
   viewRight: viewAxes(0).right, skyColour: new Color(0.4, 0.5, 0.6)
 }
 

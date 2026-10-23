@@ -59,9 +59,10 @@ edge.
 
 ### 2. Projection and play area (`geometry.ts`)
 
-Equirectangular around `ORIGIN` (lat 44.16175, lon 10.13; defined in `src/sim/map/kinds.ts`, where
-the sky takes it from too), with `M_PER_DEG` = 111115.37 m per degree of latitude and 79987.94 m per
-degree of longitude. x = east, y = north, in metres, rounded to 0.1 m. The play area `BOUNDS` is x
+Equirectangular around `ORIGIN` (lat 44.16175, lon 10.13; defined in `src/sim/map/kinds.ts` and
+written into the map file as `MAP.origin`, which the sky reads through `place()`), with
+`M_PER_DEG` = 111115.37 m per degree of latitude and 79987.94 m per degree of longitude. x = east,
+y = north, in metres, rounded to 0.1 m. The play area `BOUNDS` is x
 −2900…4900 m, y −6100…3900 m (7.8 × 10 km; lat 44.1069–44.1968, lon 10.0937–10.1913): the whole
 catchment of the Lucido, ridge to ridge, from its mouth in the Aulella below Gragnola up both
 branches. Up the Vinca branch: the SP59, Vinca and its valley to Foce di Vinca, the Garnerone and

@@ -38,10 +38,10 @@ export const birdActivity = (sun: number, morning: boolean, rain: number): numbe
 /** How busy the tawny owls are, 0…1: from 10–20 minutes after sunset (the sun 2–6° under) until as long before sunrise, silent in heavy rain. */
 export const owlActivity = (sun: number, rain: number): number => (1 - smoothstep(-6, -2, sun)) * (1 - smoothstep(0.5, 4, rain))
 
-/** The valley wind the wind's law was tuned for, m/s at 10 m: an October day's, about the regimes' mean in October. */
+/** The low-ground wind the wind's law was tuned for, m/s at 10 m: a cloudy day's, a little over the weather's mean (2.5 m/s in October on the shipped map, 2.4–2.8 by month). */
 export const USUAL_WIND = 3
 
-/** How much harder than usual `weather` blows: its valley wind over `USUAL_WIND` (the wind's strength scales with speed, level with its square). */
+/** How much harder than usual `weather` blows: its low-ground wind over `USUAL_WIND` (the wind's strength scales with speed, level with its square). */
 export const windFactor = (weather: Pick<WeatherValue, "wind">): number => Math.max(0, weather.wind) / USUAL_WIND
 
 /** The wind voice's gustiness from the weather's gust factor (peak over mean): 1.5, open ground's, is the valley's usual (`VALLEY_GUSTS`), 2 and over squalls. */

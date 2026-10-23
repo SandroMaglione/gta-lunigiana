@@ -1,19 +1,22 @@
 /**
  * The sun over the map through a game day: where it stands (`sunOver`) and when it rises and sets on
  * a Rome calendar day (`sunTimes`), for the HUD's sunrise and sunset buttons. Takes the map's place
- * from `ORIGIN`, so it decodes no map.
+ * from `place()`, so it decodes no map.
  *
  * @module day
  */
-import { ORIGIN } from "../map/kinds.ts"
 import { sunAt, type SunPlace } from "./astro.ts"
 import { DAY, romeOffset, utcFromRome } from "./calendar.ts"
+import { place } from "./place.ts"
 
 /** The sun's centre at sunrise and sunset, degrees: the disc's radius and the horizon's refraction (USNO's convention). */
 export const SUNRISE_ELEVATION = -0.833
 
-/** The sun over the map (`ORIGIN`) at UTC second `t`. */
-export const sunOver = (t: number): SunPlace => sunAt(t, ORIGIN.lat, ORIGIN.lon)
+/** The sun over the map (its origin, `place()`) at UTC second `t`. */
+export const sunOver = (t: number): SunPlace => {
+  const { lat, lon } = place()
+  return sunAt(t, lat, lon)
+}
 
 /** When the sun rises and sets on one day, UTC seconds (whole). */
 export interface SunTimes {
@@ -36,7 +39,7 @@ const crossing = (from: number, to: number): number => {
 /**
  * Sunrise and sunset over the map on the Rome calendar day holding UTC second `t` (the sun's centre at
  * −0.833°, within a minute of USNO's tables; astro.test.ts): found hour by hour from local midnight,
- * then by bisection. Undefined on a day the sun never crosses the horizon (never at the map's latitude).
+ * then by bisection. Undefined on a day the sun never crosses the horizon (never at Italy's latitudes).
  */
 export const sunTimes = (t: number): SunTimes | undefined => {
   const local = t + romeOffset(t), midnight = utcFromRome(Math.floor(local / DAY) * DAY)

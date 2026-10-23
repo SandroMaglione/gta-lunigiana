@@ -22,7 +22,7 @@ test("the clock reads a 24-hour HH:MM, the minutes cut as a clock cuts them", ()
 })
 
 test("the weather readout gives the sim's word for the weather where the player stands and the air's temperature there, to the whole degree", () => {
-  const weather = setWeather(initialWeather(JANUARY), { regime: "rain", settle: true }, JANUARY)!
+  const weather = setWeather(initialWeather(JANUARY, 1), { regime: "rain", settle: true }, JANUARY)!
   const sky = { seconds: JANUARY, weather }
   for (const { x, y, z } of [SPAWN, SAGRO]) {
     const word = describeWeather(weather, conditionsAt(JANUARY, weather, x, y, z))

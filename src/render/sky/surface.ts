@@ -301,8 +301,9 @@ export const applySurface = (s: Surface): void => {
   const u = SKY_UNIFORMS
   u.uSnowLineY.value = yOf(s.snowLine)
   u.uWet.value = clamp01(s.wet)
-  // The air's temperature across the meltwater band (70 m above the line down to 170 m below it) as a straight line: at worst 0.23 °C off
-  // the sim's, where the band crosses the lapse rate's knee at 1100 m (all months, hours, covers and anomalies).
+  // The air's temperature across the meltwater band (70 m above the line down to 170 m below it) as a straight line: the sim's own, as
+  // `celsiusAt` falls straight with height up to where the daily range reaches its floor, above 5.2 km in every month at Italy's
+  // latitudes (surface.test.ts).
   const below = celsiusAt(s.air, s.snowLine - MELT_SPAN.below), over = celsiusAt(s.air, s.snowLine + MELT_SPAN.above)
   u.uMelt.value.set(celsiusAt(s.air, s.snowLine), (over - below) / (MELT_SPAN.above + MELT_SPAN.below))
   const cover = clamp01(s.cloudCover)

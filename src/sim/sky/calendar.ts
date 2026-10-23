@@ -77,3 +77,9 @@ export const romeTime = (t: number): RomeTime => {
   const local = t + romeOffset(t), days = Math.floor(local / DAY), into = local - days * DAY
   return { ...civilFromDays(days), hour: Math.floor(into / 3600), minute: Math.floor((into % 3600) / 60), second: into % 60 }
 }
+
+/** Rome's calendar day at UTC second `t` (days since 1970-01-01) and how far into it the wall clock reads, seconds (0 at midnight). */
+export const romeDay = (t: number): { readonly day: number; readonly second: number } => {
+  const local = t + romeOffset(t), day = Math.floor(local / DAY)
+  return { day, second: local - day * DAY }
+}

@@ -3,6 +3,11 @@ import { test } from "node:test"
 
 import { groundZ } from "../../sim/map/ground.ts"
 import type { WeatherValue } from "../../sim/schema.ts"
+import { DAY, daysFromCivil, utcFromRome } from "../../sim/sky/calendar.ts"
+import { conditionsAt } from "../../sim/sky/local.ts"
+import { place, providePlace } from "../../sim/sky/place.ts"
+import { REGIME_SPECS } from "../../sim/sky/regimes.ts"
+import { advanceWeather, initialWeather } from "../../sim/sky/weather.ts"
 import { CABIN, dbToGain, gainToDb, mixGain, NIGHT_DB, SPEED_OF_SOUND } from "../acoustics.ts"
 import { smoothstep } from "../buffers.ts"
 import { skyAt } from "../index.ts"
@@ -17,7 +22,7 @@ import {
 
 /** The night: 02:00, the sun 55° under. */
 const NIGHT = skyAt(at(2))
-/** `CALM` raining `precip` mm/h on the valley floor (more uphill). */
+/** `CALM` raining `precip` mm/h at sea level (more uphill). */
 const raining = (precip: number): WeatherValue => ({ ...CALM, cloud: 1, precip })
 /** Fresh snow on the whole map. */
 const SNOWY: WeatherValue = { ...CALM, snowLine: 0 }
@@ -37,7 +42,7 @@ test("rain plays a bed at the ears while it falls, at the rate falling there; dr
   const light = rain(raining(1)), heavy = rain(raining(20))
   assert.ok(light?.sound.kind === "rain" && heavy?.sound.kind === "rain" && heavy.sound.rate > light.sound.rate && light.sound.rate > 1, JSON.stringify([light, heavy]))
   assert.ok(heavy.sound.forest === 0 && heavy.at.pan === 0 && heavy.at.wet === 0, "the meadow's open ground, all around, dry of reverb")
-  // 15 °C colder than the normal: about −4 °C on the meadow, where everything falls as snow.
+  // 15 °C colder than the normal: about −2 °C on the meadow, where everything falls as snow.
   assert.equal(rain({ ...raining(20), anomaly: -15 }), undefined)
 })
 
@@ -214,11 +219,24 @@ const windAt = (spot: { readonly x: number; readonly y: number }, weather: Parti
 
 test("in the usual wind the wind voice is the one tuned before the weather, by altitude, open ground and streets", () => {
   // Regression: a law rebased for the gale's headroom ran the usual wind's voice at 0.75 of its strength, 5 dB up: as loud, but
-  // duller, and a ridge hardly whistled.
+  // duller, and a ridge hardly whistled. The law was tuned on this map from 150 to 1000 m a.s.l.; it now counts from the map's floor
+  // (230.3 m here), so it holds to the floor's 0.3 m: under 0.001 of strength, 0.01 dB.
   for (const spot of [RIDGE, MEADOW, STREET, HILLSIDE, SPAWN]) {
     const tuned = 0.15 + 0.7 * smoothstep(150, 1000, groundZ(spot.x, spot.y)) + 0.15 * ambienceAt(spot.x, spot.y).open - 0.3 * streetAt(spot.x, spot.y)
     const still = 10 ** ((floorDb(MORNING.sun) - BEDS.wind) / 40)
-    assert.ok(Math.abs(windAt(spot).strength - Math.min(1, Math.max(still, tuned))) < 1e-9, `${JSON.stringify(spot)}: ${windAt(spot).strength} against ${tuned}`)
+    assert.ok(Math.abs(windAt(spot).strength - Math.min(1, Math.max(still, tuned))) < 1e-3, `${JSON.stringify(spot)}: ${windAt(spot).strength} against ${tuned}`)
+  }
+})
+
+test("the wind rises with the ears' height over the map's floor, not over the sea: where the floor stands above the ridge it blows there as on the floor", () => {
+  const shipped = place(), { open } = ambienceAt(RIDGE.x, RIDGE.y)
+  assert.ok(windAt(RIDGE).strength > 0.15 + 0.15 * open + 0.6, `${windAt(RIDGE).strength} on the shipped map`)
+  // An Alpine map whose floor lies 500 m over the ridge: the ridge's ears stand at its floor's stillness, open ground's share only.
+  providePlace({ ...shipped, floor: groundZ(RIDGE.x, RIDGE.y) + 500 })
+  try {
+    assert.ok(Math.abs(windAt(RIDGE).strength - (0.15 + 0.15 * open)) < 1e-9, `${windAt(RIDGE).strength} under an Alpine floor`)
+  } finally {
+    providePlace(shipped)
   }
 })
 
@@ -233,8 +251,23 @@ test("the wind blows as the weather does: stiller than usual down to the rural f
   assert.ok(Math.abs(windy.strength / breeze.strength - 2) < 1e-9 && windDb(1) === BEDS.wind)
 })
 
-// Regression: the floor counted the wind outside, 15 dB over the wind the cabin lets through, so from a car in the Tramontana
-// (8 m/s) a car 20 m off was culled, though on foot it was heard 12 dB under its full gain.
+test("the usual wind the law was tuned for is a cloudy day's, a little over the weather's own mean: 2.5 m/s over 30 Octobers on this map", () => {
+  const step = 600
+  let sum = 0, n = 0
+  for (let year = 2001; year < 2031; year++) {
+    const from = utcFromRome(daysFromCivil(year, 10, 1) * DAY)
+    let weather = initialWeather(from, year)
+    for (let t = from + step; t < from + 31 * DAY; t += step) {
+      weather = advanceWeather(weather, t, step)
+      sum += weather.wind
+      n++
+    }
+  }
+  assert.ok(USUAL_WIND === REGIME_SPECS.cloudy.wind && sum / n > 2.3 && sum / n < USUAL_WIND, `${sum / n} m/s`)
+})
+
+// Regression: the floor counted the wind outside, 15 dB over the wind the cabin lets through, so from a car in the windy
+// regime's 8 m/s a car 20 m off was culled, though on foot it was heard 12 dB under its full gain.
 test("in a car the wind masks as it plays there, through the cabin: a car across the meadow is heard as on foot less the cabin's loss, in any wind", () => {
   for (const wind of [USUAL_WIND, 6, 8]) {
     for (const metres of [10, 20, 40]) {
@@ -310,17 +343,22 @@ test("an hour's ring waits for the audio context: the 08:00 held behind the titl
   assert.equal(strokes.filter((p) => p.at.gain === Math.max(...strokes.map((s) => s.at.gain))).length, 8)
 })
 
-test("crickets sing in warm, dry air at the ears: on the meadow on a mild morning, not on the ridge 600 m higher, nor in the cold or the rain", () => {
+// Regression: the ridge's silence was its wind's masking, not its air: in still air it sang at 11 °C.
+test("crickets sing in warm, dry air at the ears: on the meadow at 11 °C, not on the ridge 580 m higher in the same air, nor in the cold or the rain", () => {
   const crickets = (spot: { readonly x: number; readonly y: number }, weather: WeatherValue) => {
     const director = rig()
     director.hear(world(spot, { weather }))
     return director.held().get("crickets")?.sound
   }
-  const mild = { ...CALM, anomaly: 1 }, sung = crickets(MEADOW, mild)
-  assert.ok(sung?.kind === "crickets" && sung.celsius > 10, JSON.stringify(sung))
-  assert.equal(crickets(RIDGE, mild), undefined)
-  // A cold air mass: 6 °C under the normal leaves a clear late-October morning under the crickets' 10 °C.
-  assert.equal(crickets(MEADOW, { ...mild, anomaly: -6 }), undefined)
+  // Still air, so no wind masks them; the air mass that brings `spot` to 11 °C this morning.
+  const still = { ...CALM, wind: 0 }
+  const at11 = (spot: { readonly x: number; readonly y: number }): WeatherValue =>
+    ({ ...still, anomaly: 11 - conditionsAt(MORNING.seconds, still, spot.x, spot.y, groundZ(spot.x, spot.y)).celsius })
+  const sung = crickets(MEADOW, at11(MEADOW)), ridge = crickets(RIDGE, at11(RIDGE))
+  assert.ok(sung?.kind === "crickets" && Math.abs(sung.celsius - 11) < 1e-9 && ridge?.kind === "crickets", JSON.stringify([sung, ridge]))
+  assert.equal(crickets(RIDGE, at11(MEADOW)), undefined)
+  // A cold air mass: 6 °C under the normal leaves a clear late-October morning under the crickets' 10 °C (7 °C on the meadow).
+  assert.equal(crickets(MEADOW, { ...CALM, anomaly: -6 }), undefined)
   assert.equal(crickets(MEADOW, { ...raining(2), anomaly: 1 }), undefined)
 })
 

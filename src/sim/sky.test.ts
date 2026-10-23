@@ -4,7 +4,9 @@ import { test } from "node:test"
 import type { Descriptor } from "@typeonce/ritmo"
 import { Ops } from "@typeonce/ritmo-math"
 
-import { DEFAULT_START, Game, type GameClockValue, SetClock, SetHandling, SetWeather, Skid, SkyView } from "./index.ts"
+import { Keyboard } from "@typeonce/ritmo-browser"
+
+import { bindings, DEFAULT_START, Game, type GameClockValue, KeyboardInput, makeRuntime, type PlanValue, SetClock, SetHandling, SetWeather, setup, Skid, SkyView, update } from "./index.ts"
 import { MAP } from "./map/index.ts"
 import { REGIME_SPECS } from "./sky/regimes.ts"
 import { ON_BATTISTI, rolling, start } from "./testing.ts"
@@ -59,6 +61,58 @@ test("a forced thunderstorm throws lightning, its bolts on the map, even with th
   assert.ok(a.heard.lightning.some((l) => l.bolt) && a.heard.lightning.some((l) => !l.bolt))
   assert.deepEqual(b.heard.lightning, a.heard.lightning)
   assert.equal(a.world().clock.seconds, DEFAULT_START, "the clock stood still")
+})
+
+test("the weather seed: a new game keeps WeatherRng's first state as the weather's seed, and a save keeps it; the same seed replays the same days, another seed others", () => {
+  /** A new game from `seed`, run 12 game days at a game hour a step: its weather seed and the days it planned. */
+  const game = (seed: number) => {
+    const made = makeRuntime({ seed, services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.scripted(bindings, []))) })
+    assert.ok(made.ok)
+    const runtime = made.value
+    assert.ok(runtime.tick(setup).ok)
+    const first = runtime.snapshot().resources["Lunigiana/WeatherRng"], weatherSeed = runtime.inspect(SkyView).weather.seed
+    runtime.send(SetClock, { rate: 3600 })
+    const days: Array<PlanValue> = []
+    for (let k = 0; k < 24 * 12; k++) {
+      assert.ok(runtime.tick(update).ok)
+      const { plan } = runtime.inspect(SkyView).weather
+      if (days.at(-1)?.day !== plan.day) days.push(plan)
+    }
+    assert.equal(runtime.inspect(SkyView).weather.seed, weatherSeed, "never changes")
+    return { first, weatherSeed, days, runtime }
+  }
+  const a = game(41), b = game(41), c = game(42)
+  assert.deepEqual([a.weatherSeed, a.first], [(41 ^ 0x9e3779b9) >>> 0, (41 ^ 0x9e3779b9) >>> 0])
+  assert.notEqual(c.weatherSeed, a.weatherSeed)
+  assert.ok(a.days.length >= 12 && a.days.every((plan) => plan.drawn))
+  assert.deepEqual(b.days, a.days)
+  assert.notDeepEqual(c.days, a.days)
+  const restored = start()
+  assert.ok(restored.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.deepEqual(restored.world().weather, a.runtime.inspect(SkyView).weather)
+})
+
+// Regression: the day plan drew from WeatherRng after the storm, whose draws follow where the player stands, so after a thunderstorm two
+// games from one seed planned other days.
+test("the weather seed alone plans the days: two games from one seed plan the same days, though their players stood apart in a storm", () => {
+  /** A game from seed 1 with its player at `at`: a forced storm for half a real minute, handed back to the plan, then six game days. */
+  const game = (at: { readonly x: number; readonly y: number; readonly angle: number }) => {
+    const played = start([], [at])
+    played.runtime.send(SetWeather, { regime: "storm", settle: true })
+    played.run(60 * 30)
+    played.runtime.send(SetWeather, { regime: null })
+    played.runtime.send(SetClock, { rate: 3600 })
+    const days: Array<PlanValue> = []
+    played.run(24 * 6, () => {
+      const { plan } = played.world().weather
+      if (days.at(-1)?.day !== plan.day) days.push(plan)
+    })
+    return { days, lightning: played.heard.lightning, rng: played.runtime.snapshot().resources["Lunigiana/WeatherRng"] }
+  }
+  const a = game(FAR_AWAY), b = game({ x: -412, y: 438, angle: 0 })
+  assert.ok(a.lightning.length > 0 && b.lightning.length > 0 && a.rng !== b.rng, "the storms drew differently")
+  assert.ok(a.days.length >= 6)
+  assert.deepEqual(b.days, a.days)
 })
 
 test("the weather's own random stream never reaches traffic or pedestrians: other weather draws, the same streets", () => {

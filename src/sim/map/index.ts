@@ -18,6 +18,7 @@
  * @module map
  */
 import { staticGrid } from "../collide.ts"
+import { placeFrom, providePlace } from "../sky/place.ts"
 import { BUILDING_STYLES, type BuildingStyle, isRoadClass, pushTrunk, type RoadClass, TRUNK } from "./kinds.ts"
 import { decodeMap, mapFile } from "./packed.ts"
 
@@ -151,6 +152,8 @@ export interface MonzoneMapJson extends Omit<MonzoneMap, "heightmap" | "walls" |
 
 /** The whole map, as generated. */
 export const MAP: MonzoneMap = decodeMap(mapFile())
+// The sky reads the map's place (its origin, low ground and slope) without decoding the map.
+providePlace(placeFrom(MAP.origin, MAP.heightmap))
 
 /** The road's class; the build only emits `ROAD_CLASSES` (checked by map.test.ts), anything else reads as "path". */
 export const roadClassOf = (road: Road): RoadClass => (isRoadClass(road.cls) ? road.cls : "path")
