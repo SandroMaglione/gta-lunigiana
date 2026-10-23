@@ -25,6 +25,11 @@ jobs:
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
+        env:
+          # An org-wide API key must name the workspace it bills; Claude Code
+          # sends ANTHROPIC_CUSTOM_HEADERS with every request. Set the repo
+          # variable ANTHROPIC_WORKSPACE_ID (wrkspc_...) when using such a key.
+          ANTHROPIC_CUSTOM_HEADERS: ${{ vars.ANTHROPIC_WORKSPACE_ID && format('anthropic-workspace-id: {0}', vars.ANTHROPIC_WORKSPACE_ID) || '' }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
