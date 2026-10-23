@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { misplacedTest } from "../plugin.ts"
+import { misplacedTest } from "../test-files.ts"
 
 test("a test belongs directly in a __tests__ folder; other files are not checked", () => {
   assert.equal(misplacedTest("/repo/src/sim/__tests__/walls.test.ts"), false)

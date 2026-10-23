@@ -1,8 +1,8 @@
 /**
- * The project's own oxlint rules, registered in `.oxlintrc.json` as `"jsPlugins": ["./lint/plugin.ts"]`
- * and named `lunigiana/<rule>`.
+ * The `test-files` oxlint plugin: where the tests live. Registered in `.oxlintrc.json` as
+ * `"jsPlugins": ["./lint/test-files.ts"]`; each plugin in `lint/` is its own file, named after it.
  *
- * @module lint/plugin
+ * @module lint/test-files
  */
 import { basename, dirname } from "node:path"
 
@@ -13,7 +13,7 @@ export const misplacedTest = (filename: string): boolean =>
   filename.endsWith(".test.ts") && basename(dirname(filename)) !== "__tests__"
 
 /** A test sits in a `__tests__` folder beside the module it tests. */
-const testsFolder = defineRule({
+const inTestsFolder = defineRule({
   meta: {
     type: "suggestion",
     docs: { description: "Keep each test in a `__tests__` folder beside the module it tests." },
@@ -29,4 +29,7 @@ const testsFolder = defineRule({
   }),
 })
 
-export default definePlugin({ meta: { name: "lunigiana" }, rules: { "tests-folder": testsFolder } })
+export default definePlugin({
+  meta: { name: "test-files" },
+  rules: { "in-tests-folder": inTestsFolder },
+})
