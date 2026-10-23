@@ -93,8 +93,11 @@ const polygonsOf = (r: ShpRecord): Array<Array<Array<number>>> => {
   const polys: Array<{ outer: Array<P>; flat: Array<number>; holes: Array<Array<P>> }> = []
   for (const ring of rings) {
     const host = polys.find((p) => pointInRing(ring[0]![0], ring[0]![1], p.flat))
-    if (host !== undefined) host.holes.push(ring)
-    else polys.push({ outer: ring, flat: ring.flatMap(([x, y]) => [x, y]), holes: [] })
+    if (host === undefined) {
+      polys.push({ outer: ring, flat: ring.flatMap(([x, y]) => [x, y]), holes: [] })
+    } else {
+      host.holes.push(ring)
+    }
   }
   return polys.flatMap((p) => {
     const outer = flatRing(clipRing(p.outer), true)
@@ -161,8 +164,8 @@ export const readCtr = (dir: string): Ctr => {
       buildings.push({
         id: id - k * 1e7,
         kind: spec.kind,
-        ...(spec.style !== undefined ? { style: spec.style } : {}),
-        ...(eave !== undefined ? { eave } : {}),
+        ...(spec.style === undefined ? {} : { style: spec.style }),
+        ...(eave === undefined ? {} : { eave }),
         h: spec.h,
         outer: outer!,
         ...(holes.length > 0 ? { holes } : {}),
@@ -172,7 +175,7 @@ export const readCtr = (dir: string): Ctr => {
   const roadAreas = layer("AVI").flatMap(({ rec }) => {
     const name = streetName(rec.attrs.Toponimo ?? "")
     return polygonsOf(rec).map((rings) => ({
-      ...(name !== undefined ? { name } : {}),
+      ...(name === undefined ? {} : { name }),
       paved: rec.attrs.Cod_CTR === "0101",
       rings,
     }))

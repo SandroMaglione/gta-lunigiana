@@ -1,12 +1,122 @@
 {
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
   "jsPlugins": ["@typeonce/oxlint-plugin-ritmo"],
-  "ignorePatterns": ["node_modules"],
+  "options": { "typeAware": true },
+  "env": { "builtin": true, "es2024": true },
+  "ignorePatterns": ["node_modules", "dist", "data"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error"
+  },
   "rules": {
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-var": "error",
+    "prefer-const": "error",
+    "object-shorthand": "error",
+    "prefer-template": "error",
+    "prefer-exponentiation-operator": "error",
+    "no-useless-rename": "error",
+    "no-useless-computed-key": "error",
+    "no-else-return": ["error", { "allowElseIf": false }],
+    "no-lonely-if": "error",
+    "no-useless-concat": "error",
+    "prefer-object-spread": "error",
+    "prefer-rest-params": "error",
+    "prefer-spread": "error",
+    // Modules stay small (CODING_STANDARDS.md); tests are exempt below.
+    "max-lines": ["error", { "max": 700, "skipBlankLines": true, "skipComments": true }],
+    "import/first": "error",
+    "import/no-duplicates": "error",
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "typescript/consistent-type-imports": ["error", { "fixStyle": "inline-type-imports" }],
+    "typescript/consistent-type-definitions": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-inferrable-types": "error",
+    "typescript/prefer-optional-chain": "error",
+    // `||` on a string still treats "" as absent.
+    "typescript/prefer-nullish-coalescing": ["error", { "ignorePrimitives": { "string": true } }],
+    "typescript/switch-exhaustiveness-check": "error",
+    // node:test runs every test() it is handed; any other promise is awaited or voided.
+    "typescript/no-floating-promises": [
+      "error",
+      { "allowForKnownSafeCalls": [{ "from": "package", "package": "node:test", "name": "test" }] }
+    ],
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/throw-new-error": "error",
+    "unicorn/prefer-string-slice": "error",
+    "unicorn/catch-error-name": "error",
+    // Assertion messages print numbers and arrays as they are.
+    "typescript/restrict-template-expressions": [
+      "error",
+      { "allowNumber": true, "allowArray": true }
+    ],
+
+    // Off: the rule's fix would break code or change behaviour.
+    // `| 0` wraps to int32 in the seeded generators; Math.trunc does not.
+    "unicorn/prefer-math-trunc": "off",
+    // parseFloat reads OSM values with units ("3.5 m"); Number gives NaN.
+    "unicorn/prefer-number-coercion": "off",
+    // Ritmo's Result.success(undefined) and required parameters need the explicit undefined.
+    "unicorn/no-useless-undefined": "off",
+    // getElementById types its result as HTMLElement; appendChild returns the node it appends.
+    "unicorn/prefer-query-selector": "off",
+    "unicorn/prefer-dom-node-append": "off",
+    // Hot code sorts fresh arrays in place; toSorted would allocate a copy each time.
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    // Each audio node gets one onended; onmessage also starts its MessagePort.
+    "unicorn/prefer-add-event-listener": "off",
+    // Flags CanvasRenderingContext2D.fill as Array.fill.
+    "unicorn/no-array-fill-with-reference-type": "off",
+
+    // Off: false positives on the code's idioms.
+    // `return void x` ends a branch of a function that returns nothing.
+    "typescript/consistent-return": "off",
+    "typescript/no-confusing-void-expression": "off",
+    "typescript/strict-void-return": "off",
+    "promise/always-return": "off",
+    // Callbacks run synchronously inside the loop that declares them (forEach, spatial queries).
+    "no-loop-func": "off",
+    // Truthiness checks on optional strings and numbers are deliberate.
+    "typescript/strict-boolean-expressions": "off",
+    // Decoders and three's uniforms assert the types they read.
+    "typescript/no-unsafe-type-assertion": "off",
+    // Helpers close over their system's or test's locals on purpose.
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-callback-reference": "off",
+    // The browser host starts the debug tools without holding the module's evaluation.
+    "unicorn/prefer-top-level-await": "off",
+    // Downloads and retries run one at a time, politely, against public servers.
+    "no-await-in-loop": "off",
+    // Seeded generators and cursors advance their parameter in place.
+    "no-param-reassign": "off",
+
+    // Off: style with no bug behind it, against the code's settled style.
+    "typescript/prefer-readonly-parameter-types": "off",
+    "oxc/no-map-spread": "off",
+    "sort-vars": "off",
+    "no-inline-comments": "off",
+    "require-unicode-regexp": "off",
+    "no-negated-condition": "off",
+    "no-shadow": "off",
+    "max-lines-per-function": "off",
+    "max-depth": "off",
+    "max-classes-per-file": "off",
+    "import/max-dependencies": "off",
+
     "ritmo/handle-tick-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
     "ritmo/use-cell-value": "error"
   },
   "overrides": [
+    {
+      "files": ["**/__tests__/**"],
+      "rules": { "max-lines": "off" }
+    },
     {
       "files": ["src/sim/**"],
       "rules": {

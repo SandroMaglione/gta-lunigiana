@@ -310,8 +310,8 @@ export const VehiclePhysics = Game.System(
       const turned = moveCar(model, pose, body.angle, delta, walls)
       const moved = turned ?? moveCar(model, pose, pose.angle, delta, walls)
       // An undone turn keeps the heading, plus the half turn if the body's angles folded past vertical this step.
+      const angle = turned === undefined ? pose.angle + (result.folded ? Math.PI : 0) : body.angle
       let spin = turned === undefined ? 0 : body.spin,
-        angle = turned === undefined ? pose.angle + (result.folded ? Math.PI : 0) : body.angle,
         at: Vec2.Vec2 = pose
       if (moved === undefined) {
         const hit = Math.sqrt(vx * vx + vy * vy)

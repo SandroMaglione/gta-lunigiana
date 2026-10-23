@@ -221,7 +221,7 @@ type Corridors = ReturnType<typeof corridors>
 const carved = (b: BuildingF, roads: Corridors) => {
   const [x0, y0, x1, y1] = ringBox(b.outer)
   const cuts = roads(x0, y0, x1, y1)
-  if (cuts.length === 0) return undefined
+  if (cuts.length === 0) return
   const res = FOOTPRINT_RES,
     gx = x0 - res,
     gy = y0 - res

@@ -329,7 +329,7 @@ test("hear: an Ape rolling into a parked Panda hits it with its front on the Pan
   const hits = frames
     .flatMap((f) => f.happenings)
     .flatMap((h) => (h.kind === "impact" && h.hit === "car" ? [h] : []))
-  assert.ok(hits.length >= 1)
+  assert.ok(hits.length > 0)
   for (const hit of hits)
     assert.deepEqual(
       new Map([hit.body, hit.otherBody!].map((b) => [b.model, b.zone])),

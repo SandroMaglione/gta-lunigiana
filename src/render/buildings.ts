@@ -96,13 +96,13 @@ const building = (tris: Triangles, b: Building) => {
   let highest = -Number.MAX_VALUE
   const points: Array<Vector2> = []
   for (let k = 0; k + 1 < b.outer.length; k += 2) {
-    points.push(new Vector2(b.outer[k]!, b.outer[k + 1]!))
+    points.push(new Vector2(b.outer[k], b.outer[k + 1]))
     highest = Math.max(highest, terrainY(b.outer[k]!, b.outer[k + 1]!))
   }
   const shape = new Shape(points)
   for (const hole of b.holes ?? []) {
     const path: Array<Vector2> = []
-    for (let k = 0; k + 1 < hole.length; k += 2) path.push(new Vector2(hole[k]!, hole[k + 1]!))
+    for (let k = 0; k + 1 < hole.length; k += 2) path.push(new Vector2(hole[k], hole[k + 1]))
     shape.holes.push(new Path(path))
   }
   const base = yOf(b.z0) - 0.5

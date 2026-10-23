@@ -516,6 +516,7 @@ const element = <K extends keyof HTMLElementTagNameMap>(
   return node
 }
 /** An element of lab.html. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the caller knows the element's type from lab.html
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T
 
@@ -564,10 +565,14 @@ const wake = (): Live => {
   const ctx = new AudioContext(),
     kit = makeKit(ctx)
   const ready = Promise.all(
-    Object.entries(SHOTS).map(([kind, shot]) =>
-      shot
-        .prepare?.(ctx, kit)
-        .catch((error: unknown) => console.error(`lab: preparing ${kind} failed`, error)),
+    Object.entries(SHOTS).flatMap(([kind, shot]) =>
+      shot.prepare === undefined
+        ? []
+        : [
+            shot
+              .prepare(ctx, kit)
+              .catch((error: unknown) => console.error(`lab: preparing ${kind} failed`, error)),
+          ],
     ),
   )
   return (live = { ctx, kit, mixer: makeMixer(ctx), ready })

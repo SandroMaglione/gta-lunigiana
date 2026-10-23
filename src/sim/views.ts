@@ -94,7 +94,7 @@ export const PlayerView = Game.Inspector(
       prev: data.prev.get(),
       pose,
       velocity: { x: motion.vx, y: motion.vy },
-      mode: driving !== undefined ? "driving" : data.down.present ? "down" : "foot",
+      mode: driving === undefined ? (data.down.present ? "down" : "foot") : "driving",
       vehicle,
       nearby:
         near === undefined

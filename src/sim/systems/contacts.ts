@@ -155,7 +155,9 @@ export const Contacts = Game.System(
     events: { impact: Game.System.writeEvent(Impact) },
   },
   ({ queries, resources, commands, events }) => {
-    const mine = queries.driver.each().map(({ data }) => Game.Entity.id(data.driving.get().vehicle))
+    const mine = new Set(
+      queries.driver.each().map(({ data }) => Game.Entity.id(data.driving.get().vehicle)),
+    )
     const cars = queries.vehicles.each().map((match) => {
       const pose = match.data.pose.get(),
         motion = match.data.motion.get()
@@ -258,7 +260,7 @@ export const Contacts = Game.System(
           car: owner.entity.id,
           other: match.entity.id,
         })
-        if (mine.includes(owner.entity.id))
+        if (mine.has(owner.entity.id))
           resources.score.update((score) => ({ ...score, knocked: score.knocked + 1 }))
       }
 

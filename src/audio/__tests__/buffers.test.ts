@@ -12,7 +12,7 @@ test("noise loops without a click: the seam step is no bigger than a typical ste
     let sum = 0
     for (let i = 1; i < s.length; i++) sum += Math.abs(s[i]! - s[i - 1]!)
     const typical = sum / (s.length - 1)
-    assert.ok(Math.abs(s[0]! - s[s.length - 1]!) < typical * 6, colour)
+    assert.ok(Math.abs(s[0]! - s.at(-1)!) < typical * 6, colour)
     assert.ok(
       s.every((v) => Number.isFinite(v) && Math.abs(v) <= 1.5),
       colour,

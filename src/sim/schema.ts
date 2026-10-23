@@ -1,5 +1,5 @@
 import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
-import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+import { type InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
 
 import type { HandlingKey } from "./handling.ts"

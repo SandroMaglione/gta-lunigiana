@@ -112,7 +112,7 @@ export const surfaceLoop = (
     for (let j = 0; j < len; j++) out[(i0 + j) % n]! += sign * h * Math.sin((2 * Math.PI * j) / len)
   }
   const bed = toRms(noiseSamples("pink", n, sampleRate, random), 1)
-  for (let i = 0; i < n; i++) out[i]! = texture.grit * out[i]! + bed[i]!
+  for (let i = 0; i < n; i++) out[i] = texture.grit * out[i]! + bed[i]!
   for (const k of texture.knocks) {
     const count = Math.round(LENGTH / k.every)
     for (let c = 0; c < count; c++) {

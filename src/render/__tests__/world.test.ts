@@ -72,7 +72,7 @@ test("world streaming: small moves keep chunks (hysteresis), leaving frees their
 
   const freed = new Set<object>()
   const meshes: Array<Mesh> = [...before.values()].flat()
-  const trees = meshes.filter((m) => m instanceof InstancedMesh)
+  const trees = meshes.filter((m): m is InstancedMesh => m instanceof InstancedMesh)
   assert.ok(trees.length > 0, "the spawn area has trees")
   for (const m of meshes) {
     if (m instanceof InstancedMesh) m.addEventListener("dispose", () => freed.add(m))

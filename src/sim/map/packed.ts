@@ -22,7 +22,10 @@
  */
 import type { MonzoneMap, MonzoneMapJson } from "./index.ts"
 
-type Corner = { readonly minX: number; readonly minY: number }
+interface Corner {
+  readonly minX: number
+  readonly minY: number
+}
 
 /** Where wall coordinates count from, decimetres: 100 m south-west of the bounds' corner. */
 export const packOrigin = (bounds: Corner): { readonly x: number; readonly y: number } => ({
@@ -76,7 +79,7 @@ const unpack = (
 ): Int32Array => {
   const out = new Int32Array(n)
   for (let p = 0; p < size; p++)
-    for (let k = 0; k < n; k++) out[k] |= file[at + p * n + k]! << (8 * p) // plane by plane: a third faster
+    for (let k = 0; k < n; k++) out[k] = out[k]! | (file[at + p * n + k]! << (8 * p)) // plane by plane: a third faster
   for (let k = 0; k < n; k++) {
     const z = out[k]!
     out[k] = ((z >>> 1) ^ -(z & 1)) + (k >= stride ? out[k - stride]! : 0)
@@ -114,7 +117,7 @@ const unpackTrees = (w: Int32Array, bounds: Corner): Float64Array => {
 /** The map from its gunzipped file: the JSON line, then the sections, read in file order. */
 export const decodeMap = (file: Uint8Array): MonzoneMap => {
   const line = file.indexOf(10) // JSON.stringify escapes every newline inside strings
-  const json: MonzoneMapJson = JSON.parse(new TextDecoder().decode(file.subarray(0, line)))
+  const json = JSON.parse(new TextDecoder().decode(file.subarray(0, line))) as MonzoneMapJson
   const { heightmap, walls, trees, bounds } = json
   let at = line + 1
   const section = (n: number, size: number, stride: number): Int32Array => {

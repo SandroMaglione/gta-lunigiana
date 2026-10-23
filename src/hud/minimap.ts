@@ -93,11 +93,12 @@ export const paintMap = (
   for (const road of MAP.roads) {
     const cls = roadClassOf(road)
     if (road.tunnel === true || cls === "path") continue
-    if (!overview) stroke(road.pts, road.w * 1.6, roadHex(road))
-    else {
+    if (overview) {
       ctx.strokeStyle = css(cls === "track" ? PALETTE.stoneLight : PALETTE.limestone)
       ctx.lineWidth = Math.max(cls === "tertiary" ? 2 : 1.5, road.w * 1.6 * scale)
       ctx.stroke(path(road.pts, false))
+    } else {
+      stroke(road.pts, road.w * 1.6, roadHex(road))
     }
   }
   ctx.fillStyle = css(PALETTE.roofTile)

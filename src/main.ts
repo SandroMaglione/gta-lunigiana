@@ -287,16 +287,15 @@ if (import.meta.env.DEV) {
       audio: { speaker, level: speaker.level, context: speaker.context },
     },
   })
-  const debug = runtime.debug
-  const monitor =
-    debug === undefined
-      ? Promise.resolve()
-      : import("@typeonce/ritmo-devtools").then(
-          ({ Monitor }) =>
-            void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window }),
-        )
-  // After the monitor: the menu's button is anchored beside the monitor's, which must come first in the page.
-  void monitor
-    .then(() => import("./hud/debug.ts"))
-    .then(({ mountDebugMenu }) => mountDebugMenu({ window, store: handling }))
+  const mountDebug = async () => {
+    const debug = runtime.debug
+    if (debug !== undefined) {
+      const { Monitor } = await import("@typeonce/ritmo-devtools")
+      void Monitor.attach({ debug }, { schedules: { update, render, audio }, host: window })
+    }
+    // After the monitor: the menu's button is anchored beside the monitor's, which must come first in the page.
+    const { mountDebugMenu } = await import("./hud/debug.ts")
+    mountDebugMenu({ window, store: handling })
+  }
+  void mountDebug()
 }

@@ -130,7 +130,7 @@ test("every render is finite, never over full scale, at most 4 s long and faded 
       assert.ok(peak > 0.01 && peak <= 1, `${name} peaks at ${peak}`)
       assert.ok(x.length <= 4 * RATE, name)
       assert.ok(
-        Math.abs(x[x.length - 1]!) < 1e-6 && Math.abs(x[x.length - 100]!) < peak * 1e-3,
+        Math.abs(x.at(-1)!) < 1e-6 && Math.abs(x.at(-100)!) < peak * 1e-3,
         `${name} ends with a click`,
       )
     }

@@ -98,7 +98,7 @@ export const airCutoff = (r: number): number => {
     const [r0, f0] = AIR[i - 1]!
     return f0 * (f1 / f0) ** (Math.log(r / r0) / Math.log(r1 / r0))
   }
-  return AIR[AIR.length - 1]![1]
+  return AIR.at(-1)![1]
 }
 
 /** Ground effect over soft ground, dB (ISO 9613-2 §7.3.2, §3): max(0, 4.8 − (2h/r)(17 + 300/r)), h the mean path height. */
@@ -128,7 +128,7 @@ export const diffraction = (delta: number): { readonly loss: number; readonly cu
       t = Math.max(0, (delta - d0) / (d1 - d0))
     return { loss: loss0 + (loss1 - loss0) * t, cutoff: f0 * (f1 / f0) ** t }
   }
-  const [, loss, cutoff] = DIFFRACTION[DIFFRACTION.length - 1]!
+  const [, loss, cutoff] = DIFFRACTION.at(-1)!
   return { loss, cutoff }
 }
 

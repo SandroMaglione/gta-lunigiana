@@ -18,7 +18,7 @@ test("every material's surface loops without a click, finite, at its RMS", () =>
     assert.ok(Math.abs(rms - LOOP_RMS) < 1e-3, `${material} ${rms}`)
     let steps = 0
     for (let i = 1; i < s.length; i++) steps += Math.abs(s[i]! - s[i - 1]!)
-    assert.ok(Math.abs(s[0]! - s[s.length - 1]!) < (6 * steps) / (s.length - 1), material)
+    assert.ok(Math.abs(s[0]! - s.at(-1)!) < (6 * steps) / (s.length - 1), material)
   }
 })
 

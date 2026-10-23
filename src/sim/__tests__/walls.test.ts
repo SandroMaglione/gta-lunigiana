@@ -109,9 +109,11 @@ test("contacts: a car pushing or knocking a pedestrian against a house wall neve
       ],
     )
     const {
-      peds: [{ id: pedId }],
-      vehicles: [{ id: carId }],
+      peds: [walking],
+      vehicles: [car],
     } = world()
+    const pedId = walking!.id,
+      carId = car!.id
     const ped = () => world().peds.find((p) => p.id === pedId)!
     run(120, () => {
       assert.ok(
@@ -156,8 +158,8 @@ test("contacts: a car rammed sideways into a house wall stays out of it", () => 
     [],
     [FAR, { cars: [parkedCar("panda", 0xf2efe6, parked), rolling("panda", ram, 10, 1)] }],
   )
-  const ids = world().vehicles.map((car) => car.id)
-  const ours = () => world().vehicles.filter((car) => ids.includes(car.id))
+  const ids = new Set(world().vehicles.map((car) => car.id))
+  const ours = () => world().vehicles.filter((car) => ids.has(car.id))
   run(120, () => {
     for (const car of ours())
       assert.ok(carClear("panda", car, 0.1) && depth(car) < 0, JSON.stringify(car))

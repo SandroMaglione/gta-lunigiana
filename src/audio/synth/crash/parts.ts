@@ -290,7 +290,7 @@ const QUIRKS: Record<Crushed["model"], (mix: Mix, hit: Hit, body: Crushed) => vo
       for (const ratio of [1, 2.3, 3.9]) strike(mix, t, hz * ratio, 0.004, 0.006 * rayleigh(random))
     }
   },
-  ape: () => undefined,
+  ape: () => {},
   truck: (mix, hit, body) => {
     const { random } = mix
     // The marble in the bed shifts by the truck's own velocity change (from 0.5 m/s: 2.6 m/s is ~3 g against stone's ~0.5 g of friction): stone thunks at 80–300 Hz, a chain rattling from 2.5 m/s.

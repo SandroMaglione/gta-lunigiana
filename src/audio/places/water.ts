@@ -64,7 +64,7 @@ const FARTHEST = 400
 const powerOf = (w: number): number => {
   if (w <= POWER[0]![0]) return POWER[0]![1]
   const i = POWER.findIndex(([width]) => width >= w)
-  if (i < 0) return POWER[POWER.length - 1]![1]
+  if (i < 0) return POWER.at(-1)![1]
   const [w0, p0] = POWER[i - 1]!,
     [w1, p1] = POWER[i]!
   return p0 + ((p1 - p0) * (w - w0)) / (w1 - w0)

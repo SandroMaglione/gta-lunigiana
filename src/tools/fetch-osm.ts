@@ -7,6 +7,7 @@
 // (nodes, ways, relations, each by id), so the same OSM data always gives the same file.
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { setTimeout as sleep } from "node:timers/promises"
 import { gzipSync } from "node:zlib"
 
 import { BOUNDS, fromLocal } from "./geometry.ts"
@@ -22,7 +23,7 @@ const get = async (url: string): Promise<string> => {
     const res = await fetch(url, { headers: { "User-Agent": "gta-lunigiana map build" } })
     if (res.ok) return res.text()
     if (attempt === 4) throw new Error(`${url}: HTTP ${res.status}`)
-    await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt))
+    await sleep(2000 * 2 ** attempt)
   }
 }
 

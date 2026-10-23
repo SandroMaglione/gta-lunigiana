@@ -33,7 +33,7 @@ export interface Osm {
 
 const NAMED: Tags = { quot: '"', amp: "&", apos: "'", lt: "<", gt: ">" }
 const unescape = (s: string) =>
-  s.replace(
+  s.replaceAll(
     /&(quot|amp|apos|lt|gt|#\d+|#x[0-9a-f]+);/gi,
     (_, e: string) =>
       NAMED[e] ??

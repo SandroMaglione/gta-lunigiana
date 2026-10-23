@@ -205,7 +205,7 @@ const lone = (l: Linear): Array<number> => {
     ...railRoad.filter((x) => x.rd === l).map((x) => zAt(x.rl, x.c.sa) - x.clear),
   )
   const end = (v: V) =>
-    Math.min(cap, (v.id !== undefined ? nodeZ.get(v.id) : undefined) ?? ground(v.x, v.y))
+    Math.min(cap, (v.id === undefined ? undefined : nodeZ.get(v.id)) ?? ground(v.x, v.y))
   const za = end(l.pts[0]!),
     zb = end(l.pts.at(-1)!),
     s = arcLengths(l.pts)
@@ -287,14 +287,14 @@ const EAVE = { min: 1.5, max: 45 }
 const roadOut = (r: RoadF) => ({
   id: r.id,
   cls: r.cls,
-  ...(r.name !== undefined ? { name: r.name } : {}),
-  ...(r.ref !== undefined ? { ref: r.ref } : {}),
+  ...(r.name === undefined ? {} : { name: r.name }),
+  ...(r.ref === undefined ? {} : { ref: r.ref }),
   w: r.w,
   surface: r.surface,
   ...(r.oneway ? { oneway: true } : {}),
   ...(r.bridge ? { bridge: true } : {}),
   ...(r.tunnel ? { tunnel: true } : {}),
-  ...(r.layer !== undefined ? { layer: r.layer } : {}),
+  ...(r.layer === undefined ? {} : { layer: r.layer }),
   ...lineOut(r),
 })
 const map: MonzoneMap = {
@@ -321,7 +321,7 @@ const map: MonzoneMap = {
     return {
       id,
       kind,
-      ...(name !== undefined ? { name } : {}),
+      ...(name === undefined ? {} : { name }),
       h: r1(h),
       z0: r1(z0),
       style,
@@ -336,7 +336,7 @@ const map: MonzoneMap = {
     return {
       id: w.id,
       kind: w.kind,
-      ...(w.name !== undefined ? { name: w.name } : {}),
+      ...(w.name === undefined ? {} : { name: w.name }),
       w: w.w,
       pts: flatLine(line.pts),
       z: line.z.map(r1),

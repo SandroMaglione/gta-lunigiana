@@ -8,7 +8,7 @@
  *
  * @module hud/touch
  */
-import { type InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
+import { type InputCapture, type Keyboard, Touch } from "@typeonce/ritmo-browser"
 
 import { bindings, type PlayerViewModel } from "../sim/index.ts"
 import { actionFor } from "./hud.ts"
@@ -221,7 +221,7 @@ export const holdLandscape = (window: Window): void => {
       void Promise.resolve()
         .then(() => window.document.documentElement.requestFullscreen({ navigationUI: "hide" }))
         .then(() => window.screen.orientation.lock("landscape"))
-        .catch(() => undefined) // refused or unsupported: the game plays on as it is
+        .catch(() => {}) // refused or unsupported: the game plays on as it is
     },
     { once: true },
   )

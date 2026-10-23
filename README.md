@@ -165,7 +165,7 @@ Every script runs with `pnpm`:
 | `pnpm format` | `oxfmt`: formats the code, JSON, YAML, HTML and CSS in place |
 | `pnpm format:check` | `oxfmt --check`: fails on any unformatted file |
 | `pnpm typecheck` | `tsc` (no emit) |
-| `pnpm lint` | `oxlint` with the Ritmo plugin, then `ritmo-devtools lint src/sim/index.ts` |
+| `pnpm lint` | type-aware `oxlint` with the Ritmo plugin, warnings failing, then `ritmo-devtools lint src/sim/index.ts` |
 | `pnpm test` | `node --test` over `src/**/*.test.ts` |
 | `pnpm map` | rebuilds `src/sim/map/monzone.bin` from `data/raw` |
 | `pnpm fetch-osm` | downloads the OpenStreetMap extract again into `data/raw/lunigiana.osm.gz` |

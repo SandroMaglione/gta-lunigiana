@@ -333,7 +333,7 @@ const platforms = (): Array<Piece> =>
           const points: Array<Vector2> = []
           let top = -Number.MAX_VALUE
           for (let k = 0; k + 1 < outer.length; k += 2) {
-            points.push(new Vector2(outer[k]!, outer[k + 1]!))
+            points.push(new Vector2(outer[k], outer[k + 1]))
             top = Math.max(top, terrainY(outer[k]!, outer[k + 1]!))
           }
           const slab = new ExtrudeGeometry(new Shape(points), { depth: 2, bevelEnabled: false })

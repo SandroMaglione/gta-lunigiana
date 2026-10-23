@@ -179,7 +179,7 @@ export const partials = (mix: Mix, hit: Hit, body: Crushed, shape: Spectrum): vo
       : Math.floor(between(random, 0, 1.999))
   for (let i = 0; i < count; i++) {
     const hz = lo * (hi / lo) ** random(),
-      b = Math.round(Math.log2(hz / BANDS[0]!)),
+      b = Math.round(Math.log2(hz / BANDS[0])),
       prominence = between(random, 20, 26)
     // A sine's power against the main block's in one 85 ms bin (≈ 25 Hz / f of its octave's); driven up with the contact.
     const bed = (0.875 / (0.7 + 0.55 * crumpling(body.zone, body.speed))) * body.part * shape[b]!
@@ -272,8 +272,11 @@ export const renderCrash = (
     breakage(mix, hit, body)
     aftermath(mix, hit, body)
   }
-  if (hit.material !== undefined) TARGETS[hit.material].add(mix, hit)
-  else shells(mix, hit)
+  if (hit.material === undefined) {
+    shells(mix, hit)
+  } else {
+    TARGETS[hit.material].add(mix, hit)
+  }
   playNoise(mix.out, mix.noise, random, mix.floor)
   return finish(mix.out, gain * SCALE, sampleRate)
 }

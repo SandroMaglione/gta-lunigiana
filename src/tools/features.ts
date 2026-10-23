@@ -171,7 +171,7 @@ const waterSize = (
   if (name === "Torrente Aulella") return { w: 12, bed: 13, depth: 2.5 }
   if (name === "Torrente Lucido" && kind === "river") return { w: 14, bed: 11, depth: 2.5 }
   const main = (name === "Torrente Lucido" || name === "Torrente Caldanella") && z < MAIN_BELOW
-  const w = main ? 8 : name !== undefined ? 4 : 2
+  const w = main ? 8 : name === undefined ? 2 : 4
   return { w, bed: Math.max(w / 2 + 1, 3), depth: kind === "river" ? 2.5 : main ? 1.5 : 1 }
 }
 
@@ -295,14 +295,14 @@ export const extractBuildings = (osm: Osm, ctr: Ctr): Array<BuildingF> => {
     return {
       id: c.id,
       kind: c.kind,
-      ...(host?.name !== undefined ? { name: host.name } : {}),
+      ...(host?.name === undefined ? {} : { name: host.name }),
       h: c.h,
-      ...(c.eave !== undefined ? { eave: c.eave } : {}),
+      ...(c.eave === undefined ? {} : { eave: c.eave }),
       style,
       ...(style === "ruin" ? { ruins: true } : {}),
       tint: Math.floor(hash01(-c.id % 1e9, 7) * 4),
       outer: c.outer,
-      ...(c.holes !== undefined ? { holes: c.holes } : {}),
+      ...(c.holes === undefined ? {} : { holes: c.holes }),
     }
   })
   const unmapped = fromOsm.filter(

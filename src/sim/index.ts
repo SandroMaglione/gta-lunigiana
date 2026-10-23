@@ -13,7 +13,7 @@ import {
   KeyboardInput,
   Pose,
   PrevPose,
-  Root,
+  type Root,
   SetHandling,
   STEP,
   Time,
@@ -110,6 +110,7 @@ export const update = Game.Schedule(
 )
 
 /** A new game from `seed`. The host passes every service: KeyboardInput plus its own (render registries, clocks). */
+// oxlint-disable-next-line typescript/no-explicit-any -- any service set satisfies the bound; `Services` keeps the exact one
 export const makeRuntime = <const Services extends RuntimeServices<any>>(options: {
   readonly seed: number
   readonly services: Services

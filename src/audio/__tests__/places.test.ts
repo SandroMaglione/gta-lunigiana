@@ -91,6 +91,7 @@ test("walls: the nearest source wins, a trunk by a house wall is the trunk; a ba
   for (const b of MAP.buildings) {
     if (pair !== undefined || b.kind !== "house" || b.style !== "plaster") continue
     const pts = b.outer
+    // oxlint-disable-next-line no-unmodified-loop-condition -- the treesIn callback sets pair
     for (let i = 0, j = pts.length - 2; i < pts.length && pair === undefined; j = i, i += 2) {
       const ex = pts[i]! - pts[j]!,
         ey = pts[i + 1]! - pts[j + 1]!,
@@ -183,7 +184,7 @@ test("streets: Gragnola's centre is enclosed, a meadow is open; the forest lines
 
 test("echoes at Equi Terme come off the rock faces around it, finite and in range, 10 dB lost on the rock; none on the open meadow or off slopes short of rock", () => {
   const echoes = echoesAt(EQUI.x, EQUI.y)
-  assert.ok(echoes.length >= 1 && echoes.length <= 2)
+  assert.ok(echoes.length > 0 && echoes.length <= 2)
   for (const { delay, loss, dx, dy } of echoes) {
     assert.ok(delay >= 80 / SPEED_OF_SOUND && delay <= 800 / SPEED_OF_SOUND, `${delay} s`)
     assert.ok(
@@ -222,7 +223,7 @@ test("one bell per settlement, lower in taller towers", () => {
   for (const b of bells) assert.ok(b.pitch >= 400 && b.pitch <= 800, b.key)
   // Monzone Alto's 30 m church tower hangs the deepest bell.
   const alto = bells.find((b) => Math.hypot(b.x - 6, b.y + 326) < 5)
-  assert.ok(alto !== undefined && alto.pitch === 400 && alto.z > 325)
+  assert.ok(alto?.pitch === 400 && alto.z > 325)
 })
 
 test("dogs are stable picks out in the farms; birds sing from a nearby tree, never on a treeless meadow", () => {

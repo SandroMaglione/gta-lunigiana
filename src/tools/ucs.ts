@@ -28,7 +28,7 @@ interface UcsFile {
 
 /** The kept UCS polygons as areas: outer ring first, then the holes inside it. */
 export const readUcs = (path: string): Array<Area> => {
-  const file: UcsFile = JSON.parse(gunzipSync(readFileSync(path)).toString())
+  const file = JSON.parse(gunzipSync(readFileSync(path)).toString()) as UcsFile
   return file.polygons.flatMap(({ code, rings }) => {
     const [outer, ...holes] = rings.map((r) => {
       const ring: Array<P> = []

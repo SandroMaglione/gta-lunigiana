@@ -31,3 +31,25 @@ test("the speaker stays silent and inert until a trusted gesture", (t) => {
   assert.equal(speaker.level(), SILENCE_DB)
   assert.equal(errors.mock.callCount(), 0)
 })
+
+// Regression: a browser without navigator.userActivation still starts the sound on a trusted gesture.
+test("a trusted gesture starts the speaker unless the browser reports no user activation", (t) => {
+  const errors = t.mock.method(console, "error", () => {})
+  const attempts = (navigator: object): number => {
+    const listeners: Array<(event: Event) => void> = []
+    const host = Object.assign(new EventTarget(), {
+      document: Object.assign(new EventTarget(), { hidden: false }),
+      navigator,
+      addEventListener: (_: string, listener: (event: Event) => void) => listeners.push(listener),
+      removeEventListener: () => {},
+    })
+    makeSpeaker(host as unknown as Window, {} as Voices, {} as Shots)
+    const before = errors.mock.callCount()
+    // Node has no AudioContext: an attempt to start fails and logs "audio: cannot start".
+    listeners[0]?.({ isTrusted: true } as Event)
+    return errors.mock.callCount() - before
+  }
+  assert.equal(attempts({}), 1, "no userActivation flag: starts")
+  assert.equal(attempts({ userActivation: { isActive: true } }), 1, "active: starts")
+  assert.equal(attempts({ userActivation: { isActive: false } }), 0, "inactive: waits")
+})

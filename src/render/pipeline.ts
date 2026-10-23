@@ -177,7 +177,8 @@ export class PixelView {
     this.scale = Math.max(1, Math.round(device.y / this.targetHeight))
     this.view.set(Math.ceil(device.x / this.scale), Math.ceil(device.y / this.scale))
     this.target.setSize(this.view.x + 2 * MARGIN, this.view.y + 2 * MARGIN)
-    this.material.uniforms["uRtSize"]!.value.set(this.target.width, this.target.height)
+    const rtSize = this.material.uniforms["uRtSize"]!.value as Vector2
+    rtSize.set(this.target.width, this.target.height)
     this.material.uniforms["uScale"]!.value = this.scale
   }
 
@@ -221,7 +222,8 @@ export class PixelView {
       .addScaledVector(this.up, sy * texel)
       .addScaledVector(this.back, this.focus.dot(this.back) + DISTANCE)
     cam.updateMatrixWorld()
-    this.material.uniforms["uOffset"]!.value.set(MARGIN + fx - sx, MARGIN + fy - sy)
+    const offset = this.material.uniforms["uOffset"]!.value as Vector2
+    offset.set(MARGIN + fx - sx, MARGIN + fy - sy)
     this.renderer.setRenderTarget(this.target)
     this.renderer.render(scene, cam)
     this.renderer.setRenderTarget(null)

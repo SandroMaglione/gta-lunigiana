@@ -3,7 +3,10 @@
 import type { MonzoneMap, MonzoneMapJson } from "../sim/map/index.ts"
 import { packOrigin, treeOrigin } from "../sim/map/packed.ts"
 
-type Corner = { readonly minX: number; readonly minY: number }
+interface Corner {
+  readonly minX: number
+  readonly minY: number
+}
 
 /** `values` as `size` byte planes of zigzag deltas from the value `stride` back, each an int32 whose delta fits. */
 const pack = (values: ArrayLike<number>, size: 2 | 4, stride: number, what: string): Buffer => {

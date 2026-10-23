@@ -120,6 +120,7 @@ export const makeSpeaker = (
   }
   const unlock = (event: Event) => {
     // Creating or resuming without user activation fails and makes Chrome warn; older browsers lack the flag.
+    // oxlint-disable-next-line typescript/no-unnecessary-boolean-literal-compare -- userActivation is undefined there, despite the DOM types
     if (!event.isTrusted || host.navigator.userActivation?.isActive === false) return
     if (live === undefined) {
       try {

@@ -128,7 +128,11 @@ test("presets: from simulation to arcade a Panda accelerates harder and stops sh
     })
     return at
   }
-  const [sim, balanced, arcade] = PRESET_IDS.map((id) => HANDLING_PRESETS[id].values)
+  const {
+    simulation: { values: sim },
+    balanced: { values: balanced },
+    arcade: { values: arcade },
+  } = HANDLING_PRESETS
   assert.ok(zeroTo100(arcade) < zeroTo100(balanced) && zeroTo100(balanced) < zeroTo100(sim))
   const gravel = (handling: HandlingValue) => stopping("panda", 100 / 3.6, "gravel", handling)
   assert.ok(

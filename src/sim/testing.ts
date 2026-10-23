@@ -335,7 +335,7 @@ export interface DriveState {
   readonly chassis: ChassisValue
 }
 /** A driver's controls: throttle and steer in [-1, 1], the handbrake. */
-export type Pedals = {
+export interface Pedals {
   readonly throttle: number
   readonly steer: number
   readonly handbrake: boolean

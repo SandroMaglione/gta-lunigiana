@@ -16,7 +16,7 @@ test("sweepCircleSegment: hit time, normal, end cap", () => {
   assert.equal(hit.time, 0.4)
   assert.deepEqual([hit.nx, Math.abs(hit.ny)], [-1, 0])
   const cap = sweepCircleSegment({ x: 0, y: 5 }, { x: 10, y: 0 }, 1, wall)
-  assert.ok(cap && cap.time === 0.4 && cap.nx === -1)
+  assert.ok(cap?.time === 0.4 && cap.nx === -1)
   assert.equal(sweepCircleSegment({ x: 0, y: 7 }, { x: 10, y: 0 }, 1, wall), undefined)
 })
 

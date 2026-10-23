@@ -6,7 +6,7 @@
     "typecheck": "tsc",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "lint": "oxlint && ritmo-devtools lint src/sim/index.ts",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives && ritmo-devtools lint src/sim/index.ts",
     "test": "node --test \"src/**/*.test.ts\"",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
     "map": "node src/tools/build-map.ts",
@@ -30,6 +30,7 @@
     "@types/three": "^0.186.0",
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   },

@@ -141,7 +141,7 @@ export const makeProfiler = (
         ? [p.vertexSample[first[i]!]!, p.vertexSample[first[i]! + runs[i]!.length - 1]!]
         : [best]
       for (const k of at)
-        pins.push({ k, z: b.z, ...(b.kind !== undefined ? { kind: b.kind } : {}) })
+        pins.push({ k, z: b.z, ...(b.kind === undefined ? {} : { kind: b.kind }) })
     }
     fitProfile(p, spec.grade, pins)
     // A sample's segment belongs to the piece whose first vertex precedes it; the last sample closes the last piece.
