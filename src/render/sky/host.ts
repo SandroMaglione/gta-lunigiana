@@ -24,7 +24,18 @@ import { terrainY, yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
 import { followSun, type PixelView, viewAxes, WIDEST_ZOOM } from "../pipeline.ts"
 import { type SkyFrame } from "./frame.ts"
-import { aimToward, type Aim, ease, easeLog, keyDirection, type Lighting, luminance, noonLight, type Rgb, skyLight } from "./light.ts"
+import {
+  aimToward,
+  type Aim,
+  ease,
+  easeLog,
+  keyDirection,
+  type Lighting,
+  luminance,
+  noonLight,
+  type Rgb,
+  skyLight,
+} from "./light.ts"
 import { Bolts } from "./lightning.ts"
 import { type LitCar, NightLights } from "./night-lights.ts"
 import { atmosphere, writePost } from "./post.ts"
@@ -121,7 +132,13 @@ export class SkyHost {
     this.key.shadow.mapSize.set(SHADOW.size, SHADOW.size)
     this.key.shadow.normalBias = SHADOW.normalBias
     this.bolts = new Bolts() // `reduced` is read each frame
-    scene.add(this.key, this.key.target, this.hemisphere, this.precipitation.object, this.bolts.object)
+    scene.add(
+      this.key,
+      this.key.target,
+      this.hemisphere,
+      this.precipitation.object,
+      this.bolts.object,
+    )
     this.lights = new NightLights(scene)
   }
 
@@ -145,16 +162,35 @@ export class SkyHost {
   draw(view: HostView, renderer: HostRenderer): void {
     const read = this.read
     if (read === undefined) return
-    const { seconds, weather, now } = read, focus = view.focus
-    const x = focus.x, y = -focus.z, z = focus.y - yOf(0)
-    const last = this.last, dt = last === undefined ? 0 : Math.min(MAX_DT, Math.max(0, now - last.now))
-    const jumped = last === undefined || Math.abs(seconds - last.seconds) > JUMP + (Math.abs(read.rate) * dt) / STEP.dt
+    const { seconds, weather, now } = read,
+      focus = view.focus
+    const x = focus.x,
+      y = -focus.z,
+      z = focus.y - yOf(0)
+    const last = this.last,
+      dt = last === undefined ? 0 : Math.min(MAX_DT, Math.max(0, now - last.now))
+    const jumped =
+      last === undefined ||
+      Math.abs(seconds - last.seconds) > JUMP + (Math.abs(read.rate) * dt) / STEP.dt
     this.last = read
 
     // The sun and the moon over the loaded map's origin (`sunOver` reads the same place).
-    const { lat, lon } = place(), sun = sunOver(seconds), moon = moonAt(seconds, lat, lon), lit = moonPhase(sun, moon).illuminated
-    const here = conditionsAt(seconds, weather, x, y, z), fog = fogLayers(seconds, weather)
-    const light = skyLight({ sun, moon, moonLit: lit, cloud: weather.cloud, precip: here.rain + here.snow, storm: weather.storm, fog: here.fog, snowCover: here.snowCover })
+    const { lat, lon } = place(),
+      sun = sunOver(seconds),
+      moon = moonAt(seconds, lat, lon),
+      lit = moonPhase(sun, moon).illuminated
+    const here = conditionsAt(seconds, weather, x, y, z),
+      fog = fogLayers(seconds, weather)
+    const light = skyLight({
+      sun,
+      moon,
+      moonLit: lit,
+      cloud: weather.cloud,
+      precip: here.rain + here.snow,
+      storm: weather.storm,
+      fog: here.fog,
+      snowCover: here.snowCover,
+    })
     this.exposure = jumped ? light.exposure : easeLog(this.exposure, light.exposure, dt, ADAPT_TAU)
     this.lamps = jumped ? light.lamps : ease(this.lamps, light.lamps, dt, LAMPS_TAU)
     const exposure = this.exposure
@@ -162,7 +198,8 @@ export class SkyHost {
     this.bolts.reduced = this.reduced()
     for (const l of this.strikes) this.bolts.strike(l, terrainY(l.x, l.y), l.step * STEP.dt, focus)
     this.strikes.length = 0
-    const flash = this.bolts.update({ now }), flashLight = (flash * FLASH_LIGHT) / exposure
+    const flash = this.bolts.update({ now }),
+      flashLight = (flash * FLASH_LIGHT) / exposure
 
     // The key light: aimed in steps (hard shadow edges must not crawl), turned with the view; its shadow pass skipped when it is dark.
     const key = light.key
@@ -170,7 +207,12 @@ export class SkyHost {
     keyDirection(this.aim, view.yaw, this.toKey)
     setRgb(this.key.color, key.color)
     this.key.intensity = key.intensity
-    followSun(this.key, focus, this.toKey, view.shadowFit(this.toKey, (gx, gz) => terrainY(gx, -gz)))
+    followSun(
+      this.key,
+      focus,
+      this.toKey,
+      view.shadowFit(this.toKey, (gx, gz) => terrainY(gx, -gz)),
+    )
     // Dark, or every texel under an overcast sky's cloud shadow: no shadow to draw.
     const shadows = key.intensity * light.direct > KEY_DARK
     if (shadows !== this.shadows || this.frame === undefined) {
@@ -181,8 +223,16 @@ export class SkyHost {
     }
 
     // The hemisphere carries the flash: one smooth pulse of light over the whole scene, as bright on screen by day as by night.
-    const sky: Rgb = [light.sky[0] * light.hemisphere + FLASH[0] * flashLight, light.sky[1] * light.hemisphere + FLASH[1] * flashLight, light.sky[2] * light.hemisphere + FLASH[2] * flashLight]
-    const ground: Rgb = [light.ground[0] * light.hemisphere + FLASH[0] * flashLight * 0.5, light.ground[1] * light.hemisphere + FLASH[1] * flashLight * 0.5, light.ground[2] * light.hemisphere + FLASH[2] * flashLight * 0.5]
+    const sky: Rgb = [
+      light.sky[0] * light.hemisphere + FLASH[0] * flashLight,
+      light.sky[1] * light.hemisphere + FLASH[1] * flashLight,
+      light.sky[2] * light.hemisphere + FLASH[2] * flashLight,
+    ]
+    const ground: Rgb = [
+      light.ground[0] * light.hemisphere + FLASH[0] * flashLight * 0.5,
+      light.ground[1] * light.hemisphere + FLASH[1] * flashLight * 0.5,
+      light.ground[2] * light.hemisphere + FLASH[2] * flashLight * 0.5,
+    ]
     setRgb(this.hemisphere.color, sky)
     setRgb(this.hemisphere.groundColor, ground)
     this.hemisphere.intensity = 1
@@ -191,28 +241,60 @@ export class SkyHost {
     renderer.setClearColor(setRgb(this.clear, FOREST, irradiance / noonLight()))
 
     const frame: SkyFrame = {
-      now, night: light.night, lamps: this.lamps, ambient: irradiance / noonLight(), flash, wind: windAt(weather, z), rain: here.rain, snow: here.snow
+      now,
+      night: light.night,
+      lamps: this.lamps,
+      ambient: irradiance / noonLight(),
+      flash,
+      wind: windAt(weather, z),
+      rain: here.rain,
+      snow: here.snow,
     }
     this.frame = frame
     applyFrame(frame, exposure)
     // The fog gathers the key light that comes through the clouds as level ground takes it: a low sun only grazes its top.
-    const through = key.intensity * light.direct * Math.max(0, Math.sin((key.elevation * Math.PI) / 180))
+    const through =
+      key.intensity * light.direct * Math.max(0, Math.sin((key.elevation * Math.PI) / 180))
     const keyLight: Rgb = [key.color[0] * through, key.color[1] * through, key.color[2] * through]
     // A flash lights the dark too: the night grade lifts while it lasts.
-    writePost(view.post, atmosphere(fog, here, { key: keyLight, sky, ground }), { exposure, night: light.night * (1 - flash), grey: light.grey, x: focus.x, y: focus.y, z: focus.z })
+    writePost(view.post, atmosphere(fog, here, { key: keyLight, sky, ground }), {
+      exposure,
+      night: light.night * (1 - flash),
+      grey: light.grey,
+      x: focus.x,
+      y: focus.y,
+      z: focus.z,
+    })
 
     if (view.yaw !== this.axesYaw) [this.axes, this.axesYaw] = [viewAxes(view.yaw), view.yaw]
     applySurface({
-      snowLine: weather.snowLine, wet: weather.wet, air: airAt(seconds, weather, sun), cloudCover: weather.cloud, cloudOffset: driftClouds(this.clouds, frame.wind, dt),
-      wind: frame.wind, rain: here.rain, texelsPerMetre: view.texelsPerMetre, viewRight: this.axes.right,
+      snowLine: weather.snowLine,
+      wet: weather.wet,
+      air: airAt(seconds, weather, sun),
+      cloudCover: weather.cloud,
+      cloudOffset: driftClouds(this.clouds, frame.wind, dt),
+      wind: frame.wind,
+      rain: here.rain,
+      texelsPerMetre: view.texelsPerMetre,
+      viewRight: this.axes.right,
       // A mirror shows the sky's radiance: a white Lambert face under the hemisphere's sky colour (× its intensity 1) returns it / π.
-      skyColour: this.skyRadiance.copy(this.hemisphere.color).multiplyScalar(1 / Math.PI)
+      skyColour: this.skyRadiance.copy(this.hemisphere.color).multiplyScalar(1 / Math.PI),
     })
-    this.precipitation.update(frame, focus, this.axes, view.texelsPerMetre, { width: view.view.x / WIDEST_ZOOM, height: view.view.y / WIDEST_ZOOM })
+    this.precipitation.update(frame, focus, this.axes, view.texelsPerMetre, {
+      width: view.view.x / WIDEST_ZOOM,
+      height: view.view.y / WIDEST_ZOOM,
+    })
     this.lights.update(frame, focus, this.cars)
     this.look = {
-      frame, sun: { elevation: sun.elevation, azimuth: sun.azimuth }, moon: { elevation: moon.elevation, azimuth: moon.azimuth, lit }, light, aim: this.aim,
-      exposure, shadows, fog, here
+      frame,
+      sun: { elevation: sun.elevation, azimuth: sun.azimuth },
+      moon: { elevation: moon.elevation, azimuth: moon.azimuth, lit },
+      light,
+      aim: this.aim,
+      exposure,
+      shadows,
+      fog,
+      here,
     }
   }
 }

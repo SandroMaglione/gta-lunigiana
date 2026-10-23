@@ -43,16 +43,30 @@ interface Heights {
 }
 
 /** The place of a map with origin `origin` and heights `heights`: its 5th-percentile height and the way a plane fitted to its heights falls. */
-export const placeFrom = (origin: { readonly lat: number; readonly lon: number }, heights: Heights): Place => {
+export const placeFrom = (
+  origin: { readonly lat: number; readonly lon: number },
+  heights: Heights,
+): Place => {
   const { cell, cols, rows, data } = heights
-  let low = Number.MAX_SAFE_INTEGER, high = -Number.MAX_SAFE_INTEGER
-  for (let k = 0; k < data.length; k++) [low, high] = [Math.min(low, data[k]!), Math.max(high, data[k]!)]
+  let low = Number.MAX_SAFE_INTEGER,
+    high = -Number.MAX_SAFE_INTEGER
+  for (let k = 0; k < data.length; k++)
+    [low, high] = [Math.min(low, data[k]!), Math.max(high, data[k]!)]
   // Decimetres are whole numbers: count them, then walk up to the 5th percentile.
   const counts = new Uint32Array(high - low + 1)
-  let sx = 0, sy = 0, sz = 0, sxx = 0, syy = 0, sxy = 0, sxz = 0, syz = 0
+  let sx = 0,
+    sy = 0,
+    sz = 0,
+    sxx = 0,
+    syy = 0,
+    sxy = 0,
+    sxz = 0,
+    syz = 0
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
-      const z = data[j * cols + i]!, x = i * cell, y = j * cell
+      const z = data[j * cols + i]!,
+        x = i * cell,
+        y = j * cell
       counts[z - low]!++
       sx += x
       sy += y
@@ -64,12 +78,27 @@ export const placeFrom = (origin: { readonly lat: number; readonly lon: number }
       syz += y * z
     }
   }
-  const n = cols * rows, rank = Math.floor(0.05 * (n - 1))
-  let floor = low, seen = counts[0]!
+  const n = cols * rows,
+    rank = Math.floor(0.05 * (n - 1))
+  let floor = low,
+    seen = counts[0]!
   while (seen <= rank) seen += counts[++floor - low]!
   // Least squares z = a + b·x + c·y: (b, c) points uphill.
-  const mx = sx / n, my = sy / n, mz = sz / n
-  const cxx = sxx / n - mx * mx, cyy = syy / n - my * my, cxy = sxy / n - mx * my, cxz = sxz / n - mx * mz, cyz = syz / n - my * mz
-  const det = cxx * cyy - cxy * cxy, b = (cxz * cyy - cyz * cxy) / det, c = (cyz * cxx - cxz * cxy) / det
-  return { lat: origin.lat, lon: origin.lon, floor: floor / 10, downslope: det === 0 ? 0 : Ops.atan2(-c, -b) }
+  const mx = sx / n,
+    my = sy / n,
+    mz = sz / n
+  const cxx = sxx / n - mx * mx,
+    cyy = syy / n - my * my,
+    cxy = sxy / n - mx * my,
+    cxz = sxz / n - mx * mz,
+    cyz = syz / n - my * mz
+  const det = cxx * cyy - cxy * cxy,
+    b = (cxz * cyy - cyz * cxy) / det,
+    c = (cyz * cxx - cxz * cxy) / det
+  return {
+    lat: origin.lat,
+    lon: origin.lon,
+    floor: floor / 10,
+    downslope: det === 0 ? 0 : Ops.atan2(-c, -b),
+  }
 }

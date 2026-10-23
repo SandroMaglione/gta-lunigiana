@@ -3,6 +3,7 @@
     "target": "esnext",
     "module": "nodenext",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
@@ -10,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "lint"]
 }

@@ -16,7 +16,8 @@ export const DAY = 86400
 /** Days since 1970-01-01 of the Gregorian date `year`-`month`-`day` (month 1–12). */
 export const daysFromCivil = (year: number, month: number, day: number): number => {
   const y = month <= 2 ? year - 1 : year
-  const era = Math.floor(y / 400), yoe = y - era * 400
+  const era = Math.floor(y / 400),
+    yoe = y - era * 400
   const doy = Math.floor((153 * (month > 2 ? month - 3 : month + 9) + 2) / 5) + day - 1
   const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy
   return era * 146097 + doe - 719468
@@ -34,12 +35,19 @@ export interface CivilDate {
 /** The Gregorian date of day `days` since 1970-01-01. */
 export const civilFromDays = (days: number): CivilDate => {
   const z = days + 719468
-  const era = Math.floor(z / 146097), doe = z - era * 146097
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365)
+  const era = Math.floor(z / 146097),
+    doe = z - era * 146097
+  const yoe = Math.floor(
+    (doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365,
+  )
   const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100))
   const mp = Math.floor((5 * doy + 2) / 153)
   const month = mp < 10 ? mp + 3 : mp - 9
-  return { year: yoe + era * 400 + (month <= 2 ? 1 : 0), month, day: doy - Math.floor((153 * mp + 2) / 5) + 1 }
+  return {
+    year: yoe + era * 400 + (month <= 2 ? 1 : 0),
+    month,
+    day: doy - Math.floor((153 * mp + 2) / 5) + 1,
+  }
 }
 
 /** The weekday of day `days` since 1970-01-01 (a Thursday): 0 Sunday … 6 Saturday. */
@@ -62,7 +70,8 @@ export const romeOffset = (t: number): number => {
  * (`daysFromCivil(y, m, d) * DAY + hour * 3600 + minute * 60`): the hour skipped in March reads an hour
  * later, the hour repeated in October as its first (summer-time) pass.
  */
-export const utcFromRome = (local: number): number => (romeOffset(local - 7200) === 7200 ? local - 7200 : local - 3600)
+export const utcFromRome = (local: number): number =>
+  romeOffset(local - 7200) === 7200 ? local - 7200 : local - 3600
 
 /** A Europe/Rome wall-clock reading: the date and the time of day. */
 export interface RomeTime extends CivilDate {
@@ -74,12 +83,20 @@ export interface RomeTime extends CivilDate {
 
 /** The Europe/Rome wall clock at UTC second `t`. */
 export const romeTime = (t: number): RomeTime => {
-  const local = t + romeOffset(t), days = Math.floor(local / DAY), into = local - days * DAY
-  return { ...civilFromDays(days), hour: Math.floor(into / 3600), minute: Math.floor((into % 3600) / 60), second: into % 60 }
+  const local = t + romeOffset(t),
+    days = Math.floor(local / DAY),
+    into = local - days * DAY
+  return {
+    ...civilFromDays(days),
+    hour: Math.floor(into / 3600),
+    minute: Math.floor((into % 3600) / 60),
+    second: into % 60,
+  }
 }
 
 /** Rome's calendar day at UTC second `t` (days since 1970-01-01) and how far into it the wall clock reads, seconds (0 at midnight). */
 export const romeDay = (t: number): { readonly day: number; readonly second: number } => {
-  const local = t + romeOffset(t), day = Math.floor(local / DAY)
+  const local = t + romeOffset(t),
+    day = Math.floor(local / DAY)
   return { day, second: local - day * DAY }
 }

@@ -12,7 +12,15 @@
  * @module render/sky/lamps
  */
 import { pointInRing, staticGrid } from "../../sim/collide.ts"
-import { buildingBoxes, buildingsIn, buildingStyleOf, MAP, ROAD_CLASSES, roadClassOf, type RoadClass } from "../../sim/map/index.ts"
+import {
+  buildingBoxes,
+  buildingsIn,
+  buildingStyleOf,
+  MAP,
+  ROAD_CLASSES,
+  roadClassOf,
+  type RoadClass,
+} from "../../sim/map/index.ts"
 import { eaveOf, windowCount } from "../buildings.ts"
 import type { Piece, Sink, Triangles } from "../geometry.ts"
 import { terrainY } from "../ground.ts"
@@ -82,28 +90,43 @@ const indoors = (x: number, y: number): boolean => {
 }
 
 /** Lamps the walls fronting road point (px, py) could hold, with each wall's distance from it. */
-const mounts = (px: number, py: number, half: number): Array<{ readonly lamp: StreetLamp; readonly d: number }> => {
+const mounts = (
+  px: number,
+  py: number,
+  half: number,
+): Array<{ readonly lamp: StreetLamp; readonly d: number }> => {
   const found: Array<{ readonly lamp: StreetLamp; readonly d: number }> = []
   const r = half + REACH.out
   buildingsIn(px - r, py - r, px + r, py + r, (i) => {
     const b = MAP.buildings[i]!
     if (buildingStyleOf(b) === "ruin") return
-    const ring = b.outer, n = ring.length / 2
+    const ring = b.outer,
+      n = ring.length / 2
     let eave: number | undefined
     for (let k = 0; k < n; k++) {
-      const ax = ring[2 * k]!, ay = ring[2 * k + 1]!, bx = ring[(2 * k + 2) % ring.length]!, by = ring[(2 * k + 3) % ring.length]!
+      const ax = ring[2 * k]!,
+        ay = ring[2 * k + 1]!,
+        bx = ring[(2 * k + 2) % ring.length]!,
+        by = ring[(2 * k + 3) % ring.length]!
       const len = Math.hypot(bx - ax, by - ay)
       if (len < 2 * CORNER) continue
       // The wall fronts the road point: the point lies outside it (outer rings are counter-clockwise,
       // so the outside is to the right of travel) and its foot on the wall is clear of the corners.
-      const tx = (bx - ax) / len, ty = (by - ay) / len, nx = ty, ny = -tx
-      const along = (px - ax) * tx + (py - ay) * ty, d = (px - ax) * nx + (py - ay) * ny
+      const tx = (bx - ax) / len,
+        ty = (by - ay) / len,
+        nx = ty,
+        ny = -tx
+      const along = (px - ax) * tx + (py - ay) * ty,
+        d = (px - ax) * nx + (py - ay) * ny
       if (along < CORNER || along > len - CORNER || d < half - REACH.in || d > r) continue
-      const s = between(len, along), wx = ax + tx * s, wy = ay + ty * s
+      const s = between(len, along),
+        wx = ax + tx * s,
+        wy = ay + ty * s
       const ground = terrainY(wx + nx, wy + ny)
       eave ??= eaveOf(b)
       const bracket = Math.min(ground + MOUNT.height, eave - MOUNT.eaves)
-      if (bracket - ground >= MOUNT.lowest) found.push({ lamp: { x: wx + nx * ARM, y: wy + ny * ARM, h: bracket - HANG, nx, ny }, d })
+      if (bracket - ground >= MOUNT.lowest)
+        found.push({ lamp: { x: wx + nx * ARM, y: wy + ny * ARM, h: bracket - HANG, nx, ny }, d })
     }
   })
   return found
@@ -113,9 +136,14 @@ const mounts = (px: number, py: number, half: number): Array<{ readonly lamp: St
  * The lamp of the nearest wall fronting road point (px, py) whose lantern hangs in the open: the
  * lantern and the ground 1 m out from the wall lie in no house (a party wall has a neighbour there).
  */
-const mountNear = (px: number, py: number, half: number): StreetLamp | undefined => mounts(px, py, half)
-  .sort((a, b) => a.d - b.d)
-  .find(({ lamp }) => !indoors(lamp.x, lamp.y) && !indoors(lamp.x + lamp.nx * (1 - ARM), lamp.y + lamp.ny * (1 - ARM)))?.lamp
+const mountNear = (px: number, py: number, half: number): StreetLamp | undefined =>
+  mounts(px, py, half)
+    .sort((a, b) => a.d - b.d)
+    .find(
+      ({ lamp }) =>
+        !indoors(lamp.x, lamp.y) &&
+        !indoors(lamp.x + lamp.nx * (1 - ARM), lamp.y + lamp.ny * (1 - ARM)),
+    )?.lamp
 
 /**
  * Every street lamp of the map, placed road by road (widest class first, then map order), so the
@@ -126,10 +154,13 @@ export const placeLamps = (): Array<StreetLamp> => {
   const cells = new Map<number, Array<StreetLamp>>()
   const cellOf = (cx: number, cy: number) => cx * 100003 + cy
   const crowded = (x: number, y: number): boolean => {
-    const cx = Math.floor(x / GAP), cy = Math.floor(y / GAP)
-    for (let j = cy - 1; j <= cy + 1; j++) for (let i = cx - 1; i <= cx + 1; i++) {
-      for (const l of cells.get(cellOf(i, j)) ?? []) if (Math.hypot(l.x - x, l.y - y) < GAP) return true
-    }
+    const cx = Math.floor(x / GAP),
+      cy = Math.floor(y / GAP)
+    for (let j = cy - 1; j <= cy + 1; j++)
+      for (let i = cx - 1; i <= cx + 1; i++) {
+        for (const l of cells.get(cellOf(i, j)) ?? [])
+          if (Math.hypot(l.x - x, l.y - y) < GAP) return true
+      }
     return false
   }
   const roads = MAP.roads.filter((r) => r.tunnel !== true && LIT.has(roadClassOf(r)))
@@ -137,12 +168,16 @@ export const placeLamps = (): Array<StreetLamp> => {
   for (const road of roads) {
     const pts = road.pts
     // `s`: where the next point falls along the current segment (the step carries over its vertices).
-    let since = SPACING, s = 0
+    let since = SPACING,
+      s = 0
     for (let k = 0; k + 3 < pts.length; k += 2) {
-      const ax = pts[k]!, ay = pts[k + 1]!, len = Math.hypot(pts[k + 2]! - ax, pts[k + 3]! - ay)
+      const ax = pts[k]!,
+        ay = pts[k + 1]!,
+        len = Math.hypot(pts[k + 2]! - ax, pts[k + 3]! - ay)
       for (; s < len; s += STEP, since += STEP) {
         if (since < SPACING) continue
-        const px = ax + ((pts[k + 2]! - ax) * s) / len, py = ay + ((pts[k + 3]! - ay) * s) / len
+        const px = ax + ((pts[k + 2]! - ax) * s) / len,
+          py = ay + ((pts[k + 3]! - ay) * s) / len
         const lamp = mountNear(px, py, road.w / 2)
         if (lamp === undefined || crowded(lamp.x, lamp.y) || !inVillage(lamp.x, lamp.y)) continue
         lamps.push(lamp)
@@ -165,7 +200,13 @@ let grid: ReturnType<typeof staticGrid> | undefined
  * Lamp broad phase (`staticGrid`, 32 m cells): calls `visit` with the index into `streetLamps()`
  * of every lamp in a cell the box overlaps; run the exact test. `visit` must not query again.
  */
-export const lampsIn = (minX: number, minY: number, maxX: number, maxY: number, visit: (lamp: number) => void): void => {
+export const lampsIn = (
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  visit: (lamp: number) => void,
+): void => {
   const lamps = streetLamps()
   grid ??= staticGrid(lamps.length, (i) => [lamps[i]!.x, lamps[i]!.y, lamps[i]!.x, lamps[i]!.y], 32)
   grid(minX, minY, maxX, maxY, visit)
@@ -175,12 +216,45 @@ export const lampsIn = (minX: number, minY: number, maxX: number, maxY: number, 
  * A box centred at (x, y, z) (three space) with half sizes `out` along the horizontal unit `(ux, uz)`,
  * `up` vertically and `side` across, in one colour.
  */
-const box = (tris: Triangles, x: number, y: number, z: number, ux: number, uz: number, out: number, up: number, side: number, hex: number): void => {
-  const corner = (a: number, b: number, c: number) => [x + ux * out * a - uz * side * c, y + up * b, z + uz * out * a + ux * side * c] as const
+const box = (
+  tris: Triangles,
+  x: number,
+  y: number,
+  z: number,
+  ux: number,
+  uz: number,
+  out: number,
+  up: number,
+  side: number,
+  hex: number,
+): void => {
+  const corner = (a: number, b: number, c: number) =>
+    [x + ux * out * a - uz * side * c, y + up * b, z + uz * out * a + ux * side * c] as const
   for (const s of [-1, 1]) {
-    tris.face(corner(s, -1, -1), corner(s, -1, 1), corner(s, 1, 1), corner(s, 1, -1), [ux * s, 0, uz * s], hex)
-    tris.face(corner(-1, -1, s), corner(1, -1, s), corner(1, 1, s), corner(-1, 1, s), [-uz * s, 0, ux * s], hex)
-    tris.face(corner(-1, s, -1), corner(1, s, -1), corner(1, s, 1), corner(-1, s, 1), [0, s, 0], hex)
+    tris.face(
+      corner(s, -1, -1),
+      corner(s, -1, 1),
+      corner(s, 1, 1),
+      corner(s, 1, -1),
+      [ux * s, 0, uz * s],
+      hex,
+    )
+    tris.face(
+      corner(-1, -1, s),
+      corner(1, -1, s),
+      corner(1, 1, s),
+      corner(-1, 1, s),
+      [-uz * s, 0, ux * s],
+      hex,
+    )
+    tris.face(
+      corner(-1, s, -1),
+      corner(1, s, -1),
+      corner(1, s, 1),
+      corner(-1, s, 1),
+      [0, s, 0],
+      hex,
+    )
   }
 }
 
@@ -193,13 +267,44 @@ const GLASS = { out: 0.14, up: 0.18, side: 0.14 } as const
  * glass covers it.
  */
 const drawLamp = (sink: Sink, lamp: StreetLamp): void => {
-  const x = lamp.x, z = -lamp.y, ux = lamp.nx, uz = -lamp.ny, top = lamp.h + HANG, iron = PALETTE.lanternIron
-  box(sink.solid, x - ux * (ARM / 2), top + 0.06, z - uz * (ARM / 2), ux, uz, ARM / 2 + 0.06, 0.06, 0.06, iron)
+  const x = lamp.x,
+    z = -lamp.y,
+    ux = lamp.nx,
+    uz = -lamp.ny,
+    top = lamp.h + HANG,
+    iron = PALETTE.lanternIron
+  box(
+    sink.solid,
+    x - ux * (ARM / 2),
+    top + 0.06,
+    z - uz * (ARM / 2),
+    ux,
+    uz,
+    ARM / 2 + 0.06,
+    0.06,
+    0.06,
+    iron,
+  )
   box(sink.solid, x, lamp.h + 0.23, z, ux, uz, 0.19, 0.05, 0.19, iron)
-  box(sink.solid, x, lamp.h, z, ux, uz, GLASS.out - 0.02, GLASS.up, GLASS.side - 0.02, PALETTE.windowGlass)
+  box(
+    sink.solid,
+    x,
+    lamp.h,
+    z,
+    ux,
+    uz,
+    GLASS.out - 0.02,
+    GLASS.up,
+    GLASS.side - 0.02,
+    PALETTE.windowGlass,
+  )
   box(sink.solid, x, lamp.h - 0.22, z, ux, uz, 0.1, 0.04, 0.1, iron)
   box(sink.glow, x, lamp.h, z, ux, uz, GLASS.out, GLASS.up, GLASS.side, PALETTE.lampLight)
 }
 
 /** Every street lamp as a piece anchored at its lantern (it goes whole into that chunk). */
-export const lampPieces = (): Array<Piece> => streetLamps().map((lamp) => ({ pts: [lamp.x, lamp.y], draw: (at) => drawLamp(at(lamp.x, lamp.y), lamp) }))
+export const lampPieces = (): Array<Piece> =>
+  streetLamps().map((lamp) => ({
+    pts: [lamp.x, lamp.y],
+    draw: (at) => drawLamp(at(lamp.x, lamp.y), lamp),
+  }))

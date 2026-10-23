@@ -28,10 +28,11 @@ Checks for a change in `src/render`, the camera, the view or the keys, on top of
 - **Lights**: every light is made before the first frame (the sky host's constructor) and driven
   only by colour and intensity, never added, removed or hidden, nor its `castShadow` toggled: the
   light counts are part of every lit program's key, so a change recompiles every program at once.
-- **Draw order**: a transparent object takes an explicit `renderOrder` (tyre marks 0, smoke and the
-  x-ray 1, bolts 2, rain and snow 3; [architecture.md](../architecture.md), "Shader warm-up and
-  draw order"): three otherwise sorts transparents by distance, and their order flips as the
-  camera moves.
+- **Draw order**: a transparent object takes its `renderOrder` from `DRAW_ORDER` in
+  `src/render/order.ts` (tyre marks 0, smoke and the x-ray 1, a wreck's flames and a blast's
+  flash 2, a blast's fireball and embers 3, bolts 4, rain and snow 5;
+  [architecture.md](../architecture.md), "Shader warm-up and draw order"): three otherwise sorts
+  transparents by distance, and their order flips as the camera moves.
 - **Performance**: measure in the browser ([playtest.md](playtest.md)) and update
   architecture.md's numbers: first frame, JS heap after GC, chunk build times, and 60 fps with no
   frame over 30 ms.

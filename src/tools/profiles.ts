@@ -2,19 +2,35 @@
 // and tunnels included), smoothed, grade-fitted through junction and crossing pins, then written
 // into the terrain grid (except under bridges and tunnels).
 import { arcLengths, type V } from "./geometry.ts"
-import { fitProfile, flatten, keepSamples, resample, smooth, type Grid, type Pin } from "./terrain.ts"
+import {
+  fitProfile,
+  flatten,
+  keepSamples,
+  resample,
+  smooth,
+  type Grid,
+  type Pin,
+} from "./terrain.ts"
 
-export interface Linear { readonly pts: ReadonlyArray<V>; readonly bridge?: true; readonly tunnel?: true }
+export interface Linear {
+  readonly pts: ReadonlyArray<V>
+  readonly bridge?: true
+  readonly tunnel?: true
+}
 export const lifted = (l: Linear): boolean => l.bridge === true || l.tunnel === true
 
 /** A chain member; `rev` = walked from its last vertex to its first. */
-interface Link<T> { readonly item: T; readonly rev: boolean }
+interface Link<T> {
+  readonly item: T
+  readonly rev: boolean
+}
 
 /** Pieces joined into chains through nodes where exactly two piece ends meet; longest chain first. */
 export const chainsOf = <T extends Linear>(items: ReadonlyArray<T>): Array<Array<Link<T>>> => {
   const ends = new Map<string, Array<number>>()
   items.forEach((t, i) => {
-    for (const v of [t.pts[0]!, t.pts.at(-1)!]) if (v.id !== undefined) ends.set(v.id, [...(ends.get(v.id) ?? []), i])
+    for (const v of [t.pts[0]!, t.pts.at(-1)!])
+      if (v.id !== undefined) ends.set(v.id, [...(ends.get(v.id) ?? []), i])
   })
   const through = (id: string | undefined) => id !== undefined && ends.get(id)!.length === 2
   const used = new Uint8Array(items.length)
@@ -39,29 +55,55 @@ export const chainsOf = <T extends Linear>(items: ReadonlyArray<T>): Array<Array
   items.forEach((_, i) => {
     if (used[i] === 0) chains.push(walk(i, false)) // closed loops
   })
-  const length = (c: ReadonlyArray<Link<T>>) => c.reduce((s, { item }) => s + arcLengths(item.pts).at(-1)!, 0)
-  return chains.map((c) => [c, length(c)] as const).sort((a, b) => b[1] - a[1]).map(([c]) => c)
+  const length = (c: ReadonlyArray<Link<T>>) =>
+    c.reduce((s, { item }) => s + arcLengths(item.pts).at(-1)!, 0)
+  return chains
+    .map((c) => [c, length(c)] as const)
+    .sort((a, b) => b[1] - a[1])
+    .map(([c]) => c)
 }
 
 /** An elevation at a point of a chain (nearest sample); `min`/`max` only bind when the fit crosses them. */
-export interface Bound { readonly x: number; readonly y: number; readonly z: number; readonly kind?: "min" | "max" }
+export interface Bound {
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  readonly kind?: "min" | "max"
+}
 
 /** Road core half-width written into the grid, rank (lower wins at junctions), grade limit and smoothing half-window (m). */
-interface Spec { readonly w: number; readonly rank: number; readonly grade: number; readonly half: number }
+interface Spec {
+  readonly w: number
+  readonly rank: number
+  readonly grade: number
+  readonly half: number
+}
 
 /** A piece as written to the map: its OSM vertices plus the profile samples where the elevation bends between them. */
-interface Dense { readonly pts: ReadonlyArray<V>; readonly z: ReadonlyArray<number> }
+interface Dense {
+  readonly pts: ReadonlyArray<V>
+  readonly z: ReadonlyArray<number>
+}
 
 /**
  * Profiles chains against `ground` (the uncarved terrain) and flattens them into `grid`. Elevations
  * set at shared nodes (`nodeZ`) pin every later chain through them; `zOf` holds per-vertex z and
  * `denseOf` the output polyline.
  */
-export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => number, owner: Uint8Array, protect: Uint8Array) => {
+export const makeProfiler = (
+  grid: Grid,
+  ground: (x: number, y: number) => number,
+  owner: Uint8Array,
+  protect: Uint8Array,
+) => {
   const nodeZ = new Map<string, number>()
   const zOf = new Map<Linear, Array<number>>()
   const denseOf = new Map<Linear, Dense>()
-  const profile = <T extends Linear>(chain: ReadonlyArray<Link<T>>, spec: Spec, bounds: ReadonlyArray<Bound> = []): void => {
+  const profile = <T extends Linear>(
+    chain: ReadonlyArray<Link<T>>,
+    spec: Spec,
+    bounds: ReadonlyArray<Bound> = [],
+  ): void => {
     const runs = chain.map(({ item, rev }) => (rev ? [...item.pts].reverse() : [...item.pts]))
     const pts = runs.flatMap((r, i) => (i === 0 ? r : r.slice(1)))
     const first: Array<number> = []
@@ -75,8 +117,10 @@ export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => numbe
     const isLifted = (i: number) => lifted(chain[i]!.item)
     runs.forEach((r, i) => {
       if (!isLifted(i)) return
-      const k0 = p.vertexSample[first[i]!]!, k1 = p.vertexSample[first[i]! + r.length - 1]!
-      for (let k = k0 + 1; k < k1; k++) p.z[k] = p.z[k0]! + ((p.z[k1]! - p.z[k0]!) * (p.s[k]! - p.s[k0]!)) / (p.s[k1]! - p.s[k0]!)
+      const k0 = p.vertexSample[first[i]!]!,
+        k1 = p.vertexSample[first[i]! + r.length - 1]!
+      for (let k = k0 + 1; k < k1; k++)
+        p.z[k] = p.z[k0]! + ((p.z[k1]! - p.z[k0]!) * (p.s[k]! - p.s[k0]!)) / (p.s[k1]! - p.s[k0]!)
     })
     smooth(p, spec.half)
     const pins: Array<Pin> = []
@@ -86,24 +130,38 @@ export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => numbe
     })
     // A bound inside a bridge or tunnel holds at both of its ends: the deck is straight between them.
     for (const b of bounds) {
-      let best = 0, d2 = Number.MAX_VALUE
+      let best = 0,
+        d2 = Number.MAX_VALUE
       for (let k = 0; k < p.z.length; k++) {
         const e = (p.x[k]! - b.x) ** 2 + (p.y[k]! - b.y) ** 2
         if (e < d2) [best, d2] = [k, e]
       }
       const i = pieceOfSample(Math.min(best, p.z.length - 2))
-      const at = isLifted(i) ? [p.vertexSample[first[i]!]!, p.vertexSample[first[i]! + runs[i]!.length - 1]!] : [best]
-      for (const k of at) pins.push({ k, z: b.z, ...(b.kind !== undefined ? { kind: b.kind } : {}) })
+      const at = isLifted(i)
+        ? [p.vertexSample[first[i]!]!, p.vertexSample[first[i]! + runs[i]!.length - 1]!]
+        : [best]
+      for (const k of at)
+        pins.push({ k, z: b.z, ...(b.kind === undefined ? {} : { kind: b.kind }) })
     }
     fitProfile(p, spec.grade, pins)
     // A sample's segment belongs to the piece whose first vertex precedes it; the last sample closes the last piece.
     // The core reaches half a cell past the carriageway's edge, so the terrain under the carriageway is (nearly) level across it.
-    flatten(grid, p, Math.max(spec.w / 2 + 0.3 + grid.cell / 2, 3), 8, spec.rank, owner, protect, (k) => isLifted(pieceOfSample(k)))
+    flatten(
+      grid,
+      p,
+      Math.max(spec.w / 2 + 0.3 + grid.cell / 2, 3),
+      8,
+      spec.rank,
+      owner,
+      protect,
+      (k) => isLifted(pieceOfSample(k)),
+    )
     runs.forEach((r, i) => {
       const z = r.map((_, j) => p.z[p.vertexSample[first[i]! + j]!]!)
       if (isLifted(i)) {
         const s = arcLengths(r)
-        for (let j = 1; j + 1 < z.length; j++) z[j] = z[0]! + ((z.at(-1)! - z[0]!) * s[j]!) / s.at(-1)!
+        for (let j = 1; j + 1 < z.length; j++)
+          z[j] = z[0]! + ((z.at(-1)! - z[0]!) * s[j]!) / s.at(-1)!
       }
       r.forEach((v, j) => {
         if (v.id !== undefined && !nodeZ.has(v.id)) nodeZ.set(v.id, z[j]!)
@@ -111,7 +169,11 @@ export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => numbe
       const vks = r.map((_, j) => p.vertexSample[first[i]! + j]!)
       const ks = isLifted(i) ? vks : keepSamples(p, vks)
       const vertexAt = new Map(vks.map((k, j) => [k, j]))
-      const dense = ks.map((k) => (vertexAt.has(k) ? { v: r[vertexAt.get(k)!]!, z: z[vertexAt.get(k)!]! } : { v: { x: p.x[k]!, y: p.y[k]! }, z: p.z[k]! }))
+      const dense = ks.map((k) =>
+        vertexAt.has(k)
+          ? { v: r[vertexAt.get(k)!]!, z: z[vertexAt.get(k)!]! }
+          : { v: { x: p.x[k]!, y: p.y[k]! }, z: p.z[k]! },
+      )
       if (chain[i]!.rev) dense.reverse()
       denseOf.set(chain[i]!.item, { pts: dense.map((d) => d.v), z: dense.map((d) => d.z) })
       zOf.set(chain[i]!.item, chain[i]!.rev ? z.reverse() : z)
@@ -123,9 +185,12 @@ export const makeProfiler = (grid: Grid, ground: (x: number, y: number) => numbe
    * link is not pinned at both ends by chains fitted apart (a lane between two levels would get a
    * straight line far over its grade limit).
    */
-  function* grown<T extends Linear>(chains: ReadonlyArray<ReadonlyArray<Link<T>>>): Generator<ReadonlyArray<Link<T>>> {
+  function* grown<T extends Linear>(
+    chains: ReadonlyArray<ReadonlyArray<Link<T>>>,
+  ): Generator<ReadonlyArray<Link<T>>> {
     const left = [...chains]
-    const touches = (c: ReadonlyArray<Link<T>>) => c.some(({ item }) => item.pts.some((v) => v.id !== undefined && nodeZ.has(v.id)))
+    const touches = (c: ReadonlyArray<Link<T>>) =>
+      c.some(({ item }) => item.pts.some((v) => v.id !== undefined && nodeZ.has(v.id)))
     while (left.length > 0) yield left.splice(Math.max(0, left.findIndex(touches)), 1)[0]!
   }
   return { profile, grown, nodeZ, zOf, denseOf }

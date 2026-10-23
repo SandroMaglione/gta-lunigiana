@@ -8,9 +8,19 @@
  *
  * @module render/sky/lightning
  */
-import { BufferAttribute, BufferGeometry, Color, DynamicDrawUsage, Group, LineBasicMaterial, LineSegments, type Vector3 } from "three"
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DynamicDrawUsage,
+  Group,
+  LineBasicMaterial,
+  LineSegments,
+  type Vector3,
+} from "three"
 
 import { hash01 } from "../../tools/geometry.ts"
+import { DRAW_ORDER } from "../order.ts"
 import { PALETTE } from "../palette.ts"
 import type { SkyFrame } from "./frame.ts"
 import { stream } from "./random.ts"
@@ -27,14 +37,27 @@ const BRANCH = { levels: 4, chance: 0.35, most: 6 } as const
 export const MAX_SEGMENTS = 512
 
 /** Points (map x, render y, map y) of a channel from `a` to `b` displaced `levels` times; `fork` hears every new midpoint. */
-const channel = (a: readonly number[], b: readonly number[], levels: number, sway: number, r: () => number,
-  fork?: (point: readonly number[], level: number) => void): Array<Array<number>> => {
+const channel = (
+  a: readonly number[],
+  b: readonly number[],
+  levels: number,
+  sway: number,
+  r: () => number,
+  fork?: (point: readonly number[], level: number) => void,
+): Array<Array<number>> => {
   let pts = [[...a], [...b]]
   for (let level = 0, d = sway; level < levels; level++, d /= 2) {
     const next: Array<Array<number>> = [pts[0]!]
     for (let k = 1; k < pts.length; k++) {
-      const p = pts[k - 1]!, q = pts[k]!, turn = 2 * Math.PI * r(), reach = d * r()
-      const mid = [(p[0]! + q[0]!) / 2 + Math.cos(turn) * reach, (p[1]! + q[1]!) / 2 + (r() - 0.5) * d * 0.3, (p[2]! + q[2]!) / 2 + Math.sin(turn) * reach]
+      const p = pts[k - 1]!,
+        q = pts[k]!,
+        turn = 2 * Math.PI * r(),
+        reach = d * r()
+      const mid = [
+        (p[0]! + q[0]!) / 2 + Math.cos(turn) * reach,
+        (p[1]! + q[1]!) / 2 + (r() - 0.5) * d * 0.3,
+        (p[2]! + q[2]!) / 2 + Math.sin(turn) * reach,
+      ]
       next.push(mid, q)
       fork?.(mid, level)
     }
@@ -56,17 +79,22 @@ export interface BoltShape {
  * 400 m up down to exactly the ground point, displaced sideways at each halving, plus branches that
  * fork off its upper levels and end in the air. Deterministic per seed.
  */
-export const boltSegments = (seed: number, ground: { readonly x: number; readonly y: number; readonly z: number }): BoltShape => {
+export const boltSegments = (
+  seed: number,
+  ground: { readonly x: number; readonly y: number; readonly z: number },
+): BoltShape => {
   const r = stream(seed)
   const top = [ground.x + (r() - 0.5) * 120, ground.z + HEIGHT, ground.y + (r() - 0.5) * 120]
   const forks: Array<{ point: readonly number[]; level: number }> = []
   const trunk = channel(top, [ground.x, ground.z, ground.y], LEVELS, SWAY, r, (point, level) => {
-    if (level < BRANCH.levels && forks.length < BRANCH.most && r() < BRANCH.chance) forks.push({ point, level })
+    if (level < BRANCH.levels && forks.length < BRANCH.most && r() < BRANCH.chance)
+      forks.push({ point, level })
   })
   const out: Array<number> = []
   const draw = (pts: ReadonlyArray<ReadonlyArray<number>>) => {
     for (let k = 1; k < pts.length && out.length < MAX_SEGMENTS * 6; k++) {
-      const p = pts[k - 1]!, q = pts[k]!
+      const p = pts[k - 1]!,
+        q = pts[k]!
       out.push(p[0]!, p[1]!, -p[2]!, q[0]!, q[1]!, -q[2]!)
     }
   }
@@ -74,25 +102,52 @@ export const boltSegments = (seed: number, ground: { readonly x: number; readonl
   const trunkSegments = out.length / 6
   for (const { point, level } of forks) {
     // A branch runs 0.4–0.7 of its parent segment's length, out to one side and down; one twig may fork off it.
-    const length = (HEIGHT / 2 ** level) * (0.4 + 0.3 * r()), turn = 2 * Math.PI * r(), out2 = 0.5 + 0.3 * r()
+    const length = (HEIGHT / 2 ** level) * (0.4 + 0.3 * r()),
+      turn = 2 * Math.PI * r(),
+      out2 = 0.5 + 0.3 * r()
     const drop = Math.min(length * (0.6 + 0.3 * r()), point[1]! - ground.z - 20) // branches end in the air
-    const end = [point[0]! + Math.cos(turn) * length * out2, point[1]! - drop, point[2]! + Math.sin(turn) * length * out2]
+    const end = [
+      point[0]! + Math.cos(turn) * length * out2,
+      point[1]! - drop,
+      point[2]! + Math.sin(turn) * length * out2,
+    ]
     let twig: { point: readonly number[]; level: number } | undefined
-    const branch = channel(point, end, Math.max(3, LEVELS - level - 2), SWAY / 2 ** (level + 1), r, (p, l) => {
-      if (twig === undefined && l === 0 && r() < 0.5) twig = { point: p, level: l }
-    })
+    const branch = channel(
+      point,
+      end,
+      Math.max(3, LEVELS - level - 2),
+      SWAY / 2 ** (level + 1),
+      r,
+      (p, l) => {
+        if (twig === undefined && l === 0 && r() < 0.5) twig = { point: p, level: l }
+      },
+    )
     draw(branch)
     if (twig !== undefined) {
-      const t = twig.point, l2 = length * 0.4, a = turn + (r() - 0.5) * 1.6
-      draw(channel(t, [t[0]! + Math.cos(a) * l2 * 0.6, t[1]! - l2 * 0.8, t[2]! + Math.sin(a) * l2 * 0.6], 3, SWAY / 2 ** (level + 3), r))
+      const t = twig.point,
+        l2 = length * 0.4,
+        a = turn + (r() - 0.5) * 1.6
+      draw(
+        channel(
+          t,
+          [t[0]! + Math.cos(a) * l2 * 0.6, t[1]! - l2 * 0.8, t[2]! + Math.sin(a) * l2 * 0.6],
+          3,
+          SWAY / 2 ** (level + 3),
+          r,
+        ),
+      )
     }
   }
   return { points: out, trunk: trunkSegments }
 }
 
 /** Return strokes of flash `seed`: 2–4, the first at 0 and each 30–120 ms after the last; the later ones a little weaker. */
-const strokes = (seed: number): { readonly start: ReadonlyArray<number>; readonly peak: ReadonlyArray<number> } => {
-  const n = 2 + Math.floor(hash01(seed, 1) * 3), start = [0], peak = [1]
+const strokes = (
+  seed: number,
+): { readonly start: ReadonlyArray<number>; readonly peak: ReadonlyArray<number> } => {
+  const n = 2 + Math.floor(hash01(seed, 1) * 3),
+    start = [0],
+    peak = [1]
   for (let k = 1; k < n; k++) {
     start.push(start[k - 1]! + 0.03 + 0.09 * hash01(seed, 10 + k))
     peak.push(0.75 + 0.25 * hash01(seed, 20 + k))
@@ -157,15 +212,21 @@ const STROKE_SHIMMER = { base: 0.95, depth: 0.1 } as const
 const CALM_DECAY = 0.12
 /** A flash inside the cloud lights the scene this much less than a ground strike of the same power. */
 const IN_CLOUD = 0.6
-/** Draw order among the transparent effects: the bolt before the rain and snow (which draw over it). */
-const BOLT_ORDER = 2
 const BOLT = new Color(PALETTE.bolt)
 
 /**
  * One flash in progress: when it began, its scene pulse's power (0 when it came within FLASH_GAP
  * of the last pulse) and distance, and its bolt slot (−1: none, or handed to a newer bolt).
  */
-interface Flash { readonly seed: number; readonly start: number; readonly power: number; readonly distance: number; slot: number; readonly trunk: number; readonly count: number }
+interface Flash {
+  readonly seed: number
+  readonly start: number
+  readonly power: number
+  readonly distance: number
+  slot: number
+  readonly trunk: number
+  readonly count: number
+}
 
 /**
  * The lightning host: a fixed pool of bolt line meshes (never added or removed after construction)
@@ -193,9 +254,18 @@ export class Bolts {
       // BufferAttribute keeps the array it is given (Float32BufferAttribute would copy it, and the bolt written into `buffer` never upload).
       geometry.setAttribute("position", new BufferAttribute(buffer, 3).setUsage(DynamicDrawUsage))
       geometry.setDrawRange(0, 0)
-      const line = new LineSegments(geometry, new LineBasicMaterial({ color: 0, transparent: true, depthWrite: false, fog: false, toneMapped: false }))
+      const line = new LineSegments(
+        geometry,
+        new LineBasicMaterial({
+          color: 0,
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+          toneMapped: false,
+        }),
+      )
       line.frustumCulled = false // it moves every flash; an idle one draws nothing
-      line.renderOrder = BOLT_ORDER
+      line.renderOrder = DRAW_ORDER.bolt
       this.object.add(line)
       return line
     })
@@ -206,7 +276,9 @@ export class Bolts {
     const distance = Math.hypot(l.x - focus.x, l.y + focus.z) // three z = −north
     const power = now - this.lastPulse >= FLASH_GAP ? l.power * (l.bolt ? 1 : IN_CLOUD) : 0
     if (power > 0) this.lastPulse = now
-    let slot = -1, trunk = 0, count = 0
+    let slot = -1,
+      trunk = 0,
+      count = 0
     if (l.bolt) {
       slot = this.next
       this.next = (this.next + 1) % POOL
@@ -225,9 +297,15 @@ export class Bolts {
     let flash = 0
     for (const line of this.lines) line.geometry.setDrawRange(0, 0)
     for (let i = this.flashes.length - 1; i >= 0; i--) {
-      const f = this.flashes[i]!, age = frame.now - f.start, { start } = strokes(f.seed)
+      const f = this.flashes[i]!,
+        age = frame.now - f.start,
+        { start } = strokes(f.seed)
       const stroke = strokeLevel(f.seed, age)
-      flash = Math.max(flash, sceneFlash(age, f.power, f.distance) * (this.reduced ? 0.5 : STROKE_SHIMMER.base + STROKE_SHIMMER.depth * stroke))
+      flash = Math.max(
+        flash,
+        sceneFlash(age, f.power, f.distance) *
+          (this.reduced ? 0.5 : STROKE_SHIMMER.base + STROKE_SHIMMER.depth * stroke),
+      )
       const level = this.reduced ? (age < 0 ? 0 : Math.exp(-age / CALM_DECAY)) : stroke
       if (f.slot >= 0 && level > 0.01) {
         const line = this.lines[f.slot]!

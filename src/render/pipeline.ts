@@ -10,8 +10,19 @@
  * @module render/pipeline
  */
 import {
-  DepthTexture, HalfFloatType, Matrix4, NearestFilter, Object3D, OrthographicCamera, ShaderMaterial, Vector2, Vector3,
-  WebGLRenderTarget, type DirectionalLight, type Scene, type WebGLRenderer
+  DepthTexture,
+  HalfFloatType,
+  Matrix4,
+  NearestFilter,
+  Object3D,
+  OrthographicCamera,
+  ShaderMaterial,
+  Vector2,
+  Vector3,
+  WebGLRenderTarget,
+  type DirectionalLight,
+  type Scene,
+  type WebGLRenderer,
 } from "three"
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js"
 
@@ -28,7 +39,8 @@ const FAR = 3000 // 2.5 km past the focus: from the Apuan summits the deepest gr
 /** Radians of view yaw per quarter turn of the sim's `View` (a turn to the left is counter-clockwise). */
 export const QUARTER = Math.PI / 2
 
-const aim = new Matrix4(), origin = new Vector3()
+const aim = new Matrix4(),
+  origin = new Vector3()
 /**
  * Writes the camera's right/up/back axes (three space, the columns of its rotation) for a view
  * turned `yaw` rad to the left of the home seat into the given vectors, and returns the rotation.
@@ -37,14 +49,22 @@ const aim = new Matrix4(), origin = new Vector3()
  * is a rotation about three's +y.
  */
 const aimAt = (yaw: number, right: Vector3, up: Vector3, back: Vector3): Matrix4 => {
-  const home = screenAxes(0).up, c = Math.cos(ELEVATION)
-  const eye = new Vector3(-home.x * c, Math.sin(ELEVATION), home.y * c).applyAxisAngle(Object3D.DEFAULT_UP, yaw)
+  const home = screenAxes(0).up,
+    c = Math.cos(ELEVATION)
+  const eye = new Vector3(-home.x * c, Math.sin(ELEVATION), home.y * c).applyAxisAngle(
+    Object3D.DEFAULT_UP,
+    yaw,
+  )
   return aim.lookAt(eye, origin, Object3D.DEFAULT_UP).extractBasis(right, up, back)
 }
 
 /** The camera's right/up/back axes (three space) for a view turned `yaw` rad to the left of the home seat. */
-export const viewAxes = (yaw: number): { readonly right: Vector3; readonly up: Vector3; readonly back: Vector3 } => {
-  const right = new Vector3(), up = new Vector3(), back = new Vector3()
+export const viewAxes = (
+  yaw: number,
+): { readonly right: Vector3; readonly up: Vector3; readonly back: Vector3 } => {
+  const right = new Vector3(),
+    up = new Vector3(),
+    back = new Vector3()
   aimAt(yaw, right, up, back)
   return { right, up, back }
 }
@@ -95,7 +115,8 @@ export const zoomFor = (speed: number | undefined, last: number): number => {
  * about a third of a second and stops dead instead of creeping (any sub-texel creep shimmers).
  */
 export const turnToward = (yaw: number, target: number, dt: number): number => {
-  const rest = Math.abs(target - yaw), step = Math.max(rest * (1 - Math.exp(-12 * dt)), dt)
+  const rest = Math.abs(target - yaw),
+    step = Math.max(rest * (1 - Math.exp(-12 * dt)), dt)
   return step >= rest ? target : yaw + Math.sign(target - yaw) * step
 }
 
@@ -131,7 +152,10 @@ export class PixelView {
     this.renderer = renderer
     this.targetHeight = targetHeight
     this.target = new WebGLRenderTarget(1, 1, {
-      type: HalfFloatType, minFilter: NearestFilter, magFilter: NearestFilter, depthTexture: new DepthTexture(1, 1)
+      type: HalfFloatType,
+      minFilter: NearestFilter,
+      magFilter: NearestFilter,
+      depthTexture: new DepthTexture(1, 1),
     })
     this.material = new ShaderMaterial({
       uniforms: {
@@ -143,12 +167,12 @@ export class PixelView {
         uDepthRange: { value: FAR - NEAR },
         uOutlineMetres: { value: 1 },
         uOutlineDarken: { value: 0.45 },
-        ...this.post
+        ...this.post,
       },
       depthTest: false,
       depthWrite: false,
       vertexShader: "void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }",
-      fragmentShader: FRAGMENT
+      fragmentShader: FRAGMENT,
     })
     this.blit = new FullScreenQuad(this.material)
   }
@@ -161,7 +185,8 @@ export class PixelView {
     this.scale = Math.max(1, Math.round(device.y / this.targetHeight))
     this.view.set(Math.ceil(device.x / this.scale), Math.ceil(device.y / this.scale))
     this.target.setSize(this.view.x + 2 * MARGIN, this.view.y + 2 * MARGIN)
-    this.material.uniforms["uRtSize"]!.value.set(this.target.width, this.target.height)
+    const rtSize = this.material.uniforms["uRtSize"]!.value as Vector2
+    rtSize.set(this.target.width, this.target.height)
     this.material.uniforms["uScale"]!.value = this.scale
   }
 
@@ -175,7 +200,14 @@ export class PixelView {
   /** The shadow box over the ground this view shows (`shadowFit`), at its current yaw; `groundAt(x, z)` is the terrain's render y. */
   shadowFit(toSun: Vector3, groundAt: (x: number, z: number) => number): ShadowFit {
     this.aim()
-    return shadowFit(this.focus, { right: this.right, up: this.up, back: this.back }, this.view.x / this.texelsPerMetre, this.view.y / this.texelsPerMetre, toSun, groundAt)
+    return shadowFit(
+      this.focus,
+      { right: this.right, up: this.up, back: this.back },
+      this.view.x / this.texelsPerMetre,
+      this.view.y / this.texelsPerMetre,
+      toSun,
+      groundAt,
+    )
   }
 
   /**
@@ -200,13 +232,18 @@ export class PixelView {
     cam.top = (this.target.height * texel) / 2
     cam.bottom = (-this.target.height * texel) / 2
     cam.updateProjectionMatrix()
-    const fx = this.focus.dot(this.right) / texel, fy = this.focus.dot(this.up) / texel
-    const sx = Math.round(fx), sy = Math.round(fy)
-    cam.position.copy(this.right).multiplyScalar(sx * texel)
+    const fx = this.focus.dot(this.right) / texel,
+      fy = this.focus.dot(this.up) / texel
+    const sx = Math.round(fx),
+      sy = Math.round(fy)
+    cam.position
+      .copy(this.right)
+      .multiplyScalar(sx * texel)
       .addScaledVector(this.up, sy * texel)
       .addScaledVector(this.back, this.focus.dot(this.back) + DISTANCE)
     cam.updateMatrixWorld()
-    this.material.uniforms["uOffset"]!.value.set(MARGIN + fx - sx, MARGIN + fy - sy)
+    const offset = this.material.uniforms["uOffset"]!.value as Vector2
+    offset.set(MARGIN + fx - sx, MARGIN + fy - sy)
     const post = this.post
     post.uCamPos.value.copy(cam.position)
     post.uRight.value.copy(this.right)
@@ -220,10 +257,17 @@ export class PixelView {
   }
 }
 
-const lightBasis = new Matrix4(), lr = new Vector3(), lu = new Vector3(), lb = new Vector3()
+const lightBasis = new Matrix4(),
+  lr = new Vector3(),
+  lu = new Vector3(),
+  lb = new Vector3()
 
 /** The sun's shadow box around the focus: half size across the light, and how far the shown ground reaches toward (`above`) and away from (`below`) the sun. */
-export interface ShadowFit { readonly half: number; readonly above: number; readonly below: number }
+export interface ShadowFit {
+  readonly half: number
+  readonly above: number
+  readonly below: number
+}
 
 /** Widest shadow box half size, m: the 2048 map is then 0.3 m per texel. */
 const SHADOW_CAP = 300
@@ -231,7 +275,8 @@ const SHADOW_CAP = 300
 const MARCH = 4
 /** Rays marched per side of the view: a grid, because a deep valley can show only between the edges. */
 const RAYS = 5
-const ray = new Vector3(), hit = new Vector3()
+const ray = new Vector3(),
+  hit = new Vector3()
 
 /**
  * The shadow box that covers the ground a view of `width` × `height` m (screen plane, around
@@ -241,14 +286,25 @@ const ray = new Vector3(), hit = new Vector3()
  * lies deep along the light.
  */
 export const shadowFit = (
-  focus: Vector3, axes: { readonly right: Vector3; readonly up: Vector3; readonly back: Vector3 }, width: number, height: number, toSun: Vector3,
-  groundAt: (x: number, z: number) => number
+  focus: Vector3,
+  axes: { readonly right: Vector3; readonly up: Vector3; readonly back: Vector3 },
+  width: number,
+  height: number,
+  toSun: Vector3,
+  groundAt: (x: number, z: number) => number,
 ): ShadowFit => {
   lightBasis.lookAt(toSun, origin, Object3D.DEFAULT_UP).extractBasis(lr, lu, lb)
-  let half = Math.hypot(width, height / Math.sin(ELEVATION)) / 2, above = 0, below = 0
+  let half = Math.hypot(width, height / Math.sin(ELEVATION)) / 2,
+    above = 0,
+    below = 0
   for (let k = 0; k < RAYS * RAYS; k++) {
-    const u = ((2 * (k % RAYS)) / (RAYS - 1) - 1) * (width / 2), v = ((2 * Math.floor(k / RAYS)) / (RAYS - 1) - 1) * (height / 2)
-    ray.copy(focus).addScaledVector(axes.right, u).addScaledVector(axes.up, v).addScaledVector(axes.back, DISTANCE)
+    const u = ((2 * (k % RAYS)) / (RAYS - 1) - 1) * (width / 2),
+      v = ((2 * Math.floor(k / RAYS)) / (RAYS - 1) - 1) * (height / 2)
+    ray
+      .copy(focus)
+      .addScaledVector(axes.right, u)
+      .addScaledVector(axes.up, v)
+      .addScaledVector(axes.back, DISTANCE)
     // The first crossing from above the ground to below it (the camera plane may start inside a hill).
     let wasAbove = false
     for (let t = 0; t < FAR; t += MARCH, ray.addScaledVector(axes.back, -MARCH)) {
@@ -275,8 +331,14 @@ const BIAS = 0.45
  * Fits the sun's shadow box (`shadowFit`) on `focus`, snapped to shadow-map texels in light space
  * so shadow edges do not crawl while the camera moves. `sun.target` must be in the scene.
  */
-export const followSun = (sun: DirectionalLight, focus: Vector3, toSun: Vector3, fit: ShadowFit): void => {
-  const shadow = sun.shadow.camera, half = fit.half
+export const followSun = (
+  sun: DirectionalLight,
+  focus: Vector3,
+  toSun: Vector3,
+  fit: ShadowFit,
+): void => {
+  const shadow = sun.shadow.camera,
+    half = fit.half
   shadow.left = -half
   shadow.right = half
   shadow.top = half
@@ -287,7 +349,12 @@ export const followSun = (sun: DirectionalLight, focus: Vector3, toSun: Vector3,
   shadow.updateProjectionMatrix()
   const texel = (2 * half) / sun.shadow.mapSize.x
   lightBasis.lookAt(toSun, origin, Object3D.DEFAULT_UP).extractBasis(lr, lu, lb)
-  const x = Math.round(focus.dot(lr) / texel) * texel, y = Math.round(focus.dot(lu) / texel) * texel
-  sun.target.position.copy(lr).multiplyScalar(x).addScaledVector(lu, y).addScaledVector(lb, focus.dot(lb))
+  const x = Math.round(focus.dot(lr) / texel) * texel,
+    y = Math.round(focus.dot(lu) / texel) * texel
+  sun.target.position
+    .copy(lr)
+    .multiplyScalar(x)
+    .addScaledVector(lu, y)
+    .addScaledVector(lb, focus.dot(lb))
   sun.position.copy(sun.target.position).addScaledVector(toSun, distance)
 }

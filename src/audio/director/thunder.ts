@@ -27,9 +27,11 @@ const AHEAD = 0.1
 /** The channel fills the sky: a thunder pans this share of a point source's. */
 const WIDTH = 0.6
 /** At most this many thunders roll at once; another one sounding plays this much (linear) under its own level, so two at the cap stay under the limiter. */
-const AT_ONCE = 2, OVERLAP = Math.SQRT1_2
+const AT_ONCE = 2,
+  OVERLAP = Math.SQRT1_2
 /** A flash of `power` 1 thunders at `LEVELS.thunder`; a weaker one this many dB under per decade of power, down to its 0.3. */
-const POWER_DB = 20, WEAKEST = 0.3
+const POWER_DB = 20,
+  WEAKEST = 0.3
 
 /** A flash's thunder on its way: the sound, the ground under the flash (m a.s.l.), the speaker time of the flash, its level, and its render once made. */
 interface Rolling {
@@ -45,7 +47,8 @@ interface Rolling {
 /** The thunder part of the director, with the thunders on their way and those still sounding (speaker time they end, level at the ears). */
 export const makeThunder = () => {
   const coming: Array<Rolling> = []
-  let sounding: Array<{ readonly sound: Thunder; readonly end: number; readonly level: number }> = []
+  let sounding: Array<{ readonly sound: Thunder; readonly end: number; readonly level: number }> =
+    []
 
   /**
    * How `thunder` reaches the ears now: from where its render starts (before the render, where it starts on average), clear, its
@@ -54,9 +57,14 @@ export const makeThunder = () => {
   const heard = (frame: Frame, thunder: Rolling) => {
     const z = thunder.ground + (thunder.render?.height ?? (thunder.sound.bolt ? 0 : IN_CLOUD))
     const range = Math.hypot(thunder.x - frame.ears.x, thunder.y - frame.ears.y, z - frame.ears.z)
-    const at = frame.path(undefined, { x: thunder.x, y: thunder.y, z }, thunder.level, { quiet: thunderQuiet(range) })
+    const at = frame.path(undefined, { x: thunder.x, y: thunder.y, z }, thunder.level, {
+      quiet: thunderQuiet(range),
+    })
     const cutoff = frame.inside === undefined ? 20000 : CABIN[frame.inside].cutoff
-    return { range, at: { ...at, placement: { ...at.placement, pan: WIDTH * at.placement.pan, cutoff, wet: 0 } } }
+    return {
+      range,
+      at: { ...at, placement: { ...at.placement, pan: WIDTH * at.placement.pan, cutoff, wet: 0 } },
+    }
   }
 
   return {
@@ -66,8 +74,17 @@ export const makeThunder = () => {
         if (h.kind !== "lightning" || !frame.live) continue
         // Rendered as heard from where the ears stand now, over the ground under the flash: the geometry its timing below uses.
         const ground = groundAt(h.x, h.y)
-        const sound: Thunder = { kind: "thunder", distance: Math.hypot(h.x - ears.x, h.y - ears.y), ears: ears.z - ground, bolt: h.bolt, seed: h.seed }
-        const level = { ...LEVELS.thunder, db: LEVELS.thunder.db + POWER_DB * Math.log10(Math.min(1, Math.max(WEAKEST, h.power))) }
+        const sound: Thunder = {
+          kind: "thunder",
+          distance: Math.hypot(h.x - ears.x, h.y - ears.y),
+          ears: ears.z - ground,
+          bolt: h.bolt,
+          seed: h.seed,
+        }
+        const level = {
+          ...LEVELS.thunder,
+          db: LEVELS.thunder.db + POWER_DB * Math.log10(Math.min(1, Math.max(WEAKEST, h.power))),
+        }
         const thunder = { sound, x: h.x, y: h.y, ground, at: now, level }
         // Not even heard now (masked, or the listener too far): it is not waited for, nor rendered.
         if (heard(frame, thunder).at.audible) coming.push(thunder)
@@ -77,11 +94,13 @@ export const makeThunder = () => {
       if (next >= 0) coming[next] = { ...coming[next]!, render: thunderRender(coming[next]!.sound) }
       sounding = sounding.filter((s) => s.end > now)
       for (let k = coming.length - 1; k >= 0; k--) {
-        const thunder = coming[k]!, render = thunder.render
+        const thunder = coming[k]!,
+          render = thunder.render
         if (render === undefined) continue
         const { range, at } = heard(frame, thunder)
         // Its first sound leaves `lead` s before its reference point's; within `DELAY_FROM` m it plays at once, like any one-shot.
-        const first = range > DELAY_FROM ? thunder.at + range / SPEED_OF_SOUND - render.lead : thunder.at
+        const first =
+          range > DELAY_FROM ? thunder.at + range / SPEED_OF_SOUND - render.lead : thunder.at
         if (first > now + AHEAD) continue
         coming.splice(k, 1)
         if (!at.audible) continue
@@ -92,11 +111,13 @@ export const makeThunder = () => {
           frame.stop(quietest.sound)
           sounding = sounding.filter((s) => s !== quietest)
         }
-        const gain = Math.min(at.placement.gain, dbToGain(MOST_DB.thunder ?? Infinity)) * (sounding.length > 0 ? OVERLAP : 1)
+        const gain =
+          Math.min(at.placement.gain, dbToGain(MOST_DB.thunder)) *
+          (sounding.length > 0 ? OVERLAP : 1)
         const delay = Math.max(0, first - now)
         frame.play(thunder.sound, { ...at, placement: { ...at.placement, gain }, delay: 0 }, delay)
         sounding.push({ sound: thunder.sound, end: now + delay + render.seconds, level: at.level })
       }
-    }
+    },
   }
 }

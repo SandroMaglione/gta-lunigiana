@@ -124,7 +124,9 @@ The same keys walk and drive; the table shows what each does in both modes:
 | Esc | settings, which pause the game: the vehicle physics (Simulation, Balanced or Arcade; a new game starts on Balanced); Esc or Resume closes them. With the full map open, Esc closes the map instead | same |
 | P (dev builds only) | debug menu: the time of day, the clock’s speed and the date, the weather, and the vehicle physics presets and handling knobs for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
 
-The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, the time in Rome (HH:MM) with the weather and the temperature where you stand (for example “Rain · 9 °C”), cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. On screens 600 px wide or narrower the clock sits under the score. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
+Crashes wear vehicles out, the truck far less than a small car: a damaged engine pulls weaker and misfires, smokes white, then black, and once destroyed it burns and nobody can drive it again. 5–10 s later it explodes: the blast wrecks the cars beside it, which catch fire in turn, and kills the people nearby, you too if you are still inside or standing next to it; you come back on foot at the start 4 s later ([docs/gameplay.md](docs/gameplay.md#damage)).
+
+The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, the time in Rome (HH:MM) with the weather and the temperature where you stand (for example “Rain · 9 °C”), cars stolen, people hit, the action the key would take, a speedometer while driving, a minimap, and “Sei morto” when you are killed. On screens 600 px wide or narrower the clock sits under the score. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
 ### Touch controls on a phone or tablet
 
@@ -146,7 +148,7 @@ The settings have no touch control yet: Esc on a keyboard opens them.
 
 ## How the game sounds
 
-The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, rain on the ground and on the car’s roof, thunder, crickets in warm, dry air, birds by day and the owl at night, farm dogs, the village church bells striking the game’s hours, and the Lucido and its streams.
+The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation (rough, knocking and misfiring once crashes wear them), wrecks burning and then exploding, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, voices, wind, rain on the ground and on the car’s roof, thunder, crickets in warm, dry air, birds by day and the owl at night, farm dogs, the village church bells striking the game’s hours, and the Lucido and its streams.
 
 Each sound reaches you through outdoor acoustics. It fades with distance and under the background noise, so you hear only what’s near. Houses and hills muffle it, the air dulls it, its pitch shifts as it passes, far crashes arrive late, and loud ones echo off the slopes.
 
@@ -161,10 +163,12 @@ Every script runs with `pnpm`:
 | `pnpm dev` | Vite dev server on port 5173, open to the local network (`--host`) |
 | `pnpm build` | production build into `dist/` (the Pages workflow adds `--base=./`) |
 | `pnpm preview` | serves `dist/` on port 4173 |
-| `pnpm check` | `typecheck`, then `lint`, then `test` |
+| `pnpm check` | `format:check`, then `typecheck`, then `lint`, then `test` |
+| `pnpm format` | `oxfmt`: formats the code, JSON, YAML, HTML and CSS in place |
+| `pnpm format:check` | `oxfmt --check`: fails on any unformatted file |
 | `pnpm typecheck` | `tsc` (no emit) |
-| `pnpm lint` | `oxlint` with the Ritmo plugin, then `ritmo-devtools lint src/sim/index.ts` |
-| `pnpm test` | `node --test` over `src/**/*.test.ts` |
+| `pnpm lint` | type-aware `oxlint` with the Ritmo plugin and the project's own (`lint/`), warnings failing, then `ritmo-devtools lint src/sim/index.ts` |
+| `pnpm test` | `node --test` over `src/**/*.test.ts` and `lint/**/*.test.ts`, each in a `__tests__` folder beside the module it tests |
 | `pnpm map` | rebuilds `src/sim/map/monzone.bin` from `data/raw` |
 | `pnpm fetch-osm` | downloads the OpenStreetMap extract again into `data/raw/lunigiana.osm.gz` |
 | `pnpm fetch-rt` | downloads the Regione Toscana sources again into `data/raw/rt` |
@@ -175,13 +179,13 @@ The simulation, the browser hosts and the map tools live in separate folders:
 
 | Path | Contents |
 |---|---|
-| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, tuning. Headless and deterministic |
+| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), crash damage, the handling knobs and presets, tuning. Headless and deterministic |
 | `src/sim/sky/` | the game clock and Rome’s calendar, the map’s place, the sun and the moon, the national climate model and its daily odds, the day plan, the weather regimes and what the weather is at a point (temperature, rain and snow, wet and snowy ground, fog, wind) |
-| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, populate, sky) |
+| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, physics, contacts, damage, explosions, populate, sky) |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
-| `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, the render schedule; `sky/` lights the day and the night and draws the weather (fog, snow, wet ground, cloud shadows, rain and snow, lightning, street lamps, lit windows, headlights) |
+| `src/render/` | Three.js host code: pixel pipeline, static world meshes, actor meshes, tyre marks and smoke, damaged engines' smoke and fire, explosions and charred wrecks, the render schedule; `sky/` lights the day and the night and draws the weather (fog, snow, wet ground, cloud shadows, rain and snow, lightning, street lamps, lit windows, headlights) |
 | `src/audio/` | Web Audio host code: the audio schedule, the acoustics director (with the time of day, the weather and the thunder), the speaker and mixer, the synths, the audition page |
-| `src/hud/` | DOM HUD: the title card as loading screen, location names, the clock and weather readout, score, prompt, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the time, the weather and the vehicle handling; the settings and the menu set the handling through one store, the menu the sky through another |
+| `src/hud/` | DOM HUD: the title card as loading screen, location names, the clock and weather readout, score, prompt, the “Sei morto” card when the player is killed, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the time, the weather and the vehicle handling; the settings and the menu set the handling through one store, the menu the sky through another |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
 | `src/main.ts` | browser host: builds the scene, makes the runtime, runs the fixed loop |
@@ -189,6 +193,8 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
 | `docs/` | architecture, map pipeline, gameplay, weather and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `.oxlintrc.json`, `.oxfmtrc.json`, `lefthook.yml` | lint rules, formatter settings, and the git hooks that format and lint each commit and check each push |
+| `lint/` | the project's own oxlint plugins, one file each named after the plugin (`test-files.ts`: each test in a `__tests__` folder) |
 
 ## Rebuilding the map
 

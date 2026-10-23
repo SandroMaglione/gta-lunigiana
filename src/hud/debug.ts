@@ -20,15 +20,22 @@ const TITLE = "Debug"
  * key in P's place on layouts that type no ASCII character there (Cyrillic, Greek). Repeats and
  * Ctrl, Cmd or Alt chords are not.
  */
-export const isDebugKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">): boolean => {
+export const isDebugKey = (
+  event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">,
+): boolean => {
   if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return false
   const key = event.key.toLowerCase()
   return key === "p" || (event.code === "KeyP" && !/^[ -~]$/.test(key))
 }
 
 /** `document`'s element maker: a `tag` element with `props` set (ARIA too: `ariaLabel`, `ariaPressed`, `ariaValueText`) and `children` appended. */
-const maker = (document: Document) =>
-  <K extends keyof HTMLElementTagNameMap>(tag: K, props: NoInfer<Partial<HTMLElementTagNameMap[K]>> = {}, ...children: Array<Node | string>): HTMLElementTagNameMap[K] => {
+const maker =
+  (document: Document) =>
+  <K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    props: NoInfer<Partial<HTMLElementTagNameMap[K]>> = {},
+    ...children: Array<Node | string>
+  ): HTMLElementTagNameMap[K] => {
     const node = Object.assign(document.createElement(tag), props)
     node.append(...children)
     return node
@@ -92,10 +99,14 @@ html.touch .debug-toggle { top: 148px; top: anchor(--ritmo-monitor top, 148px); 
 
 /** Mounts the menu, closed, and its button: the Time, Weather and Handling areas, each showing every change its store makes, from wherever it comes. */
 export const mountDebugMenu = ({ window, handling, sky, here }: DebugMenuHost): void => {
-  const document = window.document, make = maker(document)
-  const panel = make("section", { id: "debug-menu", className: "debug", role: "dialog", ariaLabel: TITLE, hidden: true },
+  const document = window.document,
+    make = maker(document)
+  const panel = make(
+    "section",
+    { id: "debug-menu", className: "debug", role: "dialog", ariaLabel: TITLE, hidden: true },
     make("h2", { textContent: TITLE }),
-    make("p", { textContent: "Dev builds only." }))
+    make("p", { textContent: "Dev builds only." }),
+  )
   const areas = [timeArea(make, sky), weatherArea(make, sky, here), handlingArea(make, handling)]
   for (const { title, nodes } of areas) {
     const heading = make("h3", { id: `debug-${title.toLowerCase()}-title`, textContent: title })
@@ -103,7 +114,13 @@ export const mountDebugMenu = ({ window, handling, sky, here }: DebugMenuHost): 
     area.setAttribute("aria-labelledby", heading.id)
     panel.append(area)
   }
-  const toggle = make("button", { type: "button", className: "debug-toggle", textContent: "Debug (P)", title: TITLE, ariaExpanded: "false" })
+  const toggle = make("button", {
+    type: "button",
+    className: "debug-toggle",
+    textContent: "Debug (P)",
+    title: TITLE,
+    ariaExpanded: "false",
+  })
   toggle.setAttribute("aria-controls", panel.id)
 
   // The live readouts follow the game each frame, only while they show.

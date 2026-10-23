@@ -10,7 +10,10 @@ import type { GameClockValue } from "../schema.ts"
 import { DAY, daysFromCivil } from "./calendar.ts"
 
 /** The game clock's range: from 2000-01-01 to 2100-01-01 UTC (Unix seconds), inside the calendar's EU summer-time rule. */
-export const SECONDS_RANGE = { min: daysFromCivil(2000, 1, 1) * DAY, max: daysFromCivil(2100, 1, 1) * DAY } as const
+export const SECONDS_RANGE = {
+  min: daysFromCivil(2000, 1, 1) * DAY,
+  max: daysFromCivil(2100, 1, 1) * DAY,
+} as const
 /** The fastest the dev menu runs the clock: an hour of game time per step. */
 export const MAX_RATE = 3600
 
@@ -21,10 +24,16 @@ export interface ClockRequest {
 }
 
 /** `clock` with `request` applied: seconds rounded and kept in `SECONDS_RANGE`, rate a whole number in [0, `MAX_RATE`]; undefined when neither is a finite number. */
-export const setClock = (clock: GameClockValue, request: ClockRequest): GameClockValue | undefined => {
+export const setClock = (
+  clock: GameClockValue,
+  request: ClockRequest,
+): GameClockValue | undefined => {
   const within = (value: number | undefined, min: number, max: number) =>
-    typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : undefined
-  const seconds = within(request.seconds, SECONDS_RANGE.min, SECONDS_RANGE.max), rate = within(request.rate, 0, MAX_RATE)
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.max(min, Math.min(max, Math.round(value)))
+      : undefined
+  const seconds = within(request.seconds, SECONDS_RANGE.min, SECONDS_RANGE.max),
+    rate = within(request.rate, 0, MAX_RATE)
   if (seconds === undefined && rate === undefined) return undefined
   return { seconds: seconds ?? clock.seconds, rate: rate ?? clock.rate }
 }

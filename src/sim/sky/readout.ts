@@ -9,7 +9,19 @@ import type { WeatherValue } from "../schema.ts"
 import type { Conditions } from "./local.ts"
 
 /** The readout's words. */
-const WEATHER_WORDS = ["Clear", "Fair", "Cloudy", "Overcast", "Fog", "Drizzle", "Rain", "Sleet", "Snow", "Storm", "Windy"] as const
+const WEATHER_WORDS = [
+  "Clear",
+  "Fair",
+  "Cloudy",
+  "Overcast",
+  "Fog",
+  "Drizzle",
+  "Rain",
+  "Sleet",
+  "Snow",
+  "Storm",
+  "Windy",
+] as const
 /** A readout word. */
 export type WeatherWord = (typeof WEATHER_WORDS)[number]
 
@@ -29,12 +41,23 @@ const COVER = { clear: 0.2, fair: 0.5, cloudy: 0.85 } as const
  * The word for the weather where the conditions `here` hold (`conditionsAt` at the player) under `weather`: a thunderstorm, then
  * what falls (rain, sleet or snow), then fog, then drizzle, then a strong wind, else the sky's cover.
  */
-export const describeWeather = (weather: Pick<WeatherValue, "cloud" | "storm" | "wind">, here: Pick<Conditions, "rain" | "snow" | "fog">): WeatherWord => {
-  const falling = here.rain + here.snow, snowy = falling > 0 ? here.snow / falling : 0
+export const describeWeather = (
+  weather: Pick<WeatherValue, "cloud" | "storm" | "wind">,
+  here: Pick<Conditions, "rain" | "snow" | "fog">,
+): WeatherWord => {
+  const falling = here.rain + here.snow,
+    snowy = falling > 0 ? here.snow / falling : 0
   if (weather.storm >= STORM.activity && falling >= STORM.falling) return "Storm"
-  if (falling >= FALLING.steady) return snowy >= SNOWY.snow ? "Snow" : snowy > SNOWY.sleet ? "Sleet" : "Rain"
+  if (falling >= FALLING.steady)
+    return snowy >= SNOWY.snow ? "Snow" : snowy > SNOWY.sleet ? "Sleet" : "Rain"
   if (here.fog >= FOGGY) return "Fog"
   if (falling >= FALLING.drizzle) return snowy >= SNOWY.snow ? "Snow" : "Drizzle"
   if (weather.wind >= WINDY) return "Windy"
-  return weather.cloud < COVER.clear ? "Clear" : weather.cloud < COVER.fair ? "Fair" : weather.cloud < COVER.cloudy ? "Cloudy" : "Overcast"
+  return weather.cloud < COVER.clear
+    ? "Clear"
+    : weather.cloud < COVER.fair
+      ? "Fair"
+      : weather.cloud < COVER.cloudy
+        ? "Cloudy"
+        : "Overcast"
 }

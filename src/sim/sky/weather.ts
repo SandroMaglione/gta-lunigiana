@@ -15,7 +15,16 @@ import { MAP } from "../map/index.ts"
 import type { LightningValue, WeatherValue } from "../schema.ts"
 import type { SunPlace } from "./astro.ts"
 import { romeDay } from "./calendar.ts"
-import { airAt, celsiusAt, dailyMean, freezingLevel, normalsAt, NO_SNOW, orographic, rainCooling } from "./climate.ts"
+import {
+  airAt,
+  celsiusAt,
+  dailyMean,
+  freezingLevel,
+  normalsAt,
+  NO_SNOW,
+  orographic,
+  rainCooling,
+} from "./climate.ts"
 import { sunOver } from "./day.ts"
 import { place } from "./place.ts"
 import { calmPlan, dayWarmth, planFor, rainingAt, regimeAt } from "./plan.ts"
@@ -29,18 +38,32 @@ const BREEZE_TURNS = 0
 
 /** Where the air moves in `regime` with the sun at `elevation` degrees, rad counter-clockwise from east: a breeze up the map's slope by day and down it at night (`place().downslope`), else its flow. */
 const windToward = (regime: Regime, elevation: number): number => {
-  const { flow } = REGIME_SPECS[regime], { downslope } = place()
-  return flow === "breeze" ? (elevation > BREEZE_TURNS ? downslope - Math.PI : downslope) : TOWARD[flow]
+  const { flow } = REGIME_SPECS[regime],
+    { downslope } = place()
+  return flow === "breeze"
+    ? elevation > BREEZE_TURNS
+      ? downslope - Math.PI
+      : downslope
+    : TOWARD[flow]
 }
 
 /** Game seconds over which each value eases toward its target (a time constant). */
-const EASE = { cloud: 1800, precip: 1200, storm: 900, wind: 1200, fog: 1800, anomaly: 3600 } as const
+const EASE = {
+  cloud: 1800,
+  precip: 1200,
+  storm: 900,
+  wind: 1200,
+  fog: 1800,
+  anomaly: 3600,
+} as const
 
 /** The map's lowest and highest ground, m a.s.l. (its heightmap holds decimetres). */
 const { BOTTOM, TOP } = ((): { readonly BOTTOM: number; readonly TOP: number } => {
   const { data } = MAP.heightmap
-  let low = Number.MAX_VALUE, high = -Number.MAX_VALUE
-  for (let k = 0; k < data.length; k++) [low, high] = [Math.min(low, data[k]!), Math.max(high, data[k]!)]
+  let low = Number.MAX_VALUE,
+    high = -Number.MAX_VALUE
+  for (let k = 0; k < data.length; k++)
+    [low, high] = [Math.min(low, data[k]!), Math.max(high, data[k]!)]
   return { BOTTOM: low / 10, TOP: high / 10 }
 })()
 /** The snow line never falls below this, m a.s.l.: just under the lowest ground, so all of it can lie white. */
@@ -75,7 +98,8 @@ const FAR = 100000
 
 /** The snow line a new game starts with at UTC second `t`: where the day's mean normal is 0 °C, none when that lies above the map. */
 const startingSnowLine = (t: number): number => {
-  const normals = normalsAt(t), zero = (1000 * dailyMean(normals, 0)) / normals.lapse
+  const normals = normalsAt(t),
+    zero = (1000 * dailyMean(normals, 0)) / normals.lapse
   return zero >= TOP ? NO_SNOW : Math.max(LOWEST_SNOW, zero)
 }
 
@@ -87,13 +111,28 @@ const startingSnowLine = (t: number): number => {
 export const initialWeather = (t: number, seed: number): WeatherValue => {
   const spec = REGIME_SPECS.clear
   return {
-    seed, regime: "clear", forced: false, cloud: spec.cloud, precip: 0, storm: 0, wind: spec.wind, windAngle: windToward("clear", sunOver(t).elevation),
-    gust: spec.gust, fog: spec.fog, anomaly: 0, wet: 0, snowLine: startingSnowLine(t), cellX: FAR, cellY: FAR, plan: calmPlan(t)
+    seed,
+    regime: "clear",
+    forced: false,
+    cloud: spec.cloud,
+    precip: 0,
+    storm: 0,
+    wind: spec.wind,
+    windAngle: windToward("clear", sunOver(t).elevation),
+    gust: spec.gust,
+    fog: spec.fog,
+    anomaly: 0,
+    wet: 0,
+    snowLine: startingSnowLine(t),
+    cellX: FAR,
+    cellY: FAR,
+    plan: calmPlan(t),
   }
 }
 
 /** `value` eased toward `target` over `seconds` with time constant `tau` (exact for any step). */
-const ease = (value: number, target: number, seconds: number, tau: number): number => value + (target - value) * (1 - Ops.exp(-seconds / tau))
+const ease = (value: number, target: number, seconds: number, tau: number): number =>
+  value + (target - value) * (1 - Ops.exp(-seconds / tau))
 
 /** `angle` turned toward `target` the short way round, eased like `ease`, kept in [−π, π). */
 const easeAngle = (angle: number, target: number, seconds: number, tau: number): number => {
@@ -108,16 +147,28 @@ const easeAngle = (angle: number, target: number, seconds: number, tau: number):
  * (`dayWarmth`) and the regime, and cooled by what falls.
  */
 const targetsOf = (weather: Pick<WeatherValue, "regime" | "plan">, t: number, cloud: number) => {
-  const { regime, plan } = weather, spec = REGIME_SPECS[regime], raining = cloud > RAINS_FROM
-  const precip = !raining ? 0 : regime === plan.event && rainingAt(plan, t) ? plan.precip : spec.precip
-  return { ...spec, precip, storm: raining ? spec.storm : 0, anomaly: plan.airMass + dayWarmth(plan) + spec.anomaly - rainCooling(precip) }
+  const { regime, plan } = weather,
+    spec = REGIME_SPECS[regime],
+    raining = cloud > RAINS_FROM
+  const precip = raining
+    ? regime === plan.event && rainingAt(plan, t)
+      ? plan.precip
+      : spec.precip
+    : 0
+  return {
+    ...spec,
+    precip,
+    storm: raining ? spec.storm : 0,
+    anomaly: plan.airMass + dayWarmth(plan) + spec.anomaly - rainCooling(precip),
+  }
 }
 
 /**
  * The plan in force for `weather` at UTC second `t`: its own while its Rome day lasts (a new game's calm plan too, until its first step),
  * else the day the clock is on, the clock stopped or not, so a dev request or a stopped clock's sky reads that day's plan.
  */
-const planOn = (weather: WeatherValue, t: number): WeatherValue["plan"] => (romeDay(t).day === weather.plan.day ? weather.plan : planFor(weather.plan, t, weather.seed))
+const planOn = (weather: WeatherValue, t: number): WeatherValue["plan"] =>
+  romeDay(t).day === weather.plan.day ? weather.plan : planFor(weather.plan, t, weather.seed)
 
 /**
  * The weather after `rate` game seconds ending at UTC second `t`: the day's plan (drawn from the weather seed once a new Rome day begins,
@@ -127,33 +178,54 @@ const planOn = (weather: WeatherValue, t: number): WeatherValue["plan"] => (rome
  */
 export const advanceWeather = (weather: WeatherValue, t: number, rate: number): WeatherValue => {
   if (rate <= 0) {
-    const plan = planOn(weather, t), regime = weather.forced ? weather.regime : regimeAt(plan, t)
-    return plan === weather.plan && regime === weather.regime ? weather : { ...weather, plan, regime }
+    const plan = planOn(weather, t),
+      regime = weather.forced ? weather.regime : regimeAt(plan, t)
+    return plan === weather.plan && regime === weather.regime
+      ? weather
+      : { ...weather, plan, regime }
   }
-  const sun = sunOver(t), plan = planFor(weather.plan, t, weather.seed), regime = weather.forced ? weather.regime : regimeAt(plan, t)
-  const cloud = ease(weather.cloud, REGIME_SPECS[regime].cloud, rate, EASE.cloud), target = targetsOf({ regime, plan }, t, cloud)
+  const sun = sunOver(t),
+    plan = planFor(weather.plan, t, weather.seed),
+    regime = weather.forced ? weather.regime : regimeAt(plan, t)
+  const cloud = ease(weather.cloud, REGIME_SPECS[regime].cloud, rate, EASE.cloud),
+    target = targetsOf({ regime, plan }, t, cloud)
   const eased: WeatherValue = {
-    ...weather, regime, plan, cloud,
+    ...weather,
+    regime,
+    plan,
+    cloud,
     precip: ease(weather.precip, target.precip, rate, EASE.precip),
     storm: ease(weather.storm, target.storm, rate, EASE.storm),
     wind: ease(weather.wind, target.wind, rate, EASE.wind),
     windAngle: easeAngle(weather.windAngle, windToward(regime, sun.elevation), rate, EASE.wind),
     gust: ease(weather.gust, target.gust, rate, EASE.wind),
     fog: ease(weather.fog, target.fog, rate, EASE.fog),
-    anomaly: ease(weather.anomaly, target.anomaly, rate, EASE.anomaly)
+    anomaly: ease(weather.anomaly, target.anomaly, rate, EASE.anomaly),
   }
   return { ...eased, ...groundAfter(eased, t, rate, sun) }
 }
 
 /** The time constant (game seconds) the ground dries with under `weather`, the sun at `sun`, the air on the map's low ground at `low` °C: 6 hours cold, grey and calm down to 2 warm, sunny and windy. */
-const dryingTime = (weather: Pick<WeatherValue, "cloud" | "wind">, sun: SunPlace, low: number): number => {
+const dryingTime = (
+  weather: Pick<WeatherValue, "cloud" | "wind">,
+  sun: SunPlace,
+  low: number,
+): number => {
   const sunny = (1 - weather.cloud) * Math.max(0, Math.min(1, sun.elevation / 30))
-  return Math.max(DRYING.fast, Math.min(DRYING.slow, DRYING.slow / (1 + 0.08 * Math.max(0, low) + sunny + 0.15 * weather.wind)))
+  return Math.max(
+    DRYING.fast,
+    Math.min(
+      DRYING.slow,
+      DRYING.slow / (1 + 0.08 * Math.max(0, low) + sunny + 0.15 * weather.wind),
+    ),
+  )
 }
 
 /** Wetness `wet` after `seconds` of `rain` mm/h falling, drying with time constant `tau`: exact for any step, the balance after `SETTLED`. */
 const wetAfter = (wet: number, rain: number, tau: number, seconds: number): number => {
-  const wetting = Math.min(1, rain / PRECIP_FULL) / WETTING, drying = Math.max(0, 1 - rain / DRIZZLE) / tau, rate = wetting + drying
+  const wetting = Math.min(1, rain / PRECIP_FULL) / WETTING,
+    drying = Math.max(0, 1 - rain / DRIZZLE) / tau,
+    rate = wetting + drying
   const balance = wetting / rate
   return balance + (wet - balance) * Ops.exp(-rate * seconds)
 }
@@ -162,18 +234,31 @@ const wetAfter = (wet: number, rain: number, tau: number, seconds: number): numb
  * The ground after `rate` game seconds under `weather` at UTC second `t`, the sun at `sun`: where the snow line lies (coming down as
  * snow settles, going up as it melts) and how wet the precipitation leaves the ground.
  */
-const groundAfter = (weather: WeatherValue, t: number, rate: number, sun: SunPlace): Pick<WeatherValue, "wet" | "snowLine"> => {
-  const air = airAt(t, weather, sun), level = freezingLevel(air), low = celsiusAt(air, place().floor)
+const groundAfter = (
+  weather: WeatherValue,
+  t: number,
+  rate: number,
+  sun: SunPlace,
+): Pick<WeatherValue, "wet" | "snowLine"> => {
+  const air = airAt(t, weather, sun),
+    level = freezingLevel(air),
+    low = celsiusAt(air, place().floor)
   let { snowLine } = weather
   if (weather.precip > DRIZZLE && level < Math.min(snowLine, TOP)) {
     // Snow sticks from the top of the map down toward the freezing level, as fast as it falls.
-    snowLine = Math.max(level, Math.min(snowLine, TOP) - SNOWING * weather.precip * orographic(snowLine) * rate)
+    snowLine = Math.max(
+      level,
+      Math.min(snowLine, TOP) - SNOWING * weather.precip * orographic(snowLine) * rate,
+    )
   } else if (snowLine < NO_SNOW) {
     const thaw = celsiusAt(air, snowLine)
     if (thaw > 0) snowLine += MELTING * thaw * (weather.precip > DRIZZLE ? 2 : 1) * rate
     if (snowLine > TOP) snowLine = NO_SNOW
   }
-  return { wet: wetAfter(weather.wet, weather.precip, dryingTime(weather, sun, low), rate), snowLine: Math.max(LOWEST_SNOW, snowLine) }
+  return {
+    wet: wetAfter(weather.wet, weather.precip, dryingTime(weather, sun, low), rate),
+    snowLine: Math.max(LOWEST_SNOW, snowLine),
+  }
 }
 
 /** Where the player stands and how the camera looks: what places lightning that the player sees. */
@@ -209,7 +294,8 @@ const SEEDS = 0x7fffffff
 const REDRAWS = 4
 
 /** Whether (x, y) lies on the map. */
-const onMap = (x: number, y: number): boolean => x >= MAP.bounds.minX && x <= MAP.bounds.maxX && y >= MAP.bounds.minY && y <= MAP.bounds.maxY
+const onMap = (x: number, y: number): boolean =>
+  x >= MAP.bounds.minX && x <= MAP.bounds.maxX && y >= MAP.bounds.minY && y <= MAP.bounds.maxY
 
 /** Below this storm strength there is no storm: no lightning, and the cell is sent `FAR` off. */
 const CALM = 0.01
@@ -224,12 +310,26 @@ const CALM = 0.01
  * Draws from `random` only while a storm is active.
  */
 export const stormStep = (
-  weather: WeatherValue, witness: Witness, dt: number, step: number, random: Random.Random
+  weather: WeatherValue,
+  witness: Witness,
+  dt: number,
+  step: number,
+  random: Random.Random,
 ): { readonly weather: WeatherValue; readonly lightning: LightningValue | undefined } => {
-  if (weather.storm < CALM) return { weather: weather.cellX === FAR && weather.cellY === FAR ? weather : { ...weather, cellX: FAR, cellY: FAR }, lightning: undefined }
-  const wx = Ops.cos(weather.windAngle), wy = Ops.sin(weather.windAngle)
-  const rx = weather.cellX - witness.x, ry = weather.cellY - witness.y
-  let cellX = weather.cellX + wx * DRIFT * dt, cellY = weather.cellY + wy * DRIFT * dt
+  if (weather.storm < CALM)
+    return {
+      weather:
+        weather.cellX === FAR && weather.cellY === FAR
+          ? weather
+          : { ...weather, cellX: FAR, cellY: FAR },
+      lightning: undefined,
+    }
+  const wx = Ops.cos(weather.windAngle),
+    wy = Ops.sin(weather.windAngle)
+  const rx = weather.cellX - witness.x,
+    ry = weather.cellY - witness.y
+  let cellX = weather.cellX + wx * DRIFT * dt,
+    cellY = weather.cellY + wy * DRIFT * dt
   if (rx * wx + ry * wy > UPWIND || rx * rx + ry * ry > GONE ** 2) {
     const aside = random.range(-CELL_SPREAD, CELL_SPREAD)
     cellX = witness.x - wx * UPWIND - wy * aside
@@ -242,30 +342,63 @@ export const stormStep = (
   /** Where a flash strikes: in front of the camera now and then (bolts near the cell), else a normal scatter around the cell. */
   const place = (): { readonly x: number; readonly y: number } => {
     if (bolt && near && random.next() < IN_VIEW) {
-      const across = random.range(-STRIP.across, STRIP.across), toward = random.range(STRIP.near, STRIP.far)
-      return { x: witness.x - witness.up.x * toward + witness.right.x * across, y: witness.y - witness.up.y * toward + witness.right.y * across }
+      const across = random.range(-STRIP.across, STRIP.across),
+        toward = random.range(STRIP.near, STRIP.far)
+      return {
+        x: witness.x - witness.up.x * toward + witness.right.x * across,
+        y: witness.y - witness.up.y * toward + witness.right.y * across,
+      }
     }
     // Box–Muller.
-    const r = SCATTER * Math.sqrt(-2 * Ops.log(1 - random.next())), a = 2 * Math.PI * random.next()
+    const r = SCATTER * Math.sqrt(-2 * Ops.log(1 - random.next())),
+      a = 2 * Math.PI * random.next()
     return { x: cellX + r * Ops.cos(a), y: cellY + r * Ops.sin(a) }
   }
   let at = place()
-  for (let k = 0; bolt && k < REDRAWS && !onMap(at.x, at.y); k++) at = place()
+  if (bolt) for (let k = 0; k < REDRAWS && !onMap(at.x, at.y); k++) at = place()
   if (bolt && !onMap(at.x, at.y)) return { weather: next, lightning: undefined }
-  return { weather: next, lightning: { x: at.x, y: at.y, bolt, power: random.range(0.3, 1), seed: random.integer(0, SEEDS), step } }
+  return {
+    weather: next,
+    lightning: {
+      x: at.x,
+      y: at.y,
+      bolt,
+      power: random.range(0.3, 1),
+      seed: random.integer(0, SEEDS),
+      step,
+    },
+  }
 }
 
 /** The weather `weather`'s regime settles into at UTC second `t`: every value at its target (the day's plan's), the ground as wet as its rain and drying balance, and where it snows, the snow lying down to the freezing level. */
 const settled = (weather: WeatherValue, t: number): WeatherValue => {
-  const target = targetsOf(weather, t, REGIME_SPECS[weather.regime].cloud), sun = sunOver(t)
+  const target = targetsOf(weather, t, REGIME_SPECS[weather.regime].cloud),
+    sun = sunOver(t)
   const at: WeatherValue = {
-    ...weather, cloud: target.cloud, precip: target.precip, storm: target.storm, wind: target.wind,
-    windAngle: windToward(weather.regime, sun.elevation), gust: target.gust, fog: target.fog, anomaly: target.anomaly
+    ...weather,
+    cloud: target.cloud,
+    precip: target.precip,
+    storm: target.storm,
+    wind: target.wind,
+    windAngle: windToward(weather.regime, sun.elevation),
+    gust: target.gust,
+    fog: target.fog,
+    anomaly: target.anomaly,
   }
-  const air = airAt(t, at, sun), level = freezingLevel(air)
+  const air = airAt(t, at, sun),
+    level = freezingLevel(air)
   return {
-    ...at, wet: wetAfter(weather.wet, at.precip, dryingTime(at, sun, celsiusAt(air, place().floor)), SETTLED),
-    snowLine: at.precip > DRIZZLE && level < Math.min(weather.snowLine, TOP) ? Math.max(LOWEST_SNOW, level) : weather.snowLine
+    ...at,
+    wet: wetAfter(
+      weather.wet,
+      at.precip,
+      dryingTime(at, sun, celsiusAt(air, place().floor)),
+      SETTLED,
+    ),
+    snowLine:
+      at.precip > DRIZZLE && level < Math.min(weather.snowLine, TOP)
+        ? Math.max(LOWEST_SNOW, level)
+        : weather.snowLine,
   }
 }
 
@@ -280,9 +413,16 @@ export interface WeatherRequest {
  * to the day's plan and its regime now, settled at once when asked (`settle`: the plan's own values when the regime is the plan's);
  * undefined when the regime is not one.
  */
-export const setWeather = (weather: WeatherValue, request: WeatherRequest, t: number): WeatherValue | undefined => {
+export const setWeather = (
+  weather: WeatherValue,
+  request: WeatherRequest,
+  t: number,
+): WeatherValue | undefined => {
   if (request.regime !== null && !isRegime(request.regime)) return undefined
   const plan = planOn(weather, t)
-  const next = request.regime === null ? { ...weather, plan, forced: false, regime: regimeAt(plan, t) } : { ...weather, plan, regime: request.regime, forced: true }
+  const next =
+    request.regime === null
+      ? { ...weather, plan, forced: false, regime: regimeAt(plan, t) }
+      : { ...weather, plan, regime: request.regime, forced: true }
   return request.settle === true ? settled(next, t) : next
 }

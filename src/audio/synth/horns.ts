@@ -35,16 +35,57 @@ interface HornSpec {
 }
 
 const HORNS = {
-  panda: { tones: [420], wave: "sawtooth", peak: [2200, 1.2], highpass: 250, attack: 0.01, release: 0.04, droop: 0.97, jitter: 0, gain: 0.215 },
-  ape: { tones: [610], wave: "square", peak: [2600, 1.5], highpass: 500, attack: 0.006, release: 0.03, droop: 0.95, jitter: 0.01, gain: 0.185 },
-  truck: { tones: [150, 185], wave: "sawtooth", peak: [900, 0.8], highpass: 80, attack: 0.09, release: 0.18, droop: 0.94, jitter: 0, gain: 0.1 },
-  carabinieri: { tones: [410, 500], wave: "sawtooth", peak: [2400, 1.2], highpass: 250, attack: 0.01, release: 0.04, droop: 0.98, jitter: 0, gain: 0.112 }
+  panda: {
+    tones: [420],
+    wave: "sawtooth",
+    peak: [2200, 1.2],
+    highpass: 250,
+    attack: 0.01,
+    release: 0.04,
+    droop: 0.97,
+    jitter: 0,
+    gain: 0.215,
+  },
+  ape: {
+    tones: [610],
+    wave: "square",
+    peak: [2600, 1.5],
+    highpass: 500,
+    attack: 0.006,
+    release: 0.03,
+    droop: 0.95,
+    jitter: 0.01,
+    gain: 0.185,
+  },
+  truck: {
+    tones: [150, 185],
+    wave: "sawtooth",
+    peak: [900, 0.8],
+    highpass: 80,
+    attack: 0.09,
+    release: 0.18,
+    droop: 0.94,
+    jitter: 0,
+    gain: 0.1,
+  },
+  carabinieri: {
+    tones: [410, 500],
+    wave: "sawtooth",
+    peak: [2400, 1.2],
+    highpass: 250,
+    attack: 0.01,
+    release: 0.04,
+    droop: 0.98,
+    jitter: 0,
+    gain: 0.112,
+  },
 } as const satisfies Record<VehicleModel, HornSpec>
 
 /** The bitonale: low and high tone (Hz) and how long each lasts (s), D.M. 20/03/1979. */
 const SIREN = { low: 466, high: 622, seconds: 0.75 } as const
 /** Siren and beeper output gains: peaks near 0.5. */
-const SIREN_GAIN = 0.43, BEEPER_GAIN = 0.5
+const SIREN_GAIN = 0.43,
+  BEEPER_GAIN = 0.5
 
 interface HornGraph {
   readonly gate: GainNode
@@ -53,10 +94,25 @@ interface HornGraph {
 }
 
 /** A horn's nodes into `out`, silent until pressed, started at `start`. */
-const hornGraph = (ctx: BaseAudioContext, out: AudioNode, kit: Kit, spec: HornSpec, cents: AudioNode | undefined, start: number): HornGraph => {
+const hornGraph = (
+  ctx: BaseAudioContext,
+  out: AudioNode,
+  kit: Kit,
+  spec: HornSpec,
+  cents: AudioNode | undefined,
+  start: number,
+): HornGraph => {
   const gate = new GainNode(ctx, { gain: 0 })
-  const voicing = new BiquadFilterNode(ctx, { type: "peaking", frequency: spec.peak[0], Q: spec.peak[1], gain: 9 })
-  voicing.connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: spec.highpass })).connect(gate).connect(out)
+  const voicing = new BiquadFilterNode(ctx, {
+    type: "peaking",
+    frequency: spec.peak[0],
+    Q: spec.peak[1],
+    gain: 9,
+  })
+  voicing
+    .connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: spec.highpass }))
+    .connect(gate)
+    .connect(out)
   const oscillators = spec.tones.map((frequency) => {
     const osc = new OscillatorNode(ctx, { type: spec.wave, frequency })
     osc.connect(voicing)
@@ -66,7 +122,11 @@ const hornGraph = (ctx: BaseAudioContext, out: AudioNode, kit: Kit, spec: HornSp
   const sources: Array<AudioScheduledSourceNode> = [...oscillators]
   if (spec.jitter > 0) {
     // The slow gust signal, sped up 40×, wobbles the pitch at 1–20 Hz.
-    const wobble = new AudioBufferSourceNode(ctx, { buffer: kit.gust, loop: true, playbackRate: 40 })
+    const wobble = new AudioBufferSourceNode(ctx, {
+      buffer: kit.gust,
+      loop: true,
+      playbackRate: 40,
+    })
     const depth = new GainNode(ctx, { gain: 1200 * Math.log2(1 + spec.jitter) })
     wobble.connect(depth)
     for (const osc of oscillators) depth.connect(osc.detune)
@@ -87,22 +147,27 @@ const press = (horn: HornGraph, spec: HornSpec, t: number): void => {
 
 /** A held horn: sounds from its first update until stopped. */
 export const horn = builtOnFirst<Extract<Continuous, { readonly kind: "horn" }>>((io, first) => {
-  const spec: HornSpec = HORNS[first.model], graph = hornGraph(io.ctx, io.out, io.kit, spec, io.cents, 0)
+  const spec: HornSpec = HORNS[first.model],
+    graph = hornGraph(io.ctx, io.out, io.kit, spec, io.cents, 0)
   let pressed = false
   return {
     update: (_, now) => {
       if (!pressed) press(graph, spec, now)
       pressed = true
     },
-    stop: (now) => fadeOut(graph.gate, graph.sources, now, spec.release / 3)
+    stop: (now) => fadeOut(graph.gate, graph.sources, now, spec.release / 3),
   }
 })
 
 /** An AI driver's honk: one long press or two short ones. */
 export const honk: Shot<Extract<OneShot, { readonly kind: "honk" }>> = {
   play: (io, sound, when) => {
-    const spec: HornSpec = HORNS[sound.model], graph = hornGraph(io.ctx, io.out, io.kit, spec, undefined, when)
-    const presses = Math.random() < 0.5 ? [0.3 + Math.random() * 0.3] : [0.12 + Math.random() * 0.08, 0.12 + Math.random() * 0.08]
+    const spec: HornSpec = HORNS[sound.model],
+      graph = hornGraph(io.ctx, io.out, io.kit, spec, undefined, when)
+    const presses =
+      Math.random() < 0.5
+        ? [0.3 + Math.random() * 0.3]
+        : [0.12 + Math.random() * 0.08, 0.12 + Math.random() * 0.08]
     let t = when
     for (const held of presses) {
       press(graph, spec, t)
@@ -113,7 +178,7 @@ export const honk: Shot<Extract<OneShot, { readonly kind: "honk" }>> = {
     for (const source of graph.sources) source.stop(end)
     graph.sources[0]!.onended = () => graph.gate.disconnect()
     return end
-  }
+  },
 }
 
 /**
@@ -121,9 +186,17 @@ export const honk: Shot<Extract<OneShot, { readonly kind: "honk" }>> = {
  * built-in square is normalised to its Gibbs overshoot, so its plateaus sit near ±0.85: a waveshaper
  * flattens them to exactly `low` and `high`.
  */
-const squareLfo = (ctx: BaseAudioContext, hz: number, low: number, high: number, smooth: number, param: AudioParam): OscillatorNode => {
+const squareLfo = (
+  ctx: BaseAudioContext,
+  hz: number,
+  low: number,
+  high: number,
+  smooth: number,
+  param: AudioParam,
+): OscillatorNode => {
   const lfo = new OscillatorNode(ctx, { type: "square", frequency: hz })
-  lfo.connect(new WaveShaperNode(ctx, { curve: new Float32Array([low, low, high, high]) }))
+  lfo
+    .connect(new WaveShaperNode(ctx, { curve: new Float32Array([low, low, high, high]) }))
     .connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: smooth, Q: -3 }))
     .connect(param)
   lfo.start()
@@ -138,18 +211,22 @@ export const siren: VoiceFactory<Extract<Continuous, { readonly kind: "siren" }>
   io.cents.connect(tone.detune)
   const output = new GainNode(ctx, { gain: 0 })
   // The horn speaker's band.
-  tone.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1600, Q: 0.6 })).connect(output).connect(io.out)
+  tone
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1600, Q: 0.6 }))
+    .connect(output)
+    .connect(io.out)
   tone.start()
   return {
     update: (_, now) => glide(output.gain, SIREN_GAIN, now, false),
-    stop: (now) => fadeOut(output, [tone, lfo], now)
+    stop: (now) => fadeOut(output, [tone, lfo], now),
   }
 }
 
 /** The truck's reversing alarm, on first. */
 export const beeper: VoiceFactory<Extract<Continuous, { readonly kind: "beeper" }>> = (io) => {
   const { ctx } = io
-  const tone = new OscillatorNode(ctx, { type: "triangle", frequency: 1000 }), gate = new GainNode(ctx, { gain: 0 })
+  const tone = new OscillatorNode(ctx, { type: "triangle", frequency: 1000 }),
+    gate = new GainNode(ctx, { gain: 0 })
   // Fully on, fully off, with 2 ms ramps against clicks.
   const lfo = squareLfo(ctx, 1, 0, 1, 150, gate.gain)
   io.cents.connect(tone.detune)
@@ -158,6 +235,6 @@ export const beeper: VoiceFactory<Extract<Continuous, { readonly kind: "beeper" 
   tone.start()
   return {
     update: (_, now) => glide(output.gain, BEEPER_GAIN, now, false),
-    stop: (now) => fadeOut(output, [tone, lfo], now)
+    stop: (now) => fadeOut(output, [tone, lfo], now),
   }
 }

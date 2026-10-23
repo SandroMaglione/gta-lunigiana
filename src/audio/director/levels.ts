@@ -17,14 +17,18 @@ import { rainQuiet } from "../synth/rain.ts"
 import type { Continuous, OneShot } from "../types.ts"
 
 /** A source's calibration: dB(A) at 1 m at the synth's nominal peak, its size, m, and whether it stands so far `aloft` that the ground takes nothing on its way. */
-export interface Level { readonly db: number; readonly rMin: number; readonly aloft?: boolean }
+export interface Level {
+  readonly db: number
+  readonly rMin: number
+  readonly aloft?: boolean
+}
 
 /** Engines at the redline under full load (pass-by levels, physics.md §8): every engine voice peaks alike, so the model's loudness lives here. */
 export const ENGINE = {
   panda: { db: 90, rMin: 2 },
   ape: { db: 92, rMin: 2 },
   truck: { db: 98, rMin: 4 },
-  carabinieri: { db: 93, rMin: 2.5 }
+  carabinieri: { db: 93, rMin: 2.5 },
 } as const satisfies Record<VehicleModel, Level>
 
 /**
@@ -41,7 +45,11 @@ export const LEVELS = {
   horn: { db: 116, rMin: 2 },
   siren: { db: 117, rMin: 2.5 },
   beeper: { db: 100, rMin: 2 },
+  // TUNED (estimated, no recording measured): a car burning out, its roar and crackle; checked to sit 3–6 dB over an idling Panda.
+  fire: { db: 82, rMin: 2 },
   crash: { db: 115, rMin: 2 },
+  // TUNED (estimated, no recording measured): a burning car's fuel going up, 9 dB over the reference crash (5.4 in the mix), the size of its fireball.
+  explosion: { db: 124, rMin: 3 },
   thud: { db: 85, rMin: 1 },
   // TUNED (estimated, no recording measured): a car slamming its bump stops at 5 m/s, 20 dB under a Panda's crash at that speed (105).
   clunk: { db: 85, rMin: 1.5 },
@@ -58,17 +66,27 @@ export const LEVELS = {
   // A lightning channel, kilometres of it, heard from its strike point (an in-cloud flash's start) and aloft, over no ground: 88 dB(A)
   // at 1 km once the render's own `thunderQuiet` is taken (a close strike's pulse tops 120 dB unweighted there), 66 at 5 km; inside
   // 300 m its crack is no louder, and its direct sound is capped (`MOST_DB`) anyway.
-  thunder: { db: 154, rMin: 300, aloft: true }
-} as const satisfies Record<Exclude<Continuous["kind"] | OneShot["kind"], "engine" | "water" | "wind" | "crickets" | "rain" | "roof">, Level>
+  thunder: { db: 154, rMin: 300, aloft: true },
+} as const satisfies Record<
+  Exclude<
+    Continuous["kind"] | OneShot["kind"],
+    "engine" | "water" | "wind" | "crickets" | "rain" | "roof"
+  >,
+  Level
+>
 
 /**
  * At most this many dB over gain 1 a one-shot's direct sound plays (its echoes, at least `ECHO_MIN_DB` under it, keep the way's
  * own level). TUNED: a crash at 8, where the master limiter takes a few dB of a 15 m/s crash's peak; nearer (the listener's own
  * crash comes about 25 dB over), it took 20 dB off the hit and, released 0.25 s later, gave the crunch's sub-hits back nearly as
- * loud as the hit: an echo. Thunder at 2: its loud part lasts seconds, so its crack (a render's 0.5 peak) stays under the limiter's
- * −6 dBFS going in (×0.8 master): −9 dBFS centred, −6.0 at the widest pan (±0.85); its rumble 10 dB and more under that.
+ * loud as the hit: an echo. An explosion at 10: centred, it (crest 6–7 dB, a crash's 13) meters 4–5.5 dB over a 40 m/s wreck at
+ * 8 while the limiter takes 2.5 dB of it (5.3 of the wreck); at 12 it took 4.3 dB, held into the roar for up to 0.8 s. Thunder at
+ * 2: its loud part lasts seconds, so its crack (a render's 0.5 peak) stays under the limiter's −6 dBFS going in (×0.8 master):
+ * −9 dBFS centred, −6.0 at the widest pan (±0.85); its rumble 10 dB and more under that.
  */
-export const MOST_DB: Readonly<Partial<Record<OneShot["kind"], number>>> = { crash: 8, thunder: 2 }
+export const MOST_DB = { crash: 8, explosion: 10, thunder: 2 } as const satisfies Partial<
+  Record<OneShot["kind"], number>
+>
 
 /**
  * The tawny owl's hoot, a bird's call of its own: estimated (no measurement found) 5 dB over a songbird's, low (800 Hz) and carrying,
@@ -93,7 +111,8 @@ export const BEDS = { wind: 60, crickets: 42, rain: 64 } as const
 export const GALE_DB = 65
 
 /** The wind (body and leaves) at `strength` follows strength², so its level falls 40 dB per decade of strength; past 1, the bed's gain carries it to `GALE_DB`. */
-export const windDb = (strength: number): number => BEDS.wind + 40 * Math.log10(Math.max(0.05, strength))
+export const windDb = (strength: number): number =>
+  BEDS.wind + 40 * Math.log10(Math.max(0.05, strength))
 
 /** Rain at the listener, dB(A), at `rate` mm/h: the downpour's `BEDS.rain`, `rainQuiet` under (43 at 1 mm/h, 50 at 4, 55 at 10, 62 at 40). */
 export const rainDb = (rate: number): number => BEDS.rain - rainQuiet(rate)
@@ -113,7 +132,18 @@ export const HEIGHT = { vehicle: 0.8, person: 1, water: 2 } as const
 
 /** At most this many voices of each kind play; the loudest at the listener win. */
 export const CAPS = {
-  engine: 8, tyres: 4, scrape: 2, horn: 3, siren: 2, beeper: 2, water: 4, wind: 1, crickets: 1, rain: 1, roof: 1
+  engine: 8,
+  tyres: 4,
+  scrape: 2,
+  horn: 3,
+  siren: 2,
+  beeper: 2,
+  fire: 2,
+  water: 4,
+  wind: 1,
+  crickets: 1,
+  rain: 1,
+  roof: 1,
 } as const satisfies Record<Continuous["kind"], number>
 
 /** A voice that played last frame keeps its place under the cap until a newcomer is this many dB louder: near-equals do not swap every frame. */
@@ -139,7 +169,14 @@ export const REVERB = { db: 8, ref: 10, near: 2.5, far: 40, cabin: 0.25, snow: 0
 /** An echo plays at least this many dB under the direct sound: a rock face's own reflection loss (places.ts). */
 export const ECHO_MIN_DB = 10
 
-/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, honks, barks, voices, bells (physics.md §7) and thunder. */
+/** Loud impulsive one-shots answer off rock faces: a crash from 6 m/s, explosions, honks, barks, voices, bells (physics.md §7) and thunder. */
 export const echoes = (sound: OneShot): boolean =>
-  sound.kind === "crash" ? sound.speed >= 6
-  : sound.kind === "honk" || sound.kind === "bark" || sound.kind === "shout" || sound.kind === "scream" || sound.kind === "bell" || sound.kind === "thunder"
+  sound.kind === "crash"
+    ? sound.speed >= 6
+    : sound.kind === "explosion" ||
+      sound.kind === "honk" ||
+      sound.kind === "bark" ||
+      sound.kind === "shout" ||
+      sound.kind === "scream" ||
+      sound.kind === "bell" ||
+      sound.kind === "thunder"

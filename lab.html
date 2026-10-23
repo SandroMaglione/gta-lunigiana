@@ -8,38 +8,141 @@
     <link rel="stylesheet" href="/src/hud/hud.css" />
     <style>
       /* The game's HUD look on a scrolling page. */
-      html, body { height: auto; overflow: auto; }
-      body { margin: 0 auto; max-width: 1400px; padding: 16px 24px; color: var(--ink); text-shadow: 2px 2px 0 var(--shadow); }
-      h1 { margin: 0 0 4px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
-      h2 { margin: 24px 0 8px; font-size: 18px; color: var(--accent); text-transform: uppercase; }
-      p { margin: 0 0 16px; }
-      button, select, input, output { font: inherit; }
-      button { padding: 2px 12px; color: var(--shadow); background: var(--accent); border: 2px solid var(--shadow); cursor: pointer; text-shadow: none; }
-      button:disabled { opacity: 0.5; cursor: wait; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-      fieldset { display: grid; gap: 4px; margin: 0; padding: 8px 12px; background: var(--panel); border: 2px solid var(--accent); }
-      legend { padding: 0 6px; color: var(--accent); text-transform: uppercase; }
-      label { display: grid; grid-template-columns: 9ch 1fr 6ch; align-items: center; gap: 8px; }
-      fieldset > output { font-size: 12px; opacity: 0.9; }
-      fieldset > button { justify-self: start; }
-      #where { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-      #meter { width: 100%; }
-      table { border-collapse: collapse; font-size: 13px; }
-      th, td { padding: 2px 10px; border-bottom: 1px solid var(--panel); text-align: left; }
-      th { color: var(--accent); }
-      tr.flagged td { color: var(--accent); }
+      html,
+      body {
+        height: auto;
+        overflow: auto;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 1400px;
+        padding: 16px 24px;
+        color: var(--ink);
+        text-shadow: 2px 2px 0 var(--shadow);
+      }
+      h1 {
+        margin: 0 0 4px;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      h2 {
+        margin: 24px 0 8px;
+        font-size: 18px;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      button,
+      select,
+      input,
+      output {
+        font: inherit;
+      }
+      button {
+        padding: 2px 12px;
+        color: var(--shadow);
+        background: var(--accent);
+        border: 2px solid var(--shadow);
+        cursor: pointer;
+        text-shadow: none;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 12px;
+      }
+      fieldset {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        padding: 8px 12px;
+        background: var(--panel);
+        border: 2px solid var(--accent);
+      }
+      legend {
+        padding: 0 6px;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+      label {
+        display: grid;
+        grid-template-columns: 9ch 1fr 6ch;
+        align-items: center;
+        gap: 8px;
+      }
+      fieldset > output {
+        font-size: 12px;
+        opacity: 0.9;
+      }
+      fieldset > button {
+        justify-self: start;
+      }
+      #where {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      }
+      #meter {
+        width: 100%;
+      }
+      table {
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 2px 10px;
+        border-bottom: 1px solid var(--panel);
+        text-align: left;
+      }
+      th {
+        color: var(--accent);
+      }
+      tr.flagged td {
+        color: var(--accent);
+      }
     </style>
   </head>
   <body>
     <h1>Audio lab</h1>
-    <p>Every synth through the game's emitter and mixer, at the director's levels and losses over open, flat ground (water levels are display defaults). Thunder is heard from its own distance, at once. The first press starts the audio.</p>
+    <p>
+      Every synth through the game's emitter and mixer, at the director's levels and losses over
+      open, flat ground (water levels are display defaults). Thunder is heard from its own distance,
+      at once. The first press starts the audio.
+    </p>
     <fieldset id="where">
       <legend>Listener</legend>
-      <label>distance <input id="distance" type="range" min="0" max="1000" step="1" value="361" /><output id="distance-shown"></output></label>
-      <label>side <input id="side" type="range" min="-1" max="1" step="0.05" value="0.5" /><output>L … R</output></label>
-      <label>cabin <select id="cabin"><option value="none">none</option></select><span></span></label>
-      <label>street <input id="street" type="range" min="0" max="1" step="0.01" value="0" /><output>open … walled</output></label>
-      <label>master <meter id="meter" min="-60" max="0" low="-20" high="-6" value="-60"></meter><output id="meter-shown">off</output></label>
+      <label
+        >distance
+        <input id="distance" type="range" min="0" max="1000" step="1" value="361" /><output
+          id="distance-shown"
+        ></output
+      ></label>
+      <label
+        >side <input id="side" type="range" min="-1" max="1" step="0.05" value="0.5" /><output
+          >L … R</output
+        ></label
+      >
+      <label
+        >cabin
+        <select id="cabin">
+          <option value="none">none</option></select
+        ><span></span
+      ></label>
+      <label
+        >street <input id="street" type="range" min="0" max="1" step="0.01" value="0" /><output
+          >open … walled</output
+        ></label
+      >
+      <label
+        >master <meter id="meter" min="-60" max="0" low="-20" high="-6" value="-60"></meter
+        ><output id="meter-shown">off</output></label
+      >
     </fieldset>
     <h2>Continuous</h2>
     <div class="grid" id="held"></div>

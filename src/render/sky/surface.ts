@@ -10,13 +10,18 @@
  *
  * @module render/sky/surface
  */
-import { Color, type Material, ShaderChunk, type Vector2, type WebGLProgramParametersWithUniforms } from "three"
+import {
+  Color,
+  type Material,
+  ShaderChunk,
+  type Vector2,
+  type WebGLProgramParametersWithUniforms,
+} from "three"
 
 import { type Air, celsiusAt } from "../../sim/sky/climate.ts"
 import { EDGE, FEATHER, MELT_BAND, MELT_FULL, REACH } from "../../sim/sky/local.ts"
-import { yOf } from "../ground.ts"
+import { ROCK_NORMAL_Y, yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
-import { ROCK_NORMAL_Y } from "../terrain.ts"
 import { phaseLocked, SKY_UNIFORMS } from "./uniforms.ts"
 
 /** The surface-weather variants: terrain and buildings, road decals, instanced trees, rivers, and the things that move (people, vehicles, tyre marks, smoke). */
@@ -35,7 +40,7 @@ const DEFINES = {
   road: ["WEATHER_GROUND", "WEATHER_ROAD"],
   tree: ["WEATHER_GROUND", "WEATHER_TREE"],
   water: ["WEATHER_WATER"],
-  actor: []
+  actor: [],
 } as const satisfies Record<Variant, ReadonlyArray<string>>
 
 /** Snow settles fully on faces whose world normal's y is above this; it thins out down to the terrain's bare rock faces (`ROCK_NORMAL_Y`), which hold none. */
@@ -62,7 +67,9 @@ const MAX_DT = 0.25
  * 400 000 points of it (surface.test.ts checks the shaded share against the cover); the ends sit past
  * the field, so a clear sky casts nothing and an overcast one covers everything.
  */
-const FIELD_QUANTILES = [-0.1, 0.3126, 0.3712, 0.4179, 0.4584, 0.4972, 0.5354, 0.5753, 0.6202, 0.6778, 1.1] as const
+const FIELD_QUANTILES = [
+  -0.1, 0.3126, 0.3712, 0.4179, 0.4584, 0.4972, 0.5354, 0.5753, 0.6202, 0.6778, 1.1,
+] as const
 /** How much of the direct light a cloud takes: fair-weather cumulus `thin`, an overcast sky all of it. */
 const CLOUD_SHADE = { thin: 0.65, thick: 1 } as const
 
@@ -229,21 +236,45 @@ const DIR_LIGHT = "getDirectionalLightInfo( directionalLight, directLight );"
 /** `source` with its only `anchor` replaced by `by`: throws when a three upgrade moves, renames or repeats it (no String.replace: `$&` in GLSL would be special). */
 const replaceOnce = (source: string, anchor: string, by: string): string => {
   const at = source.indexOf(anchor)
-  if (at < 0 || source.indexOf(anchor, at + 1) >= 0) throw new Error(`shader anchor not found exactly once: ${anchor}`)
+  if (at < 0 || source.includes(anchor, at + 1))
+    throw new Error(`shader anchor not found exactly once: ${anchor}`)
   return source.slice(0, at) + by + source.slice(at + anchor.length)
 }
 
 /** Rewrites a Lambert program's shaders as `variant` and hands it the shared `SKY_UNIFORMS` cells: pure, so a Node test runs it on `ShaderLib.lambert`. */
-export const patchShader = (shader: Pick<WebGLProgramParametersWithUniforms, "vertexShader" | "fragmentShader" | "uniforms">, variant: Variant): void => {
+export const patchShader = (
+  shader: Pick<WebGLProgramParametersWithUniforms, "vertexShader" | "fragmentShader" | "uniforms">,
+  variant: Variant,
+): void => {
   Object.assign(shader.uniforms, SKY_UNIFORMS) // the cells themselves, so every program of every material updates together
   const defines = DEFINES[variant].map((name) => `#define ${name}\n`).join("")
-  let vertex = replaceOnce(shader.vertexShader, "#include <common>", `${defines}#include <common>\n${HELPERS}${VERTEX_PARS}`)
+  let vertex = replaceOnce(
+    shader.vertexShader,
+    "#include <common>",
+    `${defines}#include <common>\n${HELPERS}${VERTEX_PARS}`,
+  )
   vertex = replaceOnce(vertex, "#include <begin_vertex>", `#include <begin_vertex>\n${VERTEX_SWAY}`)
-  vertex = replaceOnce(vertex, "#include <worldpos_vertex>", `#include <worldpos_vertex>\n${VERTEX_WORLD}`)
-  let fragment = replaceOnce(shader.fragmentShader, "#include <common>", `${defines}#include <common>\n${HELPERS}${FRAGMENT_PARS}`)
-  fragment = replaceOnce(fragment, "#include <lights_lambert_fragment>", `${fragmentSurface()}\n#include <lights_lambert_fragment>`)
+  vertex = replaceOnce(
+    vertex,
+    "#include <worldpos_vertex>",
+    `#include <worldpos_vertex>\n${VERTEX_WORLD}`,
+  )
+  let fragment = replaceOnce(
+    shader.fragmentShader,
+    "#include <common>",
+    `${defines}#include <common>\n${HELPERS}${FRAGMENT_PARS}`,
+  )
+  fragment = replaceOnce(
+    fragment,
+    "#include <lights_lambert_fragment>",
+    `${fragmentSurface()}\n#include <lights_lambert_fragment>`,
+  )
   // The cloud takes only the sun's (or moon's) light: the sky, headlights and street lamps still reach the ground under it.
-  const lights = replaceOnce(ShaderChunk.lights_fragment_begin, DIR_LIGHT, `${DIR_LIGHT}\n\t\tdirectLight.color *= weatherSun;`)
+  const lights = replaceOnce(
+    ShaderChunk.lights_fragment_begin,
+    DIR_LIGHT,
+    `${DIR_LIGHT}\n\t\tdirectLight.color *= weatherSun;`,
+  )
   fragment = replaceOnce(fragment, "#include <lights_fragment_begin>", lights)
   shader.vertexShader = vertex
   shader.fragmentShader = fragment
@@ -285,16 +316,20 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x))
 
 /** The cloud field's threshold for `cover` of the sky: the field's (1 − cover) quantile, so that share of the ground lies in shadow. */
 const cloudCut = (cover: number): number => {
-  const k = (1 - clamp01(cover)) * 10, i = Math.min(9, Math.floor(k))
+  const k = (1 - clamp01(cover)) * 10,
+    i = Math.min(9, Math.floor(k))
   return FIELD_QUANTILES[i]! + (FIELD_QUANTILES[i + 1]! - FIELD_QUANTILES[i]!) * (k - i)
 }
 
 /** How much of the direct light a cloud takes under `cover` of the sky: none in a clear sky, `thin` up to 0.7, all of it overcast. */
 const cloudShade = (cover: number): number =>
-  cover < 0.01 ? 0 : CLOUD_SHADE.thin + (CLOUD_SHADE.thick - CLOUD_SHADE.thin) * clamp01((cover - 0.7) / 0.3)
+  cover < 0.01
+    ? 0
+    : CLOUD_SHADE.thin + (CLOUD_SHADE.thick - CLOUD_SHADE.thin) * clamp01((cover - 0.7) / 0.3)
 
 /** The share of the direct light that reaches the ground under `cover`, on average: `cover` of it lies in cloud shadow (the sky's mean light, `light.ts`). */
-export const throughClouds = (cover: number): number => 1 - clamp01(cover) * cloudShade(clamp01(cover))
+export const throughClouds = (cover: number): number =>
+  1 - clamp01(cover) * cloudShade(clamp01(cover))
 
 /** Writes this frame's surface weather into `SKY_UNIFORMS`: the sky host calls it once per frame, before the scene renders. */
 export const applySurface = (s: Surface): void => {
@@ -304,24 +339,34 @@ export const applySurface = (s: Surface): void => {
   // The air's temperature across the meltwater band (70 m above the line down to 170 m below it) as a straight line: the sim's own, as
   // `celsiusAt` falls straight with height up to where the daily range reaches its floor, above 5.2 km in every month at Italy's
   // latitudes (surface.test.ts).
-  const below = celsiusAt(s.air, s.snowLine - MELT_SPAN.below), over = celsiusAt(s.air, s.snowLine + MELT_SPAN.above)
-  u.uMelt.value.set(celsiusAt(s.air, s.snowLine), (over - below) / (MELT_SPAN.above + MELT_SPAN.below))
+  const below = celsiusAt(s.air, s.snowLine - MELT_SPAN.below),
+    over = celsiusAt(s.air, s.snowLine + MELT_SPAN.above)
+  u.uMelt.value.set(
+    celsiusAt(s.air, s.snowLine),
+    (over - below) / (MELT_SPAN.above + MELT_SPAN.below),
+  )
   const cover = clamp01(s.cloudCover)
   u.uCloudCut.value = cloudCut(cover)
   u.uCloudShade.value = cloudShade(cover)
   u.uCloudOffset.value.set(s.cloudOffset.x, s.cloudOffset.y)
   u.uSkyColour.value.copy(s.skyColour)
-  u.uRipples.value = s.rain > 0 ? Math.min(RIPPLES.most, RIPPLES.share * (s.rain / RIPPLES.at) ** RIPPLES.power) : 0
+  u.uRipples.value =
+    s.rain > 0 ? Math.min(RIPPLES.most, RIPPLES.share * (s.rain / RIPPLES.at) ** RIPPLES.power) : 0
   const speed = Math.hypot(s.wind.x, s.wind.y)
   u.uSway.value = Math.min(SWAY.most, SWAY.perMs * Math.max(0, speed - SWAY.from))
   // The wind's share along the camera's right: three x is east, three z is south.
-  u.uSwayLean.value = speed > 0 ? (LEAN * (s.wind.x * s.viewRight.x - s.wind.y * s.viewRight.z)) / speed : 0
+  u.uSwayLean.value =
+    speed > 0 ? (LEAN * (s.wind.x * s.viewRight.x - s.wind.y * s.viewRight.z)) / speed : 0
   u.uSwayAxis.value.set(s.viewRight.x, s.viewRight.y, s.viewRight.z)
   u.uTexelsPerMetre.value = s.texelsPerMetre
 }
 
 /** Moves the clouds `dt` sim seconds on with the wind at the focus (m/s, sim frame), in float64, wrapped into [0, CLOUD_PERIOD). */
-export const driftClouds = (offset: Vector2, wind: { readonly x: number; readonly y: number }, dt: number): Vector2 => {
+export const driftClouds = (
+  offset: Vector2,
+  wind: { readonly x: number; readonly y: number },
+  dt: number,
+): Vector2 => {
   const step = Math.max(0, Math.min(MAX_DT, dt)) * CLOUD_SPEED
   const wrap = (v: number) => ((v % CLOUD_PERIOD) + CLOUD_PERIOD) % CLOUD_PERIOD
   return offset.set(wrap(offset.x + wind.x * step), wrap(offset.y + wind.y * step))

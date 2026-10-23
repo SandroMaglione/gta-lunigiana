@@ -70,23 +70,30 @@ whichever schedule ticked first.
 | 8 | `AdvanceClock` | `systems/sky.ts` | moves `GameClock` on by its rate (a game second a step at rate 1); at rate 0 it stands still, unwritten |
 | 9 | `AdvanceWeather` | `systems/sky.ts` | over the step's game seconds, draws the day's plan from the weather seed when a new Rome day begins (at rate 0 only that), moves toward the regime it sets for the hour and eases `Weather` toward it, wetting, drying, snowing and thawing the ground; over its real time, drifts a thunderstorm's cell and emits `Lightning`, drawing from `WeatherRng` |
 | 10 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
-| 11 | `applyDeferred` | | applies the enter/exit commands before anything moves |
-| 12 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
-| 13 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
-| 14 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`, slower and keeping further back where the road is wet or snowy; a driver held up honks (`Honk`) |
-| 15 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
-| 16 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`, each tyre's grip lowered by the wet and the snow under it; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
-| 17 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits and knockdowns are `Impact` events |
-| 18 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
-| 19 | `Recover` | `systems/contacts.ts` | knocked-down people get up; pedestrians then flee |
-| 20 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians |
-| 21 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
+| 11 | `applyDeferred` | | applies the enter/exit commands, so the blast knows who sits in which vehicle |
+| 12 | `Explode` | `systems/explosions.ts` | lights a burning wreck's fuse; a wreck whose fuse has burnt down blows up (`Explosion`): hits and shoves the vehicles near it, kills, knocks down and scares the people |
+| 13 | `applyDeferred` | | applies the blast's deaths and knockdowns before anything moves |
+| 14 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
+| 15 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
+| 16 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`, slower and keeping further back where the road is wet or snowy; a driver held up honks (`Honk`) |
+| 17 | `Pedestrians` | `systems/pedestrians.ts` | walkers follow their routes, flee, slide |
+| 18 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`, each tyre's grip lowered by the wet and the snow under it; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
+| 19 | `Contacts` | `systems/contacts.ts` | car–car, car–person and person–person contacts, knockdowns; car–car hits, knockdowns and a car stopped against a wall by a pinned person (faster than `KNOCK_SPEED`) are `Impact` events |
+| 20 | `CrashDamage` | `systems/damage.ts` | this step's `Impact` events wear the vehicles they struck (`Damage`); a traffic car destroyed is abandoned, its driver fleeing |
+| 21 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
+| 22 | `Recover` | `systems/contacts.ts` | knocked-down people get up, never the dead; pedestrians then flee |
+| 23 | `Respawn` | `systems/explosions.ts` | the dead player comes back on foot at the start after 4 s |
+| 24 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and pedestrians, and removes destroyed vehicles and the dead once out of view (`VIEW_REACH`) |
+| 25 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
 
-Controls, the handling, the clock and the weather are settled before movement, all movement
-happens before contacts, and contacts happen before the player's pose follows the car. `TrafficAI`
-and `VehiclePhysics` read `GameClock` and `Weather` and work out the air once a step (`airAt`), so
-every wheel meets the wet and the snow this step's weather left, meltwater included. Gameplay is in
-[gameplay.md](gameplay.md), the weather in [weather.md](weather.md).
+Controls, the handling, the clock and the weather are settled before movement, a blast is set off
+once getting in and out are applied and before anything moves, all movement happens before
+contacts, crash damage is counted after both, from the same step's hits, and contacts happen
+before the player's pose follows the car. The physics drives on the crash damage counted the step
+before, and on a blast's in the same step. `TrafficAI` and `VehiclePhysics` read `GameClock` and
+`Weather` and work out the air once a step (`airAt`), so every wheel meets the wet and the snow
+this step's weather left, meltwater included. Gameplay is in [gameplay.md](gameplay.md), the
+weather in [weather.md](weather.md).
 
 ### Where state lives
 
@@ -100,9 +107,11 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Person` | player, pedestrians | look: skin, hair, shirt, trousers colours (immutable) |
 | `Pedestrian` | pedestrians | mood (`walk` or `flee`), flee end step, steps blocked |
 | `Down` | knocked-down people | step at which they get up |
+| `Dead` | people killed by an explosion (with `Down`) | step they died |
 | `Vehicle` | vehicles | model and paint colour (immutable) |
 | `CarInput` | vehicles | throttle, steer, handbrake for this step |
 | `Chassis` | vehicles | centre-of-mass elevation and vertical speed, pitch and roll with their rates, road-wheel steering angle, gear, step the current shift ends |
+| `Damage` | vehicles | share of its durability its crashes used up (0 as new, 1 destroyed); its latest crash's hardest hit (barrier-equivalent m/s), first step and what it struck (another vehicle's entity id, −1 a wall or the ground); the step its fire blows it up (`fuse`) and whether it has (`exploded`) |
 | `Traffic` | AI vehicles | tag |
 | `Route` | traffic, pedestrians | current graph edge, direction, lateral offset |
 | `Autopilot` | traffic | next edge, stuck counter, reverse end step, unstick tries |
@@ -110,11 +119,11 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Driving` | the player | handle of the vehicle being driven |
 
 `Schema.requires` enforces the bundles: a `Player` has a pose, previous pose, motion and look; a
-`Vehicle` has a pose, previous pose, motion, `CarInput` and `Chassis`; `Traffic` also needs
-`Route` and `Autopilot`. Spawns put a vehicle on its springs at rest on the ground (`settle` in
-`src/sim/chassis.ts`), in the gear for its speed. No save is ever persisted, so `Chassis`,
-`Handling` (with its `weatherGrip` knob), `GameClock`, `WeatherRng` and `Weather` need no snapshot
-migration.
+`Vehicle` has a pose, previous pose, motion, `CarInput`, `Chassis` and `Damage`; `Traffic` also
+needs `Route` and `Autopilot`; the `Dead` are always `Down`. Spawns put a vehicle on its springs at
+rest on the ground (`settle` in `src/sim/chassis.ts`), in the gear for its speed, undamaged. No save
+is ever persisted, so `Chassis`, `Damage`, `Dead`, `Handling` (with its `weatherGrip` knob),
+`GameClock`, `WeatherRng` and `Weather` need no snapshot migration.
 
 Saved resources:
 
@@ -135,13 +144,15 @@ Events are transient too. `Impact` (a vehicle hit a wall, another vehicle, a per
 where, which is the contact point for a wall, a vehicle or the ground, how hard, with how much mass
 in tonnes, and for the ground which face of the body struck), `Skid` (a tyre slid this step: where,
 how fast, how far past its grip, on what surface, how snow-covered), `Honk` (an AI driver held up
-sounds the horn) and `Lightning` (a thunderstorm's flash this step: a ground strike or a flash in
-the cloud at x, y, its power 0…1, the seed of its bolt and its thunder, its step) carry moments that
-leave no trace in the components. `VehiclePhysics`, `Contacts`, `TrafficAI` and `AdvanceWeather`
-emit them; the audio schedule reads all four ([audio.md](audio.md#data-flow)) and the render
-schedule reads `Skid` (tyre marks and smoke) and `Lightning` (the bolt and the flash). An in-cloud
-flash may lie off the map; a bolt never does. Three events are host intents, which no system
-emits and the host sends with `runtime.send`:
+sounds the horn), `Lightning` (a thunderstorm's flash this step: a ground strike or a flash in the
+cloud at x, y, its power 0…1, the seed of its bolt and its thunder, its step) and `Explosion` (a
+burning wreck blew up: which, of what model, where) carry moments. `VehiclePhysics`, `Contacts`,
+`TrafficAI`, `AdvanceWeather` and `Explode` emit them; the audio schedule reads all five
+([audio.md](audio.md#data-flow)), the render schedule reads `Skid` (tyre marks and smoke),
+`Lightning` (the bolt and the flash) and `Explosion` (the blast), and `CrashDamage` reads `Impact`
+later in the same step, the one trace an event leaves in the components (`Damage`). An in-cloud
+flash may lie off the map; a bolt never does. Three events are host intents, which no system emits
+and the host sends with `runtime.send`:
 
 - `SetHandling` (set one handling knob to a value): the host's handling store
   (`src/hud/handling.ts`) sends it for the settings and the dev debug menu; `ApplyHandling` reads
@@ -152,7 +163,8 @@ emits and the host sends with `runtime.send`:
 - `SetWeather` (force a regime, or `null` to hand the weather back to the day's plan, `settle` to
   jump to its steady state): the dev sky store sends it; `ApplyWeather` reads it.
 
-Snapshots hold no events, and emitting them changes neither the determinism nor the saves test.
+Snapshots hold no events: `CrashDamage` reads each `Impact` in the step it is emitted (`thisTick`),
+so a snapshot between steps loses none and a restored save plays on alike.
 
 Static data is module content, not state. `MAP` and `graph` (`src/sim/map/index.ts`), the wall,
 tree, building and edge lookups, the per-model lane tables in `src/sim/route.ts` and the per-model
@@ -168,8 +180,8 @@ works it out once it decodes the map (13–20 ms) and hands it over with `provid
 hands the map file to `provideMap`; with no map loaded it is the reference site, the shipped map's
 place. So the sky modules the schema and the HUD import (`regimes`, `clock`, `calendar`, `astro`,
 `place`, `day`, `climate`, `odds`, `plan`, `local`, `readout`) decode no map, and every Italian map
-gets its own sun and climate (`sky/mapfree.test.ts` asserts both); `sky/weather.ts` decodes it,
-for the heights and the bounds. `ORIGIN` in `src/sim/map/kinds.ts` now serves only the build.
+gets its own sun and climate (`sky/__tests__/mapfree.test.ts` asserts both); `sky/weather.ts`
+decodes it, for the heights and the bounds. `ORIGIN` in `src/sim/map/kinds.ts` now serves only the build.
 The land-cover raster (`mapCover` in `src/sim/map/cover.ts`, ≈ 105 ms and 4.9 MB) and the road
 index of `surfaceAt` (`src/sim/map/surface.ts`) are built on first use: pure functions of `MAP`,
 never written after; `main.ts` builds the raster in its "Painting land cover" loading step, so
@@ -194,13 +206,13 @@ the first physics step finds it ready. The lookups are compact static grids (`st
   cells at load. The renderer converts it to render y (`src/render/ground.ts`).
 
 Host state stays in the host: the camera, the render clock, the three.js scene and nodes, the
-streamed world's chunks, the tyre marks and smoke, the sky host (its lights, the eased exposure and
-lamps, the clouds' drift and the shared sky uniforms, worked out again from the saved clock and
-weather every frame, so a loaded save needs nothing), the HUD's DOM, the player's handling (a
-preset's name or the knobs set by hand, kept in `localStorage` by `src/hud/handling.ts`), the dev
-sky store (nothing stored), and the audio context, live voices and the director's memory of each
-sound source, thunders on their way included (pruned as sources go; see
-[audio.md](audio.md#where-state-lives)).
+streamed world's chunks, the tyre marks and smoke, the wrecks' smoke and flames, the sky host (its
+lights, the eased exposure and lamps, the clouds' drift and the shared sky uniforms, worked out
+again from the saved clock and weather every frame, so a loaded save needs nothing), the HUD's DOM,
+the player's handling (a preset's name or the knobs set by hand, kept in `localStorage` by
+`src/hud/handling.ts`), the dev sky store (nothing stored), and the audio context, live voices and
+the director's memory of each sound source, thunders on their way included (pruned as sources go;
+see [audio.md](audio.md#where-state-lives)).
 
 ## Input
 
@@ -273,7 +285,7 @@ cycle (its dev-server numbers are under [Measured](#measured)):
 frames clamped to 0.25 s. Before the loop starts it ticks `setup`, holds the game clock, ticks the
 `audio` schedule once, and draws the first frame (the `render` schedule's first run): a system
 reads the events published since its own last run, so a reader that has never run would miss the
-first steps' `Impact`, `Honk`, `Skid` and `Lightning` events. Each animation frame it:
+first steps' `Impact`, `Honk`, `Skid`, `Lightning` and `Explosion` events. Each animation frame it:
 
 1. writes the loop's `alpha` (fraction of a step since the last one) into `RenderClock`;
 2. ticks the `render` and `audio` schedules (`runtime.tick(render, audio)`); the render's `DrawSky`
@@ -303,7 +315,10 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
 
 - `SyncPeople` and `SyncVehicles` (`RenderSync.system`) keep one three.js node per entity with a
   `Person` or a `Vehicle`, in the `People` and `Vehicles` node registries. A person in a car is
-  hidden; a knocked-down person lies flat.
+  hidden; a knocked-down or dead person lies flat. A vehicle that has blown up (`Damage.exploded`)
+  shows a charred shell (`vehicleBody` in `src/render/actors.ts`): its body's geometry with every
+  vertex colour turned to its luminance and blended 90% toward `PALETTE.outline`, cached per model
+  and paint like the intact one and never disposed.
 - `MarkDriven` shows the x-ray silhouette (drawn only where the world hides the actor) on the
   player's car and no other vehicle. `SyncPeople` shows it on the player's figure. Its yellow is
   divided by the post pass's exposure, as the lamps are, so it stays the same yellow at night as at
@@ -323,11 +338,12 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
   stands on y = 0 at rest, centred on the centre of mass, with its wheels where `VEHICLES` puts
   them (the truck's one sim rear axle drawn as a tandem 1.3 m apart); body and x-ray proxy hang
   `cg` below the node (`VehicleNode` in `src/render/actors.ts`).
-- `DrawEffects` reads the `Skid` events since the last frame and feeds the effects host
-  (`makeEffects` in `src/render/index.ts`, made in `main.ts` beside the registries, passed as the
-  `Effects` service, and `gta.effects` in dev builds). The marks and the smoke age by sim time
-  (`Time.step` plus the render alpha), so both stand still while the game is paused. They are
-  host state for the page's life: nothing loads a save in the browser.
+- `DrawEffects` reads the `Skid` and `Explosion` events since the last frame and every vehicle's
+  `Damage`, and feeds the effects host (`makeEffects` in `src/render/index.ts`, made in `main.ts`
+  beside the registries, passed as the `Effects` service, and `gta.effects` in dev builds). The
+  marks, the smoke and the flames age by sim time (`Time.step` plus the render alpha), so they stand
+  still while the game is paused. They are host state for the page's life: nothing loads a save in
+  the browser.
   - Tyre marks (`src/render/marks.ts`): one dynamic mesh for the whole map, a ring buffer of 4,096
     quads, the oldest overwritten first. Each (car, wheel) draws a strip joining its consecutive
     steps; a step without a skid breaks it. Width by model's tread (Panda 0.18 m, Ape 0.1 m,
@@ -350,18 +366,70 @@ The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`:
     silhouettes included, and after the marks (render order 1), and it writes no depth.
   - Marks and smoke are lit like the people and cars (the `actor` weather variant: cloud shadows,
     no snow, no wet darkening), so they are not left sunlit under an overcast sky.
+  - Damaged engines (`src/render/wrecks.ts`), by the stage of damage
+    ([gameplay.md](gameplay.md#damage)): white smoke from the medium stage (10 puffs a second,
+    0.5–0.9 m in radius at their peak, a little bigger than a tyre's 0.4–0.8), black from the severe
+    (12), and once destroyed black smoke billowing from 0.5 m over the engine (12) above flames (40
+    a second). Each leaves its model's engine (`ENGINE` in `src/render/actors.ts`, just outside the
+    body: over the Panda's and the Giulia's bonnet, in front of the truck's grille, behind the Ape's
+    cab), so a car on its side or roof smokes from over its body. Only 8 damaged engines within
+    150 m of the player smoke (`PLUME_REACH`: the view reaches 90): burning wrecks first, as they
+    are about to blow, then the smoking ones, white or black alike so a near one is not dropped for
+    a far one, each the nearest first, and the charred shells last. The pools are sized for 8 plumes
+    and fires with every puff and flame living its longest, so they always hold them in full. Each
+    node keeps what it owes, so emission does not depend on the frame rate; each puff is born when
+    it was due, where the engine was then, so a moving car trails its smoke, while the flames burn
+    on the engine as it is placed each frame, so they stay with it as it moves, stops dead or
+    tumbles. The smoke is a pool of `Smoke` puffs of its own (336), so wrecks and tyre smoke never
+    starve each other. The flames are 224 small octahedra in one `InstancedMesh` with an unlit
+    material, so they glow in shadow: they lick up within 0.5 m of the engine, rise 1.2–2 m/s,
+    shrink and turn from yellow through orange to red over 0.35–0.7 s, their colours over 1 so they
+    burn hot through the pipeline, and they draw after the smoke and write no depth, so the outline
+    pass leaves their edges alone. An empty pool uploads nothing. A charred shell gives off only a
+    thin dark grey smoke (`PLUMES.burnt`: 4 puffs a second, 0.3–0.5 m, rising 0.6–1 m/s for 2–3 s)
+    and no flames.
+  - Blasts (`src/render/blasts.ts`), from the `Explosion` events within 150 m of the player, each
+    started at the drawn moment's sim time: a flash (an unlit icosahedron swelling from 1.2 to 4 m
+    in radius, 2.4 to 8 m across, in 0.12 s, white-hot to yellow, gone by 0.3 s), a fireball of 40
+    unlit octahedra flung out and up at 4–12 m/s (air drag 3/s, rising 4 m/s², 0.7–1.7 m in radius,
+    0.6–1.2 s, white through yellow and orange to red), 30 embers (0.12–0.24 m in radius, 6–14 m/s
+    under gravity, about 1 s), 24 pieces of debris (boxes 0.25–0.6 m long, lit like the cars by
+    the `actor` variant, a third in the body's paint, the rest charred, thrown at 4–11 m/s and
+    spinning, gone when they fall back to the ground or after 2.5 s) and 24 black puffs of its own `Smoke` pool (1.2–2.2 m in radius, rising
+    1.5–2.5 m/s for 3–5 s). A falling piece's ground is where it comes down, found as it is thrown:
+    where it would land on level ground at the wreck's foot, then twice more where it would land on
+    the ground found the pass before, on the level nearest the wreck's (a bridge's deck, then the
+    valley past its edge). Each pass only lowers it, so it is never over the wreck's foot and a bank
+    across a valley does not lift it back up. On a hillside falling away at 50 % every shard lands
+    within 0.35 m of the ground (with the wreck's ground alone some vanished 6 m up in the air); off
+    5 bridges 6.5–24 m over their valleys, 10 blasts each, 2 of the 975 shards that came down
+    vanished over 0.5 m up (514 of 1,205 with the wreck's ground alone). Each layer is one
+    `InstancedMesh` sized for 4 blasts at once, dropping the pieces of any more; the fire draws over
+    the smoke and writes no depth. No light: a light's count is part of every lit program's key, so
+    adding one would recompile them all. All the meshes are in the scene from the first frame, so
+    their programs compile behind the title card. The flash writes no depth, so the outline pass
+    draws the car's edges as faint lines through it for about 0.2 s.
   - Measured in headless Chrome on an M4 Pro, 1280×720, dev server, seed 7: "Press any key" at
     ≈ 0.66–0.69 s (0.68–0.85 s before the change); JS heap after GC at the spawn 96.1–96.6 MB
     (96.0 MB before), 97.2 MB with a full ring of marks and the smoke at its cap; 60 fps and no
     frame over 16.8 ms through handbrake slides on asphalt and a dirt track, and with 4,095 marks
     and up to 256 puffs in view.
+  - Measured the same way with the damaged engines' smoke and fire (a fresh Chrome profile per run):
+    "Press any key" at 758–811 ms (753–764 ms before), JS heap after GC at the spawn 92.9 MB
+    (92.4–92.5 MB before); with every parked car started damaged (a third each burning, at 0.5 and
+    at 0.8), 8 plumes in view, 226 puffs and 64 flames in the air: 60 fps, no frame over 16.8 ms,
+    94.7 MB. With the two Carabinieri cars burning by the spawn and blowing up 3 s apart, over the
+    12 s around both blasts: 60 fps, no frame over 16.8 ms (as without the blasts); JS heap after
+    GC 93.9 MB before them and 94.0 MB after (93.6 and 93.8 MB without).
 - `DrawSky`, last in the schedule so the cars stand where they are drawn, hands the sky host
   (the `Sky` service, [The sky](#the-sky)) the game time blended at the render alpha
   (`seconds + alpha · rate`), the clock's rate, the `Weather`, the sim time
   (`(Time.step + alpha) · STEP.dt`) and every `Lightning` since the last frame. It switches every
-  car's lamps, on in traffic and in the player's car, off when parked, and hands the sky the cars
-  whose lamps are on, for the headlight beams. Like every render system it writes nothing:
-  `src/render/index.test.ts` counts the schedule's 7 systems and checks their declared access.
+  car's lamps, on in traffic and in the player's car, off when parked (a destroyed traffic car is
+  abandoned, so its lamps go out; `SyncVehicles` hides a charred shell's), and hands the sky the
+  cars whose lamps are on, for the headlight beams. Like every render system it writes nothing:
+  `src/render/__tests__/index.test.ts` counts the schedule's 7 systems and checks their declared
+  access.
 
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
@@ -625,13 +693,17 @@ order.
   the target bound, each program compiled as an sRGB-output twin no frame uses (26 programs at
   ready), and the real one again at the first draw. `stand-ins.test.ts` fails when a material a
   world build or an actor draws is missing from the stand-ins.
-- Transparent objects draw in an explicit `renderOrder`, so their order never depends on three's
-  sort by distance: tyre marks 0, smoke and the x-ray proxies 1, bolts 2, rain and snow 3.
-- 16 programs at "Press any key", still 16 after a tour of the map's corners, Monte Sagro and
-  Viano at every hour and regime, bolts and a night drive (10 before the day cycle):
-  `weather-solid`, `-road`, `-water` and `-tree`; `weather-actor` three times (people and cars,
-  marks with vertex alpha, instanced smoke); the glow and vehicle-lamp materials; rain and snow;
-  the bolts' line material; the x-ray; two depth programs; the blit. All but the blit write linear
+- Transparent objects draw in an explicit `renderOrder` (`DRAW_ORDER` in `src/render/order.ts`),
+  so their order never depends on three's sort by distance: tyre marks 0, smoke (tyres, engines,
+  blasts) and the x-ray proxies 1, a wreck's flames and a blast's flash 2, a blast's fireball and
+  embers 3, bolts 4, rain and snow 5.
+- 18 programs at "Press any key", still 18 after a blast beside the player in a night storm
+  (10 before the day cycle; 16 with it before the wrecks and blasts, still 16 after a tour of the
+  map's corners, Monte Sagro and Viano at every hour and regime, bolts and a night drive):
+  `weather-solid`, `-road`, `-water` and `-tree`; `weather-actor` four times (people and cars,
+  marks with vertex alpha, instanced smoke, a blast's instanced debris); the glow and vehicle-lamp
+  materials; rain and snow; the bolts' line material; the fire (a wreck's flames, a blast's flash,
+  fireball and embers); the x-ray; two depth programs; the blit. All but the blit write linear
   colour into the target.
 
 #### Measured
@@ -654,20 +726,19 @@ chunk builds swept through Monzone take 0.92 ms on average and 2.6 ms at worst, 
 ## Audio
 
 The audio schedule (`src/audio/index.ts`) is host code beside render. Its one system,
-`Lunigiana/Hear`, reads the player, the vehicles that run or move (with the revs and load the sim's
-drivetrain gives for their `Chassis`, speed and pedal at the `Time` step, and whether their wheels
-are down), the people on foot, the `Impact`, `Skid`, `Honk` and `Lightning` events, the horn key,
-the view's turns (the stereo image turns with the screen), the game clock (the Rome day, the time
-of day and the sun's elevation, `skyAt`) and a copy of the `Weather`, and hands them as plain
-`Heard` data to the `Audio` service.
-`main.ts` provides the director (`src/audio/director`, plain TypeScript), which works out the
-weather at the ears with the sim's `conditionsAt`, runs the outdoor acoustics, holds each thunder
-until its sound arrives, and drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths
-(`src/audio/synth`). The speaker starts its AudioContext on the first key, click or tap once it exists
-(made during the last loading steps, so normally the one that dismisses the title card), and
-suspends it while the full map or the settings are open or the tab is hidden. In dev builds
-`gta.audio` exposes the speaker, its output level and the context. Everything else is in
-[audio.md](audio.md).
+`Lunigiana/Hear`, reads the player, the vehicles that run, move or burn (with the revs and load the
+sim's drivetrain gives for their `Chassis`, speed, pedal and `Damage` at the `Time` step, and
+whether their wheels are down), the people on foot, the `Impact`, `Skid`, `Honk`, `Lightning` and
+`Explosion` events, the horn key, the view's turns (the stereo image turns with the screen), the
+game clock (the Rome day, the time of day and the sun's elevation, `skyAt`) and a copy of the
+`Weather`, and hands them as plain `Heard` data to the `Audio` service. `main.ts` provides the
+director (`src/audio/director`, plain TypeScript), which works out the weather at the ears with the
+sim's `conditionsAt`, runs the outdoor acoustics, holds each thunder until its sound arrives, and
+drives the Web Audio speaker (`src/audio/speaker.ts`) and its synths (`src/audio/synth`). The
+speaker starts its AudioContext on the first key, click or tap once it exists (made during the last
+loading steps, so normally the one that dismisses the title card), and suspends it while the full
+map or the settings are open or the tab is hidden. In dev builds `gta.audio` exposes the speaker,
+its output level and the context. Everything else is in [audio.md](audio.md).
 
 ## HUD
 
@@ -677,7 +748,7 @@ yaw, sky)`) and the map; the handling store also reads the `HandlingView` inspec
 sky store `SkyView`:
 
 - `PlayerView` returns a `PlayerViewModel`: previous and current pose, velocity, mode (`foot`,
-  `driving`, `down`), the driven vehicle's label and speed, the vehicle in reach (label,
+  `driving`, `down`, `dead`), the driven vehicle's label and speed, the vehicle in reach (label,
   occupied, stolen), the score, and the view's quarter turns.
 - `SkyView` returns a `SkyViewModel`: the game time (`seconds`) and `rate`, the Rome wall clock at
   that time (`local`), and the `Weather` value, its seed and day plan included. Host code calls the
@@ -694,6 +765,11 @@ sky store `SkyView`:
   name wraps in its own column. At 600 px wide or less the clock moves under the score, in the
   top-right corner; under 360 px the score and the clock keep their narrowest width and the road
   name may break inside a word; a count never shrinks below its digits.
+- Killed (mode `dead`), the HUD darkens the screen, the minimap included, and shows "Sei morto"
+  (`#hud-wasted`, an alert, so screen readers announce it), fading in over 1 s (at once under
+  `prefers-reduced-motion`), until the player is back at the start; the touch controls hide all but
+  ↺ and ↻, as on a keyboard only Q and E still act on the game; the full map (M, or a tap on the
+  minimap) and the settings (Esc) still open.
 - `vehicleInReach` (`src/sim/body.ts`) answers both the HUD prompt and the `EnterExit` action, so
   the prompt never offers something the key will not do. The touch controls' action button shows
   the prompt's verb (`actionFor` in `src/hud/hud.ts`).
@@ -802,83 +878,120 @@ sky store `SkyView`:
 
 ## Checks
 
-`pnpm check` runs:
+`pnpm check` runs the format, type, lint and test gates in that order; CI runs each as its own
+step, and git hooks run the first three before a commit or push.
 
-- `tsc`: strict TypeScript, no emit.
-- `oxlint` (`.oxlintrc.json`) with `@typeonce/oxlint-plugin-ritmo`:
-  - everywhere: `handle-tick-result`, `prefix-descriptor-and-system-names`, `use-cell-value`;
+- `oxfmt --check` (`.oxfmtrc.json`): no semicolons, double quotes, 100 columns, sorted imports,
+  over the code, JSON, YAML, HTML and CSS. Markdown is skipped: oxfmt pads every table cell to
+  its column's width, which turns the docs' long tables into rows hundreds of characters wide,
+  and the docs keep their own wrapping (see CODING_STANDARDS.md). `pnpm format` rewrites the
+  files.
+- `tsc`: strict TypeScript with `noUncheckedIndexedAccess`, no emit.
+- `oxlint --deny-warnings --report-unused-disable-directives` (`.oxlintrc.json`), type-aware
+  through `oxlint-tsgolint`:
+  - the `correctness`, `suspicious`, `perf` and `pedantic` categories as errors, minus the rules
+    whose fix would change behaviour (`| 0` wraps to int32 in the seeded generators,
+    `Math.trunc` does not), that misread the code's idioms, or that only restyle it; each turned
+    off with its reason beside it in the config;
+  - a few style rules on top: `eqeqeq`, `prefer-const`, `object-shorthand`, `prefer-template`,
+    inline `type` imports, `no-explicit-any`, `prefer-optional-chain`, `prefer-nullish-coalescing`
+    (a string's `||` still treats `""` as absent), `switch-exhaustiveness-check`,
+    `import/no-cycle` and `node:` imports;
+  - `max-lines` at 700 code lines a module (tests exempt);
+  - `node:test`'s `test` and `describe` may float their promises; any other promise is awaited or
+    `void`ed;
+  - the Ritmo plugin everywhere: `handle-tick-result`, `prefix-descriptor-and-system-names`,
+    `use-cell-value`;
+  - the project's own plugins in `lint/`, one file each, named after its plugin (a unique name,
+    never a shared project-wide one): `test-files/in-tests-folder` (`lint/test-files.ts`) fails a
+    `*.test.ts` that does not sit directly in a `__tests__` folder;
   - in `src/sim/**`: `use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`,
     `keep-simulation-headless`, `no-infinity-in-simulation-data`, and a ban on importing
     `render`, `hud`, `audio` or `main.ts`;
   - in `src/audio/**`: a ban on importing `hud` or `main.ts` (they wire the audio host, never the
     reverse).
+
+  A rule broken on purpose takes an `oxlint-disable-next-line <rule> -- <reason>` comment.
 - `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
-  (described, not run) `render` and `audio` schedules. Any warning fails: without the audio
-  schedule described, `Impact` and `Honk` would be `event-never-read` (`Lightning` has two
-  readers, the render's `DrawSky` and the audio's `Hear`). `lintTarget` declares `SetHandling`,
-  `SetClock` and `SetWeather` host events (`hostEvents`), since only the host sends them;
-  undeclared they would be `event-never-written`. It also fails if a module the sim loads is not
-  covered by the oxlint simulation override.
-- `node --test`. Beside the unit tests, these guard the architecture:
-  - `determinism` (`src/sim/index.test.ts`): `Determinism.check` runs a 600-frame scripted joyride
-    twice, with the handling off its real values (`SetHandling`) and the clock at ten game minutes
-    a step (`SetClock { rate: 600 }`: 100 game hours of weather, its days planned from the weather
-    seed, the roads wetting and drying under the car), and requires identical state,
+  (described, not run) `render` and `audio` schedules. Any warning fails: without the audio schedule
+  described, `Honk` would be `event-never-read` (`CrashDamage` reads `Impact` in `update`;
+  `Lightning` has two readers, the render's `DrawSky` and the audio's `Hear`). `lintTarget` declares
+  `SetHandling`, `SetClock` and `SetWeather` host events (`hostEvents`), since only the host sends
+  them; undeclared they would be `event-never-written`. It also fails if a module the sim loads is
+  not covered by the oxlint simulation override.
+- `node --test` over every `*.test.ts` in `src` and `lint`. A test lives in a `__tests__` folder
+  beside the module it tests (`src/sim/route.ts` is tested by `src/sim/__tests__/route.test.ts`;
+  `test-files/in-tests-folder` enforces it). Beside the unit tests, these guard the architecture:
+  - `determinism` (`src/sim/__tests__/index.test.ts`): `Determinism.check` runs a 600-frame
+    scripted joyride twice, with the handling off its real values (`SetHandling`), the clock at ten
+    game minutes a step (`SetClock { rate: 600 }`: 100 game hours of weather, its days planned from
+    the weather seed, the roads wetting and drying under the car), a car crashing into a house wall
+    to drive on misfiring and a wreck blowing up, and requires identical state,
     transient components included.
   - `saves`: a snapshot taken mid-joyride, with a changed handling, the clock at rate 600 and a
     forced, settled thunderstorm, goes through JSON, restores into a fresh runtime, and plays on
     identically for 1,200 frames, its lightning included (some, and the same).
-  - `src/sim/sky.test.ts`: the clock in the runtime (08:00 in Rome on the start day, each step's
-    rate, none at rate 0, through a save), `SetClock` and `SetWeather` sent before the first
-    update still applied, a forced storm's lightning (bolts on the map, with the clock stopped,
-    the same in the same game), the weather seed kept through a save and replaying the same days,
-    the seed alone planning the days whatever the storms drew, the weather's stream never reaching
+  - `src/sim/__tests__/sky.test.ts`: the clock in the runtime (08:00 in Rome on the start day, each
+    step's rate, none at rate 0, through a save), `SetClock` and `SetWeather` sent before the first
+    update still applied, a forced storm's lightning (bolts on the map, with the clock stopped, the
+    same in the same game), the weather seed kept through a save and replaying the same days, the
+    seed alone planning the days whatever the storms drew, the weather's stream never reaching
     traffic or pedestrians, and a car braking further on a wet road.
-  - `src/sim/sky/*.test.ts`: the calendar (every day from 1900 to 2100, the summer-time switches),
-    the sun and the moon against JPL Horizons and USNO, the national normals, the odds and the day
-    plan against their tables (300 years at 38, 42 and 45.5 N), the weather as it falls against the
-    table and the snow targets (30 years, `calibration.test.ts`), the weather's steps, ground, fog,
-    wind, storm cell and lightning, and the readout's words; `mapfree.test.ts`: the schema and the
-    map-free sky modules decode no map, and once the map is decoded `place()` is its origin, its
-    5th-percentile height and its slope.
-  - `src/sim/handling.test.ts`: each handling knob's effect, the weather grip loss's included (a
-    Panda brakes about 1.3 times further on a wet road and 3 times on packed snow, and turns its
-    wheels less at speed; at 0 the weather changes nothing), each preset's behaviour, and
+  - `src/sim/sky/__tests__/*.test.ts`: the calendar (every day from 1900 to 2100, the summer-time
+    switches), the sun and the moon against JPL Horizons and USNO, the national normals, the odds
+    and the day plan against their tables (300 years at 38, 42 and 45.5 N), the weather as it falls
+    against the table and the snow targets (30 years, `calibration.test.ts`), the weather's steps,
+    ground, fog, wind, storm cell and lightning, and the readout's words; `mapfree.test.ts`: the
+    schema and the map-free sky modules decode no map, and once the map is decoded `place()` is its
+    origin, its 5th-percentile height and its slope.
+  - `src/sim/__tests__/handling.test.ts`: each handling knob's effect, the weather grip loss's
+    included (a Panda brakes about 1.3 times further on a wet road and 3 times on packed snow, and
+    turns its wheels less at speed; at 0 the weather changes nothing), each preset's behaviour, and
     `SetHandling` kept in range and through a save.
-  - `src/sim/walls.test.ts` (traffic): a driver stops for a car standing across its lane, backs up
-    short of the car queued behind, waits for a car beside its front as it steers back into its
-    lane, backs up straight past a car alongside, and keeps slower and further back on a wet road.
-  - `src/hud/handling.test.ts`: the handling store (what it stores, restores and sends);
-    `src/hud/settings.test.ts`: the settings' keys (Esc on to the router, every other key kept
-    from the game) and the preset they show (Custom for a hand-set mix); `src/hud/hud.test.ts`:
-    the Esc and M routing (`overlayKey`) and the pause.
-  - `src/hud/clock.test.ts`: the clock's and the weather's texts; `src/hud/sky.test.ts`: the sky
-    store (clamped as the sim clamps, what it sent shown until the game steps, Auto heading for and
-    settling on the day's plan, the title card's hold); `src/hud/debug-sky.test.ts`: the menu's
-    rates and readouts, the odds and seed texts, the odds readout equal to `oddsAt`, and the
-    regime's countdown;
-    `src/hud/title.test.ts`: the clock held behind the title card while the world moves on.
-  - `src/render/index.test.ts`: every system of every described schedule (`render`, 7 systems, and
-    `audio`) declares no writes; people and vehicles draw with the actor material; traffic and the
-    player's car shine and get the headlight beams, parked cars stay dark.
-  - `src/render/sky/*.test.ts`: the light (the settled look at 50.4°, the key turned with the view
-    at three yaws, clouds taking the sun only under their shadows), the post pass against a mirror
-    of its GLSL (fog, grades, the limit), the surface shader's key lines verbatim and its port
-    against the sim's snow cover and wetness (its melt band's straight line equal to `celsiusAt`),
-    the host (the shadow skip, the fog's colour, the puddles' mirror, the sun and the moon over the
-    loaded map's place), the lamps' placement and lanterns, the bolts and the flash's limits, the
-    drop counts and wrap (both buffers under their cap at 30 mm/h), the light pool, and the
-    phase-locked sines; `stand-ins.test.ts`: every
-    material a world build and the actors draw has a stand-in; `pipeline.test.ts`: `compile`
-    builds into the scene's target; `actors.test.ts`: the vehicle lamps and the x-ray's yellow;
-    `buildings.test.ts`: lit panes on homes only; `world.test.ts`: the glow and water meshes.
-  - `src/sim/map/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
+  - `src/sim/__tests__/walls.test.ts` (traffic): a driver stops for a car standing across its lane,
+    backs up short of the car queued behind, waits for a car beside its front as it steers back
+    into its lane, backs up straight past a car alongside, and keeps slower and further back on a
+    wet road.
+  - `src/hud/__tests__/handling.test.ts`: the handling store (what it stores, restores and
+    sends); `src/hud/__tests__/settings.test.ts`: the settings' keys (Esc on to the router, every
+    other key kept from the game) and the preset they show (Custom for a hand-set mix);
+    `src/hud/__tests__/hud.test.ts`: the Esc and M routing (`overlayKey`) and the pause.
+  - `src/hud/__tests__/clock.test.ts`: the clock's and the weather's texts;
+    `src/hud/__tests__/sky.test.ts`: the sky store (clamped as the sim clamps, what it sent shown
+    until the game steps, Auto heading for and settling on the day's plan, the title card's hold);
+    `src/hud/__tests__/debug-sky.test.ts`: the menu's rates and readouts, the odds and seed texts,
+    the odds readout equal to `oddsAt`, and the regime's countdown;
+    `src/hud/__tests__/title.test.ts`: the clock held behind the title card while the world moves
+    on.
+  - `src/render/__tests__/index.test.ts`: every system of every described schedule (`render`,
+    7 systems, and `audio`) declares no writes; people and vehicles draw with the actor material;
+    traffic and the player's car shine and get the headlight beams, parked cars stay dark.
+  - `src/render/sky/__tests__/*.test.ts`: the light (the settled look at 50.4°, the key turned with
+    the view at three yaws, clouds taking the sun only under their shadows), the post pass against
+    a mirror of its GLSL (fog, grades, the limit), the surface shader's key lines verbatim and its
+    port against the sim's snow cover and wetness (its melt band's straight line equal to
+    `celsiusAt`), the host (the shadow skip, the fog's colour, the puddles' mirror, the sun and the
+    moon over the loaded map's place), the lamps' placement and lanterns, the bolts and the flash's
+    limits, the drop counts and wrap (both buffers under their cap at 30 mm/h), the light pool, and
+    the phase-locked sines; in `src/render/__tests__/`, `stand-ins.test.ts`: every material a world
+    build and the actors draw has a stand-in; `pipeline.test.ts`: `compile` builds into the scene's
+    target; `actors.test.ts`: the vehicle lamps and the x-ray's yellow; `buildings.test.ts`: lit
+    panes on homes only; `world.test.ts`: the glow and water meshes.
+  - `src/sim/map/__tests__/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 
+Git hooks come from `lefthook.yml`; `pnpm install` installs them (lefthook's own install script,
+allowed in `pnpm.onlyBuiltDependencies`). Before a commit, `oxfmt` rewrites the staged files and
+stages the result, with any unstaged edits to them held aside, then `oxlint` checks them. Before a
+push, `pnpm format:check`, `pnpm typecheck` and `pnpm lint` run in parallel; the tests are left to
+CI. `git commit --no-verify` skips the hooks, never CI.
+
 `src/sim/testing.ts` is the headless test kit: `start(timeline, staging)` makes a runtime with
-scripted keys and collects every `Impact`, `Honk` and `Lightning` emitted (`heard`), `stage`
-clears the map and places exactly the cars and pedestrians a test needs (`battistiTraffic(color,
-at?, speed?)` a traffic car on Via Cesare Battisti), `World` inspects everything as plain data,
-the handling, the clock, the weather and the world's random stream (`rng`) included, and `drive`
-steps one vehicle with `advance` alone (test ground, no walls) under a given handling, on ground
-as wet and snowy as its `weather` (dry when omitted).
+scripted keys and collects every `Impact`, `Honk`, `Lightning` and `Explosion` emitted (`heard`),
+`stage` clears the map and places exactly the cars and pedestrians a test needs
+(`battistiTraffic(color, at?, speed?)` a traffic car on Via Cesare Battisti), `wear` sets every
+vehicle's damage, `burning` makes a wreck that blows up at a given step, `World` inspects
+everything as plain data, the handling, the damage, the clock, the weather and the world's random
+stream (`rng`) included, `facing` places things in front of a house wall on Via Cesare Battisti,
+and `drive` steps one vehicle with `advance` alone (test ground, no walls) under a given handling,
+its engine worn as given, on ground as wet and snowy as its `weather` (dry when omitted).

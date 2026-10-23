@@ -17,7 +17,12 @@ export const clockText = (secondOfDay: number): string => {
 }
 
 /** The HUD's weather readout for a player at (x, y) and `z` m a.s.l.: the word for the weather there and the air's temperature, to the whole degree. */
-export const weatherText = (sky: Pick<SkyViewModel, "seconds" | "weather">, x: number, y: number, z: number): string => {
+export const weatherText = (
+  sky: Pick<SkyViewModel, "seconds" | "weather">,
+  x: number,
+  y: number,
+  z: number,
+): string => {
   const here = conditionsAt(sky.seconds, sky.weather, x, y, z)
   return `${describeWeather(sky.weather, here)} · ${Math.round(here.celsius)} °C`
 }

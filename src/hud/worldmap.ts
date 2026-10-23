@@ -1,3 +1,4 @@
+import { css, PALETTE } from "../render/palette.ts"
 /**
  * The full map (M or a tap on the minimap; Esc or a tap closes it): the whole play area north-up
  * over the screen, painted afresh at screen resolution, with the villages and hamlets named and the
@@ -7,7 +8,6 @@
  * @module hud/worldmap
  */
 import { districtAt, MAP } from "../sim/map/index.ts"
-import { css, PALETTE } from "../render/palette.ts"
 import { paintArrow, paintMap } from "./minimap.ts"
 import { element } from "./title.ts"
 
@@ -15,22 +15,39 @@ import { element } from "./title.ts"
 const MARGIN = { top: 64, right: 24, bottom: 56, left: 24 } as const
 
 /** North-up placement: `scale` px per metre, the map's north-west corner at (ox, oy). */
-interface Fit { readonly scale: number; readonly ox: number; readonly oy: number }
+interface Fit {
+  readonly scale: number
+  readonly ox: number
+  readonly oy: number
+}
 
-interface Bounds { readonly minX: number; readonly minY: number; readonly maxX: number; readonly maxY: number }
+interface Bounds {
+  readonly minX: number
+  readonly minY: number
+  readonly maxX: number
+  readonly maxY: number
+}
 
 /** The largest north-up scale that fits `bounds` in a `width` × `height` px screen inside MARGIN, centred. */
 export const fitMap = (bounds: Bounds, width: number, height: number): Fit => {
-  const bw = bounds.maxX - bounds.minX, bh = bounds.maxY - bounds.minY
-  const w = Math.max(1, width - MARGIN.left - MARGIN.right), h = Math.max(1, height - MARGIN.top - MARGIN.bottom)
+  const bw = bounds.maxX - bounds.minX,
+    bh = bounds.maxY - bounds.minY
+  const w = Math.max(1, width - MARGIN.left - MARGIN.right),
+    h = Math.max(1, height - MARGIN.top - MARGIN.bottom)
   const scale = Math.min(w / bw, h / bh)
   return { scale, ox: MARGIN.left + (w - bw * scale) / 2, oy: MARGIN.top + (h - bh * scale) / 2 }
 }
 
 /** A named place: villages are `major` (big labels, placed first), hamlets and peaks are not. */
-export interface Place { readonly name: string; readonly x: number; readonly y: number; readonly major: boolean }
+export interface Place {
+  readonly name: string
+  readonly x: number
+  readonly y: number
+  readonly major: boolean
+}
 
-const isPlace = (kind: string) => kind === "place=town" || kind === "place=village" || kind === "place=hamlet"
+const isPlace = (kind: string) =>
+  kind === "place=town" || kind === "place=village" || kind === "place=hamlet"
 const districts: ReadonlySet<string> = new Set(MAP.districts.map((d) => d.name))
 
 /**
@@ -39,21 +56,40 @@ const districts: ReadonlySet<string> = new Set(MAP.districts.map((d) => d.name))
  * Argigliano nodes and two Monte Borla summits. Peaks come last, so a hamlet beats a peak it overlaps.
  */
 export const PLACES: ReadonlyArray<Place> = [
-  ...MAP.pois.flatMap((p) => (p.name !== undefined && isPlace(p.kind) ? [{ name: p.name, x: p.x, y: p.y, major: p.kind !== "place=hamlet" }] : [])),
-  ...MAP.pois.flatMap((p) => (p.name !== undefined && p.kind === "natural=peak" && districts.has(p.name) ? [{ name: p.name, x: p.x, y: p.y, major: false }] : []))
+  ...MAP.pois.flatMap((p) =>
+    p.name !== undefined && isPlace(p.kind)
+      ? [{ name: p.name, x: p.x, y: p.y, major: p.kind !== "place=hamlet" }]
+      : [],
+  ),
+  ...MAP.pois.flatMap((p) =>
+    p.name !== undefined && p.kind === "natural=peak" && districts.has(p.name)
+      ? [{ name: p.name, x: p.x, y: p.y, major: false }]
+      : [],
+  ),
 ].filter((p, i, all) => all.findIndex((q) => q.name === p.name) === i)
 
 /** A label's screen box. */
-interface Box { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+interface Box {
+  readonly x0: number
+  readonly y0: number
+  readonly x1: number
+  readonly y1: number
+}
 
-const apart = (a: Box, b: Box): boolean => a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0
+const apart = (a: Box, b: Box): boolean =>
+  a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0
 
 /**
  * The labels that fit without overlapping each other or the `fixed` boxes (the north arrow):
  * majors first, then in order; later ones that would overlap are dropped.
  */
-export const placeLabels = (labels: ReadonlyArray<Box & { readonly major: boolean }>, fixed: ReadonlyArray<Box> = []): Array<number> => {
-  const order = labels.map((_, i) => i).sort((a, b) => Number(labels[b]!.major) - Number(labels[a]!.major) || a - b)
+export const placeLabels = (
+  labels: ReadonlyArray<Box & { readonly major: boolean }>,
+  fixed: ReadonlyArray<Box> = [],
+): Array<number> => {
+  const order = labels
+    .map((_, i) => i)
+    .sort((a, b) => Number(labels[b]!.major) - Number(labels[a]!.major) || a - b)
   const kept: Array<number> = []
   for (const i of order) {
     const a = labels[i]!
@@ -63,25 +99,36 @@ export const placeLabels = (labels: ReadonlyArray<Box & { readonly major: boolea
 }
 
 const FONT = '"Courier New", ui-monospace, Menlo, Consolas, monospace'
-const LABEL = { major: { size: 16, dot: 6, hex: PALETTE.signYellow }, minor: { size: 11, dot: 4, hex: PALETTE.marbleWhite } } as const
+const LABEL = {
+  major: { size: 16, dot: 6, hex: PALETTE.signYellow },
+  minor: { size: 11, dot: 4, hex: PALETTE.marbleWhite },
+} as const
 const PAD = 2 // px around a label's box
 
 /** Binds the full map to its markup (#hud-map). `show` paints it for the player at (x, y) heading `angle` (radians CCW from east). */
 export const makeWorldMap = (document: Document) => {
-  const root = element(document, "hud-map"), here = element(document, "hud-map-here")
+  const root = element(document, "hud-map"),
+    here = element(document, "hud-map-here")
   const window = document.defaultView!
   // The player marker has its own canvas over the map, so CSS can blink it (hud.css) without repainting.
-  const canvas = document.createElement("canvas"), marker = document.createElement("canvas")
+  const canvas = document.createElement("canvas"),
+    marker = document.createElement("canvas")
   marker.className = "marker"
   root.prepend(canvas, marker)
-  const ctx = canvas.getContext("2d"), mark = marker.getContext("2d")
+  const ctx = canvas.getContext("2d"),
+    mark = marker.getContext("2d")
   let player = { x: Number.NaN, y: Number.NaN, angle: 0 }
 
   const paint = () => {
     if (ctx === null || mark === null) return
     // The dialog's own box, not the window's: a phone held upright lays the page out sideways (hud.css).
-    const width = root.clientWidth, height = root.clientHeight, dpr = window.devicePixelRatio
-    for (const [c, g] of [[canvas, ctx], [marker, mark]] as const) {
+    const width = root.clientWidth,
+      height = root.clientHeight,
+      dpr = window.devicePixelRatio
+    for (const [c, g] of [
+      [canvas, ctx],
+      [marker, mark],
+    ] as const) {
       c.width = Math.round(width * dpr)
       c.height = Math.round(height * dpr)
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -89,9 +136,11 @@ export const makeWorldMap = (document: Document) => {
     }
     const { bounds } = MAP
     const fit = fitMap(bounds, width, height)
-    const px = (x: number) => fit.ox + (x - bounds.minX) * fit.scale, py = (y: number) => fit.oy + (bounds.maxY - y) * fit.scale
+    const px = (x: number) => fit.ox + (x - bounds.minX) * fit.scale,
+      py = (y: number) => fit.oy + (bounds.maxY - y) * fit.scale
     paintMap(ctx, fit.scale, fit.ox, fit.oy, true)
-    const mapW = (bounds.maxX - bounds.minX) * fit.scale, mapH = (bounds.maxY - bounds.minY) * fit.scale
+    const mapW = (bounds.maxX - bounds.minX) * fit.scale,
+      mapH = (bounds.maxY - bounds.minY) * fit.scale
     ctx.lineWidth = 2
     ctx.strokeStyle = css(PALETTE.marbleWhite)
     ctx.strokeRect(fit.ox - 1, fit.oy - 1, mapW + 2, mapH + 2)
@@ -104,16 +153,35 @@ export const makeWorldMap = (document: Document) => {
       ctx.font = `700 ${look.size}px ${FONT}`
       const text = p.major ? p.name.toUpperCase() : p.name
       // Centred over the place, but kept inside the map frame.
-      const w = ctx.measureText(text).width, y = py(p.y) - look.dot
+      const w = ctx.measureText(text).width,
+        y = py(p.y) - look.dot
       const x = Math.min(fit.ox + mapW - w / 2 - PAD, Math.max(fit.ox + w / 2 + PAD, px(p.x)))
-      return { text, look, x, y, dotX: px(p.x), dotY: py(p.y), major: p.major, x0: x - w / 2 - PAD, x1: x + w / 2 + PAD, y0: y - look.size - PAD, y1: y + PAD }
+      return {
+        text,
+        look,
+        x,
+        y,
+        dotX: px(p.x),
+        dotY: py(p.y),
+        major: p.major,
+        x0: x - w / 2 - PAD,
+        x1: x + w / 2 + PAD,
+        y0: y - look.size - PAD,
+        y1: y + PAD,
+      }
     })
-    const nx = fit.ox + mapW - 20, ny = fit.oy + 12
+    const nx = fit.ox + mapW - 20,
+      ny = fit.oy + 12
     // A place without its name is just a dot that reads as someone else's: dots go with their labels.
     for (const i of placeLabels(labels, [{ x0: nx - 6, x1: nx + 6, y0: ny - 9, y1: ny + 14 }])) {
       const l = labels[i]!
       ctx.fillStyle = css(PALETTE.outline)
-      ctx.fillRect(l.dotX - l.look.dot / 2 - 1, l.dotY - l.look.dot / 2 - 1, l.look.dot + 2, l.look.dot + 2)
+      ctx.fillRect(
+        l.dotX - l.look.dot / 2 - 1,
+        l.dotY - l.look.dot / 2 - 1,
+        l.look.dot + 2,
+        l.look.dot + 2,
+      )
       ctx.fillStyle = css(l.look.hex)
       ctx.fillRect(l.dotX - l.look.dot / 2, l.dotY - l.look.dot / 2, l.look.dot, l.look.dot)
       ctx.font = `700 ${l.look.size}px ${FONT}`
@@ -137,7 +205,9 @@ export const makeWorldMap = (document: Document) => {
     ctx.lineTo(nx + 5, ny - 1)
     ctx.closePath()
     ctx.fill()
-    const bar = 1000 * fit.scale, bx = fit.ox, by = fit.oy + mapH + 12
+    const bar = 1000 * fit.scale,
+      bx = fit.ox,
+      by = fit.oy + mapH + 12
     ctx.fillStyle = css(PALETTE.marbleWhite)
     ctx.fillRect(bx, by, bar, 3)
     ctx.fillRect(bx, by - 4, 2, 11)
@@ -178,6 +248,6 @@ export const makeWorldMap = (document: Document) => {
     hide: (): void => {
       root.hidden = true
       window.removeEventListener("resize", onResize)
-    }
+    },
   }
 }

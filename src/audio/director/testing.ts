@@ -14,7 +14,17 @@ import { initialWeather } from "../../sim/sky/weather.ts"
 import { VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
 import { screenAxes } from "../../sim/view.ts"
 import { skyAt } from "../index.ts"
-import type { Continuous, Happening, Heard, HeardPerson, HeardVehicle, OneShot, Placement, Speaker, Zone } from "../types.ts"
+import type {
+  Continuous,
+  Happening,
+  Heard,
+  HeardPerson,
+  HeardVehicle,
+  OneShot,
+  Placement,
+  Speaker,
+  Zone,
+} from "../types.ts"
 import { makeDirector } from "./index.ts"
 import { USUAL_WIND } from "./sky.ts"
 
@@ -43,7 +53,7 @@ export const BANK = { x: -418.6, y: 395.8 }
 export const WEST_FLANK = { x: 785.7, y: -563.4 }
 /** Monte San Giorgio's east flank, 400 m from `WEST_FLANK` across the mountain. */
 export const EAST_FLANK = { x: 1185.7, y: -563.4 }
-/** The rendered house wall on Via Cesare Battisti where src/sim/index.test.ts drives a Panda, on its cobbles. */
+/** The rendered house wall on Via Cesare Battisti where src/sim/__tests__/index.test.ts drives a Panda, on its cobbles. */
 export const HOUSE_WALL = { x: -429.85, y: 452.9 }
 /** Gragnola's centre, walled in on every side. */
 export const GRAGNOLA = { x: -1751.2, y: 3360.4 }
@@ -59,23 +69,35 @@ export const SOUTH = { x: 0, y: -1 }
 export const PANDA = VEHICLES.panda.mass / 1000
 
 /** Game time `hour`:`minute` on 22 October 2026, Rome time, `days` later. */
-export const at = (hour: number, minute = 0, days = 0): number => utcFromRome((daysFromCivil(2026, 10, 22) + days) * DAY + hour * 3600 + minute * 60)
+export const at = (hour: number, minute = 0, days = 0): number =>
+  utcFromRome((daysFromCivil(2026, 10, 22) + days) * DAY + hour * 3600 + minute * 60)
 /** The tests' sky: 10:10 on 22 October, the sun 22° up, past the dawn chorus. */
 export const MORNING = skyAt(at(10, 10))
 /** The tests' weather: clear and dry, no snow on the map, the wind the law was tuned for with the valley's usual gusts. */
-export const CALM: WeatherValue = { ...initialWeather(MORNING.seconds, 1), wind: USUAL_WIND, gust: 1.5, snowLine: NO_SNOW }
+export const CALM: WeatherValue = {
+  ...initialWeather(MORNING.seconds, 1),
+  wind: USUAL_WIND,
+  gust: 1.5,
+  snowLine: NO_SNOW,
+}
 
 /** A small deterministic random source. */
-const seeded = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
+const seeded = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
 
 /** A one-shot played at speaker time `t`, `delay` s ahead. */
-interface Played { readonly sound: OneShot; readonly at: Placement; readonly delay: number; readonly t: number }
+interface Played {
+  readonly sound: OneShot
+  readonly at: Placement
+  readonly delay: number
+  readonly t: number
+}
 
 /** A director on a recording speaker whose clock (from `t`; 0 is no context yet) the test advances by `dt` per `hear`. */
 export const rig = (t = 1) => {
   let holding = new Map<string, { readonly sound: Continuous; readonly at: Placement }>()
   let held = holding
-  const plays: Array<Played> = [], stops: Array<{ readonly sound: OneShot; readonly t: number }> = []
+  const plays: Array<Played> = [],
+    stops: Array<{ readonly sound: OneShot; readonly t: number }> = []
   const speaker: Speaker = {
     now: () => t,
     hold: (key, sound, at) => void holding.set(key, { sound, at }),
@@ -84,7 +106,7 @@ export const rig = (t = 1) => {
     flush: () => {
       held = holding
       holding = new Map()
-    }
+    },
   }
   const director = makeDirector(speaker, { random: seeded(7) })
   return {
@@ -106,29 +128,88 @@ export const rig = (t = 1) => {
       const taken = plays.filter((p) => p.sound.kind === kind)
       plays.splice(0, plays.length, ...plays.filter((p) => p.sound.kind !== kind))
       return taken
-    }
+    },
   }
 }
 
 /** Vehicle `id`, idling on its wheels at `at`. */
-export const car = (id: number, model: VehicleModel, at: { readonly x: number; readonly y: number }, more: Partial<HeardVehicle> = {}): HeardVehicle => ({
-  id, model, x: at.x, y: at.y, z: groundZ(at.x, at.y) + VEHICLES[model].cg, angle: 0, vx: 0, vy: 0, rpm: VEHICLES[model].engine.idle, load: 0,
-  wheelsDown: true, hullDown: false, running: true, mine: false, ...more
+export const car = (
+  id: number,
+  model: VehicleModel,
+  at: { readonly x: number; readonly y: number },
+  more: Partial<HeardVehicle> = {},
+): HeardVehicle => ({
+  id,
+  model,
+  x: at.x,
+  y: at.y,
+  z: groundZ(at.x, at.y) + VEHICLES[model].cg,
+  angle: 0,
+  vx: 0,
+  vy: 0,
+  rpm: VEHICLES[model].engine.idle,
+  load: 0,
+  wheelsDown: true,
+  hullDown: false,
+  running: true,
+  mine: false,
+  damage: 0,
+  misfire: false,
+  burning: false,
+  ...more,
 })
 /** A Panda revving at the redline under full load. */
 export const FULL = { rpm: VEHICLES.panda.engine.redline, load: 1 } as const
 /** Person `id` standing at `at`. */
-export const person = (id: number, at: { readonly x: number; readonly y: number }, more: Partial<HeardPerson> = {}): HeardPerson => ({
-  id, x: at.x, y: at.y, vx: 0, vy: 0, player: false, fleeing: false, down: false, ...more
+export const person = (
+  id: number,
+  at: { readonly x: number; readonly y: number },
+  more: Partial<HeardPerson> = {},
+): HeardPerson => ({
+  id,
+  x: at.x,
+  y: at.y,
+  vx: 0,
+  vy: 0,
+  player: false,
+  fleeing: false,
+  down: false,
+  ...more,
 })
 /** The listener at `at` (in `car` when given), with `more` of the world, at the tests' sky and weather unless it sets them. */
-export const world = (at: { readonly x: number; readonly y: number }, more: Partial<Heard> = {}, car?: number): Heard => ({
-  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 }, vehicles: [], people: [], happenings: [], horn: false, sky: MORNING, weather: CALM, ...more
+export const world = (
+  at: { readonly x: number; readonly y: number },
+  more: Partial<Heard> = {},
+  car?: number,
+): Heard => ({
+  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 },
+  vehicles: [],
+  people: [],
+  happenings: [],
+  horn: false,
+  sky: MORNING,
+  weather: CALM,
+  ...more,
 })
 /** `metres` from `from` toward `dir` (screen-right by default). */
-export const away = (from: { readonly x: number; readonly y: number }, metres: number, dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT) =>
-  ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
+export const away = (
+  from: { readonly x: number; readonly y: number },
+  metres: number,
+  dir: { readonly x: number; readonly y: number } = SCREEN_RIGHT,
+) => ({ x: from.x + metres * dir.x, y: from.y + metres * dir.y })
 /** Car `car`, a Panda, hitting a wall at `at` on its `zone` (nose first). */
-export const wallHit = (at: { readonly x: number; readonly y: number }, speed: number, car = 1, zone: Zone = "front"): Happening => ({
-  kind: "impact", hit: "wall", x: at.x, y: at.y, speed, mass: PANDA, car, body: { model: "panda", zone }
+export const wallHit = (
+  at: { readonly x: number; readonly y: number },
+  speed: number,
+  car = 1,
+  zone: Zone = "front",
+): Happening => ({
+  kind: "impact",
+  hit: "wall",
+  x: at.x,
+  y: at.y,
+  speed,
+  mass: PANDA,
+  car,
+  body: { model: "panda", zone },
 })

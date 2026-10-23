@@ -26,7 +26,17 @@ const FADE = 0.35
  * road 10 m ahead), reach, cone half-angle and penumbra; from `ahead` m in front of the centre of
  * mass and `rise` m above it, aimed `reach` m ahead and `drop` m down.
  */
-const HEAD = { candela: 300, range: 45, angle: 0.5, penumbra: 0.6, decay: 2, ahead: 2, rise: 0.25, reach: 14, drop: 1.6 } as const
+const HEAD = {
+  candela: 300,
+  range: 45,
+  angle: 0.5,
+  penumbra: 0.6,
+  decay: 2,
+  ahead: 2,
+  rise: 0.25,
+  reach: 14,
+  drop: 1.6,
+} as const
 /**
  * A street lamp's light: candela at full night with decay 1 (a softer fall-off than the inverse
  * square, so the house wall behind the lantern does not blow out while the street below is lit),
@@ -41,7 +51,10 @@ const LAMP_RANGE = { add: 60, keep: 80 } as const
 const MAX_DT = 0.25
 
 /** A candidate for a light: what it is (car id, lamp index) and its distance from the focus, m. */
-interface Candidate { readonly id: number; readonly d: number }
+interface Candidate {
+  readonly id: number
+  readonly d: number
+}
 
 /**
  * Light slots handed to the nearest candidates with hysteresis (pure bookkeeping, no three): a
@@ -62,12 +75,17 @@ export class SlotPool {
   }
 
   /** One frame of `dt` s: `ranked` lists this frame's candidates nearest first. */
-  update(ranked: ReadonlyArray<Candidate>, dt: number, range: { readonly add: number; readonly keep: number }): void {
+  update(
+    ranked: ReadonlyArray<Candidate>,
+    dt: number,
+    range: { readonly add: number; readonly keep: number },
+  ): void {
     const n = this.ids.length
     for (let s = 0; s < n; s++) {
       if (this.ids[s]! < 0) continue
       let rank = -1
-      for (let r = 0; r < ranked.length && rank < 0; r++) if (ranked[r]!.id === this.ids[s]) rank = r
+      for (let r = 0; r < ranked.length && rank < 0; r++)
+        if (ranked[r]!.id === this.ids[s]) rank = r
       this.on[s] = rank >= 0 && rank < 2 * n && ranked[rank]!.d <= range.keep ? 1 : 0
       if (this.on[s] === 0 && this.levels[s]! <= 0) this.ids[s] = -1
     }
@@ -80,12 +98,23 @@ export class SlotPool {
       this.on[s] = 1
       this.levels[s] = 0
     }
-    for (let s = 0; s < n; s++) this.levels[s] = Math.min(1, Math.max(0, this.levels[s]! + ((this.on[s] === 1 ? dt : -dt) / FADE)))
+    for (let s = 0; s < n; s++)
+      this.levels[s] = Math.min(
+        1,
+        Math.max(0, this.levels[s]! + (this.on[s] === 1 ? dt : -dt) / FADE),
+      )
   }
 }
 
 /** A car as the pool needs it: its id, centre of mass (map x, y; render y as z), heading (rad CCW from east), and whether the player drives it. */
-export interface LitCar { readonly id: number; readonly x: number; readonly y: number; readonly z: number; readonly angle: number; readonly driven: boolean }
+export interface LitCar {
+  readonly id: number
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  readonly angle: number
+  readonly driven: boolean
+}
 
 /** The fixed night light pool; add it once, before the first frame, and `update` it every frame. */
 export class NightLights {
@@ -105,7 +134,14 @@ export class NightLights {
   /** Makes every light (intensity 0) and adds it, with each spot's target, to `scene`. */
   constructor(scene: Object3D) {
     this.spots = Array.from({ length: K_SPOT }, () => {
-      const spot = new SpotLight(PALETTE.headlight, 0, HEAD.range, HEAD.angle, HEAD.penumbra, HEAD.decay)
+      const spot = new SpotLight(
+        PALETTE.headlight,
+        0,
+        HEAD.range,
+        HEAD.angle,
+        HEAD.penumbra,
+        HEAD.decay,
+      )
       scene.add(spot, spot.target)
       return spot
     })
@@ -121,10 +157,16 @@ export class NightLights {
    * the player's car, not parked ones) and the nearest street lamps around `focus` (three space),
    * fades them, and sets their intensity from `frame.lamps`.
    */
-  update(frame: SkyFrame, focus: { readonly x: number; readonly z: number }, cars: Iterable<LitCar>): void {
+  update(
+    frame: SkyFrame,
+    focus: { readonly x: number; readonly z: number },
+    cars: Iterable<LitCar>,
+  ): void {
     const dt = Number.isNaN(this.last) ? 0 : Math.min(MAX_DT, Math.max(0, frame.now - this.last))
     this.last = frame.now
-    const fx = focus.x, fy = -focus.z, ranked = this.ranked
+    const fx = focus.x,
+      fy = -focus.z,
+      ranked = this.ranked
     this.cars.clear()
     ranked.length = 0
     let driven: LitCar | undefined
@@ -135,19 +177,31 @@ export class NightLights {
     }
     ranked.sort((a, b) => a.d - b.d)
     this.traffic.update(ranked, dt, CAR_RANGE)
-    this.driven.update(driven === undefined ? [] : [{ id: driven.id, d: 0 }], dt, { add: 1, keep: 1 })
+    this.driven.update(driven === undefined ? [] : [{ id: driven.id, d: 0 }], dt, {
+      add: 1,
+      keep: 1,
+    })
     for (let s = 0; s < K_SPOT; s++) {
-      const pool = s === 0 ? this.driven : this.traffic, slot = s === 0 ? 0 : s - 1
-      const id = pool.ids[slot]!, car = id < 0 ? undefined : this.cars.get(id), p = this.poses, o = s * 4
+      const pool = s === 0 ? this.driven : this.traffic,
+        slot = s === 0 ? 0 : s - 1
+      const id = pool.ids[slot]!,
+        car = id < 0 ? undefined : this.cars.get(id),
+        p = this.poses,
+        o = s * 4
       if (car !== undefined) [p[o], p[o + 1], p[o + 2], p[o + 3]] = [car.x, car.y, car.z, car.angle]
-      const x = p[o]!, y = p[o + 1]!, z = p[o + 2]!, c = Math.cos(p[o + 3]!), sn = Math.sin(p[o + 3]!)
+      const x = p[o]!,
+        y = p[o + 1]!,
+        z = p[o + 2]!,
+        c = Math.cos(p[o + 3]!),
+        sn = Math.sin(p[o + 3]!)
       const spot = this.spots[s]!
       spot.position.set(x + c * HEAD.ahead, z + HEAD.rise, -(y + sn * HEAD.ahead))
       spot.target.position.set(x + c * HEAD.reach, z - HEAD.drop, -(y + sn * HEAD.reach))
       spot.intensity = HEAD.candela * frame.lamps * pool.levels[slot]!
     }
     ranked.length = 0
-    const all = streetLamps(), keep = LAMP_RANGE.keep
+    const all = streetLamps(),
+      keep = LAMP_RANGE.keep
     lampsIn(fx - keep, fy - keep, fx + keep, fy + keep, (i) => {
       const d = Math.hypot(all[i]!.x - fx, all[i]!.y - fy)
       if (d <= keep) ranked.push({ id: i, d })
@@ -155,10 +209,15 @@ export class NightLights {
     ranked.sort((a, b) => a.d - b.d)
     this.lamps.update(ranked, dt, LAMP_RANGE)
     for (let s = 0; s < K_POINT; s++) {
-      const id = this.lamps.ids[s]!, point = this.points[s]!
+      const id = this.lamps.ids[s]!,
+        point = this.points[s]!
       if (id >= 0) {
         const lamp = all[id]!
-        point.position.set(lamp.x + lamp.nx * STREET.out, lamp.h - STREET.down, -(lamp.y + lamp.ny * STREET.out))
+        point.position.set(
+          lamp.x + lamp.nx * STREET.out,
+          lamp.h - STREET.down,
+          -(lamp.y + lamp.ny * STREET.out),
+        )
       }
       point.intensity = STREET.candela * frame.lamps * this.lamps.levels[s]!
     }

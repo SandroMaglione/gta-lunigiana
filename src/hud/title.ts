@@ -59,7 +59,8 @@ export const step = async (document: Document, name: string, done: number): Prom
 /** Keeps the failed step on the card, announces the error and offers a reload (a failed module import stays failed until one). */
 export const loadFailed = (document: Document, error: unknown): void => {
   console.error("start-up failed", error)
-  const message = element(document, "title-error"), retry = element(document, "title-retry")
+  const message = element(document, "title-error"),
+    retry = element(document, "title-retry")
   message.textContent = `Failed to start: ${error instanceof Error ? error.message : String(error)}`
   message.hidden = retry.hidden = false
   retry.addEventListener("click", () => document.location.reload(), { once: true })
@@ -75,7 +76,8 @@ export const loadFailed = (document: Document, error: unknown): void => {
  * (the minimap opens the map).
  */
 export const titleReady = (window: Window, dismissed: () => void): void => {
-  const document = window.document, title = element(document, "title")
+  const document = window.document,
+    title = element(document, "title")
   element(document, "title-load").hidden = true
   element(document, "title-go").hidden = false
   const dismiss = () => {

@@ -30,11 +30,18 @@ const smooth = (from: number, to: number, x: number): number => {
   const s = Math.max(0, Math.min(1, (x - from) / (to - from)))
   return s * s * (3 - 2 * s)
 }
-const mix = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+]
 const scale = (a: Rgb, k: number): Rgb => [a[0] * k, a[1] * k, a[2] * k]
 
 /** The settled look's fixed sun from before the day cycle, (−0.75, 1, 0.35) normalised: its elevation (50.39°) and intensity, where `sunLight` gives its colour back. */
-const REFERENCE = { elevation: Math.asin(1 / Math.hypot(0.75, 1, 0.35)) / RAD, intensity: 2 } as const
+const REFERENCE = {
+  elevation: Math.asin(1 / Math.hypot(0.75, 1, 0.35)) / RAD,
+  intensity: 2,
+} as const
 /** Clear-sky optical depth toward the zenith for red, green and blue (Rayleigh plus Ångström aerosol at 0.68, 0.55, 0.44 µm). */
 const TAU: Rgb = [0.14, 0.228, 0.417]
 /**
@@ -72,7 +79,12 @@ const HEMISPHERE = [
   { elevation: 0, sky: PALETTE.skySunset, ground: PALETTE.groundSunset, light: 0.42 },
   { elevation: 3, sky: PALETTE.skyGolden, ground: PALETTE.groundGolden, light: 0.7 },
   { elevation: 10, sky: PALETTE.skyLow, ground: PALETTE.groundLow, light: 1.1 },
-  { elevation: 30, sky: PALETTE.skyNoon, ground: PALETTE.groundNoon, light: 1.8 * luminance(linear(PALETTE.skyNoon)) }
+  {
+    elevation: 30,
+    sky: PALETTE.skyNoon,
+    ground: PALETTE.groundNoon,
+    light: 1.8 * luminance(linear(PALETTE.skyNoon)),
+  },
 ] as const
 
 /**
@@ -83,13 +95,27 @@ const HEMISPHERE = [
  * it more; fog veils the sun (and the moon) and the sky. At night the weather dims the sky light less
  * (low cloud glows with the valley's lights).
  */
-const DIM = { overcast: [0.5, 1] as const, grey: 0.8, sky: 0.4, rain: 0.4, rainFull: 8, storm: 0.25, fogSun: 0.6, fogSky: 0.15, night: 0.15 } as const
+const DIM = {
+  overcast: [0.5, 1] as const,
+  grey: 0.8,
+  sky: 0.4,
+  rain: 0.4,
+  rainFull: 8,
+  storm: 0.25,
+  fogSun: 0.6,
+  fogSky: 0.15,
+  night: 0.15,
+} as const
 /** Snow cover throws this share of the sky's light back up to the walls (the hemisphere's ground colour). */
 const SNOW_BOUNCE = 0.6
 /** Partial adaptation: the exposure follows (reference / clear-sky light)^DAY and (clear-sky / weather-dimmed light)^WEATHER, clamped. */
 const ADAPT = { day: 0.6, weather: 0.15, most: 4 } as const
 /** Lamps: on as the light (relative to the settled noon) falls through `dusk`, in a storm (`storm` activity) and in thick fog. */
-const LAMPS = { dusk: [0.125, 0.08] as const, storm: [0.3, 0.7] as const, fog: [0.45, 0.75] as const }
+const LAMPS = {
+  dusk: [0.125, 0.08] as const,
+  storm: [0.3, 0.7] as const,
+  fog: [0.45, 0.75] as const,
+}
 /** The night grade: none with the sun at `day` degrees, full at `night`; a thunderstorm's gloom adds up to `storm`. */
 const NIGHT = { day: 3, night: -9, storm: 0.2 } as const
 /** The weather's flat light takes this much colour out of the picture: an overcast sky's (`cloud` 0.5 → 1) and the rain's (up to 8 mm/h). */
@@ -117,18 +143,33 @@ export const sunLight = (e: number): { readonly color: Rgb; readonly intensity: 
   const raw: Rgb = [SUN[0] * (t[0] / T0[0]), SUN[1] * (t[1] / T0[1]), SUN[2] * (t[2] / T0[2])]
   const kept = scale(raw, (luminance(raw) / luminance(SUN)) ** (GOLDEN - 1))
   const peak = Math.max(...kept)
-  return { color: scale(kept, 1 / peak), intensity: REFERENCE.intensity * peak * smooth(SETTING[1], SETTING[0], e) }
+  return {
+    color: scale(kept, 1 / peak),
+    intensity: REFERENCE.intensity * peak * smooth(SETTING[1], SETTING[0], e),
+  }
 }
 
 /** The hemisphere's sky and ground colours and its up-face light at sun elevation `e`. */
-const hemisphereAt = (e: number): { readonly sky: Rgb; readonly ground: Rgb; readonly light: number } => {
-  const rows = HEMISPHERE, last = rows.length - 1
-  if (e <= rows[0].elevation) return { sky: linear(rows[0].sky), ground: linear(rows[0].ground), light: rows[0].light }
-  if (e >= rows[last].elevation) return { sky: linear(rows[last].sky), ground: linear(rows[last].ground), light: rows[last].light }
+const hemisphereAt = (
+  e: number,
+): { readonly sky: Rgb; readonly ground: Rgb; readonly light: number } => {
+  const rows = HEMISPHERE,
+    first = rows[0],
+    last = rows.at(-1)!
+  if (e <= first.elevation)
+    return { sky: linear(first.sky), ground: linear(first.ground), light: first.light }
+  if (e >= last.elevation)
+    return { sky: linear(last.sky), ground: linear(last.ground), light: last.light }
   let k = 1
   while (rows[k]!.elevation < e) k++
-  const a = rows[k - 1]!, b = rows[k]!, t = (e - a.elevation) / (b.elevation - a.elevation)
-  return { sky: mix(linear(a.sky), linear(b.sky), t), ground: mix(linear(a.ground), linear(b.ground), t), light: a.light + (b.light - a.light) * t }
+  const a = rows[k - 1]!,
+    b = rows[k]!,
+    t = (e - a.elevation) / (b.elevation - a.elevation)
+  return {
+    sky: mix(linear(a.sky), linear(b.sky), t),
+    ground: mix(linear(a.ground), linear(b.ground), t),
+    light: a.light + (b.light - a.light) * t,
+  }
 }
 
 /** The weather at the focus that the light depends on. */
@@ -157,7 +198,13 @@ export interface SkyInput extends SkyWeather {
 /** The sky's light this frame (before any lightning flash). */
 export interface Lighting {
   /** The key light above the clouds: which body, its colour (brightest channel 1), intensity and true place (degrees). */
-  readonly key: { readonly body: "sun" | "moon"; readonly color: Rgb; readonly intensity: number; readonly azimuth: number; readonly elevation: number }
+  readonly key: {
+    readonly body: "sun" | "moon"
+    readonly color: Rgb
+    readonly intensity: number
+    readonly azimuth: number
+    readonly elevation: number
+  }
   /** The share of the key light that reaches the ground through the clouds, on average (their shadows take the rest, per texel). */
   readonly direct: number
   /** The hemisphere: sky and ground colours (linear) and its intensity. */
@@ -177,37 +224,85 @@ export interface Lighting {
 
 /** The key light and hemisphere for `input`, dimmed by `weather` (CLEAR: the clear sky). */
 const lightsFor = (input: SkyInput, weather: SkyWeather) => {
-  const e = input.sun.elevation, overcast = smooth(DIM.overcast[0], DIM.overcast[1], weather.cloud)
-  const dark = smooth(0, -12, e), soften = (k: number) => 1 - (1 - k) * (1 + (DIM.night - 1) * dark)
-  const veiled = 1 - DIM.fogSun * weather.fog, direct = throughClouds(weather.cloud)
+  const e = input.sun.elevation,
+    overcast = smooth(DIM.overcast[0], DIM.overcast[1], weather.cloud)
+  const dark = smooth(0, -12, e),
+    soften = (k: number) => 1 - (1 - k) * (1 + (DIM.night - 1) * dark)
+  const veiled = 1 - DIM.fogSun * weather.fog,
+    direct = throughClouds(weather.cloud)
   const moonUp = input.moon.elevation
-  const key = e > SWAP
-    ? { body: "sun" as const, ...sunLight(e), azimuth: input.sun.azimuth, elevation: e }
-    : {
-      body: "moon" as const, color: MOON, azimuth: input.moon.azimuth, elevation: moonUp,
-      intensity: MOON_INTENSITY * Math.max(0, input.moonLit) ** 1.5 * smooth(MOONRISE[0], MOONRISE[1], moonUp) * smooth(SWAP, MOON_IN, e)
-    }
+  const key =
+    e > SWAP
+      ? { body: "sun" as const, ...sunLight(e), azimuth: input.sun.azimuth, elevation: e }
+      : {
+          body: "moon" as const,
+          color: MOON,
+          azimuth: input.moon.azimuth,
+          elevation: moonUp,
+          intensity:
+            MOON_INTENSITY *
+            Math.max(0, input.moonLit) ** 1.5 *
+            smooth(MOONRISE[0], MOONRISE[1], moonUp) *
+            smooth(SWAP, MOON_IN, e),
+        }
   const h = hemisphereAt(e)
-  const sky = mix(h.sky, scale(OVERCAST, luminance(h.sky) / luminance(OVERCAST)), DIM.grey * overcast)
-  const light = h.light * soften((1 - DIM.sky * overcast) * (1 - DIM.rain * smooth(0, DIM.rainFull, weather.precip)) * (1 - DIM.storm * weather.storm) * (1 - DIM.fogSky * weather.fog))
+  const sky = mix(
+    h.sky,
+    scale(OVERCAST, luminance(h.sky) / luminance(OVERCAST)),
+    DIM.grey * overcast,
+  )
+  const light =
+    h.light *
+    soften(
+      (1 - DIM.sky * overcast) *
+        (1 - DIM.rain * smooth(0, DIM.rainFull, weather.precip)) *
+        (1 - DIM.storm * weather.storm) *
+        (1 - DIM.fogSky * weather.fog),
+    )
   const hemisphere = light / luminance(sky)
   const ground = mix(h.ground, sky, SNOW_BOUNCE * weather.snowCover)
   const intensity = key.intensity * veiled
-  const irradiance = intensity * direct * luminance(key.color) * Math.sin(Math.max(key.elevation, SHADOW_FLOOR) * RAD) + light
+  const irradiance =
+    intensity *
+      direct *
+      luminance(key.color) *
+      Math.sin(Math.max(key.elevation, SHADOW_FLOOR) * RAD) +
+    light
   return { key: { ...key, intensity }, direct, sky, ground, hemisphere, irradiance }
 }
 
 /** The settled noon's irradiance: the exposure's reference. */
-const NOON_LIGHT = lightsFor({ sun: { elevation: REFERENCE.elevation, azimuth: 245 }, moon: { elevation: -90, azimuth: 0 }, moonLit: 0, ...CLEAR }, CLEAR).irradiance
+const NOON_LIGHT = lightsFor(
+  {
+    sun: { elevation: REFERENCE.elevation, azimuth: 245 },
+    moon: { elevation: -90, azimuth: 0 },
+    moonLit: 0,
+    ...CLEAR,
+  },
+  CLEAR,
+).irradiance
 
 /** The sky's light for `input`: key, hemisphere, the exposure target and the night and lamp levels. */
 export const skyLight = (input: SkyInput): Lighting => {
-  const lit = lightsFor(input, input), clear = lightsFor(input, CLEAR).irradiance
-  const exposure = Math.min(ADAPT.most, Math.max(1, (NOON_LIGHT / clear) ** ADAPT.day * (clear / lit.irradiance) ** ADAPT.weather))
+  const lit = lightsFor(input, input),
+    clear = lightsFor(input, CLEAR).irradiance
+  const exposure = Math.min(
+    ADAPT.most,
+    Math.max(1, (NOON_LIGHT / clear) ** ADAPT.day * (clear / lit.irradiance) ** ADAPT.weather),
+  )
   const relative = lit.irradiance / NOON_LIGHT
-  const night = Math.max(smooth(NIGHT.day, NIGHT.night, input.sun.elevation), NIGHT.storm * input.storm)
-  const grey = GREY.overcast * smooth(DIM.overcast[0], DIM.overcast[1], input.cloud) + GREY.rain * smooth(0, DIM.rainFull, input.precip)
-  const lamps = Math.max(smooth(LAMPS.dusk[0], LAMPS.dusk[1], relative), smooth(LAMPS.storm[0], LAMPS.storm[1], input.storm), smooth(LAMPS.fog[0], LAMPS.fog[1], input.fog))
+  const night = Math.max(
+    smooth(NIGHT.day, NIGHT.night, input.sun.elevation),
+    NIGHT.storm * input.storm,
+  )
+  const grey =
+    GREY.overcast * smooth(DIM.overcast[0], DIM.overcast[1], input.cloud) +
+    GREY.rain * smooth(0, DIM.rainFull, input.precip)
+  const lamps = Math.max(
+    smooth(LAMPS.dusk[0], LAMPS.dusk[1], relative),
+    smooth(LAMPS.storm[0], LAMPS.storm[1], input.storm),
+    smooth(LAMPS.fog[0], LAMPS.fog[1], input.fog),
+  )
   return { ...lit, clear, exposure, night, grey, lamps }
 }
 
@@ -215,11 +310,15 @@ export const skyLight = (input: SkyInput): Lighting => {
 export const noonLight = (): number => NOON_LIGHT
 
 /** Where the key light points (degrees, azimuth clockwise from north). */
-export interface Aim { readonly azimuth: number; readonly elevation: number }
+export interface Aim {
+  readonly azimuth: number
+  readonly elevation: number
+}
 
 /** The angle between two sky places, degrees. */
 const apart = (a: Aim, b: Aim): number => {
-  const p = skyDirection(a.azimuth, a.elevation), q = skyDirection(b.azimuth, b.elevation)
+  const p = skyDirection(a.azimuth, a.elevation),
+    q = skyDirection(b.azimuth, b.elevation)
   return Math.acos(Math.max(-1, Math.min(1, p.x * q.x + p.y * q.y + p.z * q.z))) / RAD
 }
 
@@ -234,7 +333,8 @@ export const aimToward = (aim: Aim | undefined, azimuth: number, elevation: numb
  */
 export const keyDirection = (aim: Aim, yaw: number, out: Vector3): Vector3 => {
   const d = skyDirection(aim.azimuth, Math.max(aim.elevation, SHADOW_FLOOR))
-  const c = Math.cos(yaw), s = Math.sin(yaw)
+  const c = Math.cos(yaw),
+    s = Math.sin(yaw)
   // A turn of `yaw` about three's +y: x' = x cos + z sin, z' = −x sin + z cos.
   return out.set(d.x * c + -d.y * s, d.z, -d.x * s + -d.y * c)
 }

@@ -36,12 +36,12 @@ const CONVECTIVE = { months: [2, 3, 4, 5, 6, 7, 8], from: 13 * HOUR, to: 18 * HO
 const AMOUNT = {
   ordinary: (u: number) => 1.5 + 7.5 * u * u,
   heavy: (u: number) => 11 + 7.5 * u,
-  rainstorm: (u: number) => Math.min(80, 22 - 12 * Ops.log(1 - u))
+  rainstorm: (u: number) => Math.min(80, 22 - 12 * Ops.log(1 - u)),
 } as const
 /** How long a wet day's rain lasts, game hours (shortest, longest), by its event and intensity: thunderstorms are short, fronts long. Design values. */
 const HOURS = {
   storm: { ordinary: [1, 3], heavy: [1, 3], rainstorm: [2, 4] },
-  rain: { ordinary: [2, 6], heavy: [4, 9], rainstorm: [6, 12] }
+  rain: { ordinary: [2, 6], heavy: [4, 9], rainstorm: [6, 12] },
 } as const
 /** The heaviest a day's rain falls, mm/h at sea level: a bigger total lasts longer. */
 const HEAVIEST = 15
@@ -101,20 +101,34 @@ interface Chances {
  * stratus under a cloudy or overcast one).
  */
 const chancesOn = (day: number, lat: number): Chances => {
-  const odds = oddsAt(midnight(day), lat), month = monthOfDay(day), wet = odds.rain, dry = 1 - wet
+  const odds = oddsAt(midnight(day), lat),
+    month = monthOfDay(day),
+    wet = odds.rain,
+    dry = 1 - wet
   const share = (part: number, of: number) => (of > 0 ? Math.max(0, Math.min(1, part / of)) : 0)
-  const thunder = share(odds.thunder, wet), summer = among(CONVECTIVE.months, month) ? thunder : 0
-  const clear = share(odds.clear - (wet * summer) / 2, dry), cloudy = dry * (1 - clear), fog = share(odds.fog, dry - odds.windy)
+  const thunder = share(odds.thunder, wet),
+    summer = among(CONVECTIVE.months, month) ? thunder : 0
+  const clear = share(odds.clear - (wet * summer) / 2, dry),
+    cloudy = dry * (1 - clear),
+    fog = share(odds.fog, dry - odds.windy)
   const stratus = (fog * (1 + (among(STRATUS.winter, month) ? STRATUS.allDay : 0))) / 2
   return {
-    wet, persistence: WET_PERSISTENCE[month]!, thunder, heavy: HEAVY_SHARE[month]!, rainstorm: RAINSTORM_SHARE[month]!, clear,
-    windy: share(odds.windy, dry * clear), fog, overcast: share(odds.overcast - wet * (1 - summer), cloudy * (1 - stratus))
+    wet,
+    persistence: WET_PERSISTENCE[month]!,
+    thunder,
+    heavy: HEAVY_SHARE[month]!,
+    rainstorm: RAINSTORM_SHARE[month]!,
+    clear,
+    windy: share(odds.windy, dry * clear),
+    fog,
+    overcast: share(odds.overcast - wet * (1 - summer), cloudy * (1 - stratus)),
   }
 }
 
 /** murmur3's 32-bit finaliser: a bijection that spreads every bit of `x` over every bit out. */
 const mix = (x: number): number => {
-  const a = Math.imul(x ^ (x >>> 16), 0x85ebca6b), b = Math.imul(a ^ (a >>> 13), 0xc2b2ae35)
+  const a = Math.imul(x ^ (x >>> 16), 0x85ebca6b),
+    b = Math.imul(a ^ (a >>> 13), 0xc2b2ae35)
   return (b ^ (b >>> 16)) >>> 0
 }
 
@@ -150,19 +164,47 @@ interface Kind {
  * month's own odds), the air mass an AR(1) as many days on (with none known, at its full spread). A pure function of its arguments, so
  * tomorrow drawn ahead is the day it turns out to be.
  */
-const kindOf = (seed: number, day: number, lat: number, wet: boolean, airMass: number, days: number): Kind => {
-  const numbers = dayNumbers(seed, day), chances = chancesOn(day, lat), month = monthOfDay(day)
+const kindOf = (
+  seed: number,
+  day: number,
+  lat: number,
+  wet: boolean,
+  airMass: number,
+  days: number,
+): Kind => {
+  const numbers = dayNumbers(seed, day),
+    chances = chancesOn(day, lat),
+    month = monthOfDay(day)
   const [uWet = 0, uGauss = 0, uTurn = 0, uThunder = 0, uClass = 0, uAmount = 0] = numbers
   // Wet or dry: a two-state chain whose long-run share of wet days is the month's, p01 = f(1 − p11)/(1 − f).
-  const f = chances.wet, p11 = chances.persistence, fade = days > 0 ? Ops.pow(p11 - (f * (1 - p11)) / (1 - f), days) : 0
+  const f = chances.wet,
+    p11 = chances.persistence,
+    fade = days > 0 ? Ops.pow(p11 - (f * (1 - p11)) / (1 - f), days) : 0
   // The air mass: φⁿ of the last plus a Gaussian (Box–Muller) keeping the long-run spread.
   const keep = days > 0 ? Ops.pow(AIR_MASS.persistence, days) : 0
-  const mass = keep * airMass + AIR_MASS.spread * Math.sqrt(1 - keep * keep) * Math.sqrt(-2 * Ops.log(1 - uGauss)) * Ops.cos(2 * Math.PI * uTurn)
-  const thunder = uThunder < chances.thunder, intensity = uClass < chances.rainstorm ? "rainstorm" : uClass < chances.heavy ? "heavy" : "ordinary"
-  const event = thunder ? "storm" : among(COLD_OUTBREAK.months, month) && mass <= COLD_OUTBREAK.below ? "snow" : "rain"
+  const mass =
+    keep * airMass +
+    AIR_MASS.spread *
+      Math.sqrt(1 - keep * keep) *
+      Math.sqrt(-2 * Ops.log(1 - uGauss)) *
+      Ops.cos(2 * Math.PI * uTurn)
+  const thunder = uThunder < chances.thunder,
+    intensity =
+      uClass < chances.rainstorm ? "rainstorm" : uClass < chances.heavy ? "heavy" : "ordinary"
+  const event = thunder
+    ? "storm"
+    : among(COLD_OUTBREAK.months, month) && mass <= COLD_OUTBREAK.below
+      ? "snow"
+      : "rain"
   return {
-    numbers, chances, wet: uWet < (wet ? f + (1 - f) * fade : f * (1 - fade)), airMass: mass, event, intensity,
-    convective: thunder && among(CONVECTIVE.months, month), amount: AMOUNT[intensity](uAmount)
+    numbers,
+    chances,
+    wet: uWet < (wet ? f + (1 - f) * fade : f * (1 - fade)),
+    airMass: mass,
+    event,
+    intensity,
+    convective: thunder && among(CONVECTIVE.months, month),
+    amount: AMOUNT[intensity](uAmount),
   }
 }
 
@@ -173,42 +215,117 @@ const kindOf = (seed: number, day: number, lat: number, wet: boolean, airMass: n
  * in a row (tomorrow drawn ahead) the rain may run on to midnight and go on from it the next day, so a spell rains on across days.
  */
 const drawPlan = (previous: PlanValue, day: number, from: number, seed: number): PlanValue => {
-  const lat = place().lat, days = previous.drawn && day > previous.day ? day - previous.day : 0
-  const today = kindOf(seed, day, lat, previous.wet, previous.airMass, days), { chances } = today, length = lengthOf(day)
-  const [uLength = 0, uStart = 0, uRuns = 0, uSky = 0, uKind = 0, uWindy = 0, uWindyLength = 0, uWindyStart = 0, uFog = 0, uAllDay = 0, uLift = 0] = today.numbers.slice(6)
+  const lat = place().lat,
+    days = previous.drawn && day > previous.day ? day - previous.day : 0
+  const today = kindOf(seed, day, lat, previous.wet, previous.airMass, days),
+    { chances } = today,
+    length = lengthOf(day)
+  const [
+    uLength = 0,
+    uStart = 0,
+    uRuns = 0,
+    uSky = 0,
+    uKind = 0,
+    uWindy = 0,
+    uWindyLength = 0,
+    uWindyStart = 0,
+    uFog = 0,
+    uAllDay = 0,
+    uLift = 0,
+  ] = today.numbers.slice(6)
   // A wet day's window: steady rain (or a cold front's snow) going on from midnight where yesterday's ran on to it, else any rain once
   // the sky has thickened.
-  const yesterday = previous.drawn && previous.day === day - 1 ? previous : undefined, steady = today.wet && today.event !== "storm"
-  const joins = steady && yesterday !== undefined && yesterday.wet && yesterday.end >= lengthOf(yesterday.day)
-  const ready = yesterday !== undefined && REGIME_SPECS[regimeAt(yesterday, midnight(day) - 1)].cloud > RAINS_FROM
+  const yesterday = previous.drawn && previous.day === day - 1 ? previous : undefined,
+    steady = today.wet && today.event !== "storm"
+  const joins =
+    steady && yesterday !== undefined && yesterday.wet && yesterday.end >= lengthOf(yesterday.day)
+  const ready =
+    yesterday !== undefined &&
+    REGIME_SPECS[regimeAt(yesterday, midnight(day) - 1)].cloud > RAINS_FROM
   const [shortest, longest] = HOURS[today.event === "storm" ? "storm" : "rain"][today.intensity]
-  const hours = Math.max(Math.round((shortest + (longest - shortest) * uLength) * HOUR), Math.ceil((today.amount / HEAVIEST) * HOUR))
-  const earliest = joins ? 0 : Math.max(from + (ready ? 0 : LEAD), today.convective ? CONVECTIVE.from : 0)
+  const hours = Math.max(
+    Math.round((shortest + (longest - shortest) * uLength) * HOUR),
+    Math.ceil((today.amount / HEAVIEST) * HOUR),
+  )
+  const earliest = joins
+    ? 0
+    : Math.max(from + (ready ? 0 : LEAD), today.convective ? CONVECTIVE.from : 0)
   const latest = joins ? 0 : Math.min(length - hours, today.convective ? CONVECTIVE.to : length)
   const wet = today.wet && latest >= earliest
   // Tomorrow, drawn ahead: steady rain before another day of it may run on to midnight.
   const tomorrow = kindOf(seed, day + 1, lat, wet, today.airMass, 1)
-  const runs = wet && steady && tomorrow.wet && tomorrow.event !== "storm" && uRuns < RUNS_ON && length - hours >= earliest
+  const runs =
+    wet &&
+    steady &&
+    tomorrow.wet &&
+    tomorrow.event !== "storm" &&
+    uRuns < RUNS_ON &&
+    length - hours >= earliest
   if (wet) {
-    const start = joins ? 0 : runs ? length - hours : Math.round(earliest + (latest - earliest) * uStart), end = runs ? length : start + hours
+    const start = joins
+        ? 0
+        : runs
+          ? length - hours
+          : Math.round(earliest + (latest - earliest) * uStart),
+      end = runs ? length : start + hours
     return {
-      day, drawn: true, from, wet: true, event: today.event, intensity: today.intensity, start, end, precip: (today.amount * HOUR) / (end - start),
-      sky: today.convective ? "fair" : "overcast", fog: "none", lift: 0, windyFrom: 0, windyTo: 0, airMass: today.airMass
+      day,
+      drawn: true,
+      from,
+      wet: true,
+      event: today.event,
+      intensity: today.intensity,
+      start,
+      end,
+      precip: (today.amount * HOUR) / (end - start),
+      sky: today.convective ? "fair" : "overcast",
+      fog: "none",
+      lift: 0,
+      windyFrom: 0,
+      windyTo: 0,
+      airMass: today.airMass,
     }
   }
   // A dry day's sky, strong wind and fog.
   const clearish = uSky < chances.clear
-  const sky = clearish ? (uKind < CLEAR_OF_CLEARISH ? "clear" : "fair") : uKind < chances.overcast ? "overcast" : "cloudy"
-  const windyLength = Math.round((WINDY_HOURS[0] + (WINDY_HOURS[1] - WINDY_HOURS[0]) * uWindyLength) * HOUR)
+  const sky = clearish
+    ? uKind < CLEAR_OF_CLEARISH
+      ? "clear"
+      : "fair"
+    : uKind < chances.overcast
+      ? "overcast"
+      : "cloudy"
+  const windyLength = Math.round(
+    (WINDY_HOURS[0] + (WINDY_HOURS[1] - WINDY_HOURS[0]) * uWindyLength) * HOUR,
+  )
   const windy = clearish && uWindy < chances.windy && from + windyLength <= length
   const windyFrom = windy ? Math.round(from + (length - windyLength - from) * uWindyStart) : 0
   const foggy = !windy && uFog < chances.fog
-  const fog = !foggy ? "none" : !clearish ? "stratus" : from <= FOG_FORMS ? "morning" : "none"
+  const fog =
+    foggy && clearish ? (from <= FOG_FORMS ? "morning" : "none") : foggy ? "stratus" : "none"
   const allDay = among(STRATUS.winter, monthOfDay(day)) && uAllDay < STRATUS.allDay
-  const lift = fog !== "stratus" ? 0 : allDay ? length : Math.round(STRATUS.lifts[0] + (STRATUS.lifts[1] - STRATUS.lifts[0]) * uLift)
+  const lift =
+    fog === "stratus"
+      ? allDay
+        ? length
+        : Math.round(STRATUS.lifts[0] + (STRATUS.lifts[1] - STRATUS.lifts[0]) * uLift)
+      : 0
   return {
-    day, drawn: true, from, wet: false, event: "rain", intensity: "ordinary", start: 0, end: 0, precip: 0,
-    sky, fog, lift, windyFrom, windyTo: windy ? windyFrom + windyLength : 0, airMass: today.airMass
+    day,
+    drawn: true,
+    from,
+    wet: false,
+    event: "rain",
+    intensity: "ordinary",
+    start: 0,
+    end: 0,
+    precip: 0,
+    sky,
+    fog,
+    lift,
+    windyFrom,
+    windyTo: windy ? windyFrom + windyLength : 0,
+    airMass: today.airMass,
   }
 }
 
@@ -216,8 +333,21 @@ const drawPlan = (previous: PlanValue, day: number, from: number, seed: number):
 export const calmPlan = (t: number): PlanValue => {
   const { day, second } = clockOf(t)
   return {
-    day, drawn: false, from: second + CALM_START, wet: false, event: "rain", intensity: "ordinary", start: 0, end: 0, precip: 0,
-    sky: "clear", fog: "none", lift: 0, windyFrom: 0, windyTo: 0, airMass: 0
+    day,
+    drawn: false,
+    from: second + CALM_START,
+    wet: false,
+    event: "rain",
+    intensity: "ordinary",
+    start: 0,
+    end: 0,
+    precip: 0,
+    sky: "clear",
+    fog: "none",
+    lift: 0,
+    windyFrom: 0,
+    windyTo: 0,
+    airMass: 0,
   }
 }
 
@@ -262,10 +392,15 @@ export const regimeAt = (plan: PlanValue, t: number): Regime => {
  * next midnight's plan.
  */
 export const untilChange = (plan: PlanValue, t: number): number => {
-  const { day, second } = clockOf(t), length = lengthOf(day), start = t - second
+  const { day, second } = clockOf(t),
+    length = lengthOf(day),
+    start = t - second
   if (second < plan.from) return Math.min(plan.from, length) - second
-  const times = plan.wet ? [plan.start - LEAD, plan.start, plan.end] : [plan.lift, plan.windyFrom, plan.windyTo]
-  const changes = (at: number) => at > second && at < length && regimeAt(plan, start + at) !== regimeAt(plan, start + at - 1)
+  const times = plan.wet
+    ? [plan.start - LEAD, plan.start, plan.end]
+    : [plan.lift, plan.windyFrom, plan.windyTo]
+  const changes = (at: number) =>
+    at > second && at < length && regimeAt(plan, start + at) !== regimeAt(plan, start + at - 1)
   return times.reduce((next, at) => (changes(at) && at < next ? at : next), length) - second
 }
 
@@ -274,7 +409,8 @@ export const untilChange = (plan: PlanValue, t: number): number => {
  * much the other way as keeps the month's mean on the normal (f × offset / (1 − f) colder, f the month's rain-day chance).
  */
 export const dayWarmth = (plan: PlanValue, lat: number = place().lat): number => {
-  const month = monthOfDay(plan.day), offset = WET_OFFSET[month]!
+  const month = monthOfDay(plan.day),
+    offset = WET_OFFSET[month]!
   if (plan.wet) return offset
   const f = rainChance(month, lat)
   return (-f * offset) / (1 - f)

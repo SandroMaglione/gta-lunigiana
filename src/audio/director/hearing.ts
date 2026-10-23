@@ -10,7 +10,19 @@
  * @module audio/director/hearing
  */
 import {
-  airCutoff, audibility, type Cabin, dbToGain, delayOf, diffraction, doppler, foliageLoss, groundLoss, mixGain, panOf, snowLoss, spreading
+  airCutoff,
+  audibility,
+  type Cabin,
+  dbToGain,
+  delayOf,
+  diffraction,
+  doppler,
+  foliageLoss,
+  groundLoss,
+  mixGain,
+  panOf,
+  snowLoss,
+  spreading,
 } from "../acoustics.ts"
 import type { Placement } from "../types.ts"
 import { DELAY_FROM, REVERB } from "./levels.ts"
@@ -27,7 +39,13 @@ export interface Ears {
 }
 
 /** Where a sound comes from (z a.s.l., m), moving at (vx, vy) m/s. */
-export interface Source { readonly x: number; readonly y: number; readonly z: number; readonly vx?: number; readonly vy?: number }
+export interface Source {
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  readonly vx?: number
+  readonly vy?: number
+}
 
 /** Everything about one source's way to the ears. */
 export interface Path {
@@ -71,33 +89,58 @@ export interface Hearing {
 }
 
 /** Nothing reaches the listener. */
-export const SILENT: Hearing = { placement: { gain: 0, pan: 0, cutoff: 20000, cents: 0, wet: 0 }, level: -Infinity, audible: false, r: 0, delay: 0 }
+export const SILENT: Hearing = {
+  placement: { gain: 0, pan: 0, cutoff: 20000, cents: 0, wet: 0 },
+  level: -Infinity,
+  audible: false,
+  r: 0,
+  delay: 0,
+}
 
 /** The acoustic chain of `path`. */
 export const hear = (path: Path): Hearing => {
-  const { ears, source, cabin } = path, through = path.bare === true ? undefined : cabin
-  const dx = source.x - ears.x, dy = source.y - ears.y, r = Math.hypot(dx, dy, source.z - ears.z)
-  const edge = diffraction(path.delta), snow = path.snow ?? 0
+  const { ears, source, cabin } = path,
+    through = path.bare === true ? undefined : cabin
+  const dx = source.x - ears.x,
+    dy = source.y - ears.y,
+    r = Math.hypot(dx, dy, source.z - ears.z)
+  const edge = diffraction(path.delta),
+    snow = path.snow ?? 0
   const ground = path.aloft === true ? 0 : groundLoss(r, path.height) + snowLoss(r, snow)
-  const loss = spreading(r, path.rMin) + ground + foliageLoss(path.forest) + edge.loss + (through?.loss ?? 0)
+  const loss =
+    spreading(r, path.rMin) + ground + foliageLoss(path.forest) + edge.loss + (through?.loss ?? 0)
   const level = path.db - (path.quiet ?? 0) - loss
   const fade = audibility(level, path.ambient)
   const reach = Math.min(REVERB.far, Math.max(REVERB.near, r)) / REVERB.ref
   // The tail comes back from outside: through the cabin, even when the direct sound skips it.
-  const muffle = cabin === undefined ? 1 : REVERB.cabin * (through === undefined ? dbToGain(-cabin.loss) : 1)
-  const wet = path.street ** 2 * dbToGain(REVERB.db) * Math.sqrt(reach) * muffle * (1 - REVERB.snow * snow)
+  const muffle =
+    cabin === undefined ? 1 : REVERB.cabin * (through === undefined ? dbToGain(-cabin.loss) : 1)
+  const wet =
+    path.street ** 2 * dbToGain(REVERB.db) * Math.sqrt(reach) * muffle * (1 - REVERB.snow * snow)
   return {
     placement: {
       gain: mixGain(path.db, loss) * fade,
       pan: panOf(dx, dy, ears.right),
       cutoff: Math.min(airCutoff(r), edge.cutoff, through?.cutoff ?? 20000),
-      cents: path.doppler === true ? doppler(source.x, source.y, source.vx ?? 0, source.vy ?? 0, ears.x, ears.y, ears.vx, ears.vy) : 0,
-      wet
+      cents:
+        path.doppler === true
+          ? doppler(
+              source.x,
+              source.y,
+              source.vx ?? 0,
+              source.vy ?? 0,
+              ears.x,
+              ears.y,
+              ears.vx,
+              ears.vy,
+            )
+          : 0,
+      wet,
     },
     level,
     audible: fade > 0,
     r,
     delay: r > DELAY_FROM ? delayOf(r) : 0,
-    shell: through === undefined ? cabin : undefined
+    shell: through === undefined ? cabin : undefined,
   }
 }

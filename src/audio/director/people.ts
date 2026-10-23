@@ -22,7 +22,8 @@ export const RUN = 3.5
 /** The cadence of slower movers is taken at this speed, m/s (shuffling). */
 const SHUFFLE = 0.5
 /** A carjacked driver this near the listener (m) shouts at them; one voice cue per person per `CUE_GAP` s. */
-const SHOUT_NEAR = 15, CUE_GAP = 4
+const SHOUT_NEAR = 15,
+  CUE_GAP = 4
 /** Under this voice a fleeing pedestrian screams, else shouts. */
 const SCREAMER = 0.45
 /** A step crunches in the snow where it covers this much of the ground or more. */
@@ -51,35 +52,62 @@ export const makePeople = () => {
       const cue = (p: HeardPerson, walker: Walker, kind: "scream" | "shout") => {
         if (now - walker.cue < CUE_GAP) return
         walker.cue = now
-        frame.play({ kind, voice: hash01(p.id) }, frame.path(`person:${p.id}`, { x: p.x, y: p.y, z: groundAt(p.x, p.y) + HEIGHT.person }, LEVELS[kind]))
+        frame.play(
+          { kind, voice: hash01(p.id) },
+          frame.path(
+            `person:${p.id}`,
+            { x: p.x, y: p.y, z: groundAt(p.x, p.y) + HEIGHT.person },
+            LEVELS[kind],
+          ),
+        )
       }
       for (const p of heard.people) {
         const walker = walkers.get(p.id)
         if (walker === undefined) {
-          const fresh = { x: p.x, y: p.y, phase: 0, fleeing: p.fleeing, cue: -Infinity, seen: frames }
+          const fresh = {
+            x: p.x,
+            y: p.y,
+            phase: 0,
+            fleeing: p.fleeing,
+            cue: -Infinity,
+            seen: frames,
+          }
           walkers.set(p.id, fresh)
           // Already running off when first heard: the driver just pulled out of their car.
-          if (p.fleeing && Math.hypot(p.x - ears.x, p.y - ears.y) < SHOUT_NEAR) cue(p, fresh, "shout")
+          if (p.fleeing && Math.hypot(p.x - ears.x, p.y - ears.y) < SHOUT_NEAR)
+            cue(p, fresh, "shout")
           continue
         }
         const moved = Math.hypot(p.x - walker.x, p.y - walker.y)
         walker.x = p.x
         walker.y = p.y
         walker.seen = frames
-        if (p.fleeing && !walker.fleeing) cue(p, walker, hash01(p.id) < SCREAMER ? "scream" : "shout")
+        if (p.fleeing && !walker.fleeing)
+          cue(p, walker, hash01(p.id) < SCREAMER ? "scream" : "shout")
         walker.fleeing = p.fleeing
         if (p.down || moved > JUMP) continue
         const speed = Math.hypot(p.vx, p.vy)
         walker.phase += (moved * stepRate(speed)) / Math.max(SHUFFLE, speed)
         if (walker.phase < 1) continue
         walker.phase %= 1
-        const run = speed > RUN, z = p.player ? ears.z - EAR_HEIGHT : groundAt(p.x, p.y)
+        const run = speed > RUN,
+          z = p.player ? ears.z - EAR_HEIGHT : groundAt(p.x, p.y)
         const at = p.player ? { x: ears.x, y: ears.y, z } : { x: p.x, y: p.y, z: z + HEIGHT.person }
-        const sound = { kind: "step", surface: surfaceAt(p.x, p.y), run, snow: snowCoverAt(heard.weather.snowLine, p.x, p.y, z) >= SNOWY } as const
-        frame.play(sound, frame.path(p.player ? undefined : `person:${p.id}`, at, LEVELS.step, { quiet: run ? 0 : WALK_DB }))
+        const sound = {
+          kind: "step",
+          surface: surfaceAt(p.x, p.y),
+          run,
+          snow: snowCoverAt(heard.weather.snowLine, p.x, p.y, z) >= SNOWY,
+        } as const
+        frame.play(
+          sound,
+          frame.path(p.player ? undefined : `person:${p.id}`, at, LEVELS.step, {
+            quiet: run ? 0 : WALK_DB,
+          }),
+        )
       }
       // Gone (despawned, or the listener in a car): a person seen again starts afresh.
       for (const [id, walker] of walkers) if (walker.seen !== frames) walkers.delete(id)
-    }
+    },
   }
 }

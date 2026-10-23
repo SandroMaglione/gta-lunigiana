@@ -8,28 +8,42 @@
  *
  * @module render/stand-ins
  */
-import { BufferGeometry, Float32BufferAttribute, Group, InstancedMesh, Mesh } from "three"
+import { BufferGeometry, Float32BufferAttribute, Group, type InstancedMesh, Mesh } from "three"
 
 import { VehicleNode } from "./actors.ts"
-import { actorMaterial, decalMaterial, solidMaterial, treeMaterial, waterMaterial } from "./geometry.ts"
+import {
+  actorMaterial,
+  decalMaterial,
+  solidMaterial,
+  treeMaterial,
+  waterMaterial,
+} from "./geometry.ts"
 import { glowMaterial, vehicleLampMaterials } from "./sky/glow.ts"
 import { treeMeshes } from "./trees.ts"
 
 /** One triangle with the attributes every world mesh has: position, normal and colour (linear, three channels). */
-const triangle = (): BufferGeometry => new BufferGeometry()
-  .setAttribute("position", new Float32BufferAttribute([0, 0, 0, 0.1, 0, 0, 0, 0, -0.1], 3))
-  .setAttribute("normal", new Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3))
-  .setAttribute("color", new Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3))
+const triangle = (): BufferGeometry =>
+  new BufferGeometry()
+    .setAttribute("position", new Float32BufferAttribute([0, 0, 0, 0.1, 0, 0, 0, 0, -0.1], 3))
+    .setAttribute("normal", new Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3))
+    .setAttribute("color", new Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3))
 
 /** The stand-ins, under one group to compile (never drawn: the group is not added to the scene), and how to free them. */
-export const standIns = (): { readonly group: Group; dispose(): void } => {
-  const shape = triangle(), group = new Group()
-  const car = new VehicleNode("panda", shape, actorMaterial)
+export const standIns = (): { readonly group: Group; readonly dispose: () => void } => {
+  const shape = triangle(),
+    group = new Group()
+  const car = new VehicleNode("panda", 0xffffff, shape, actorMaterial)
   // One broadleaf at the origin: an InstancedMesh with instance colours, as every chunk's trees are.
-  const trees: Array<InstancedMesh> = treeMeshes({ broadleaf: [0, 0, 1, 1], conifer: [] }, treeMaterial)
+  const trees: Array<InstancedMesh> = treeMeshes(
+    { broadleaf: [0, 0, 1, 1], conifer: [] },
+    treeMaterial,
+  )
   group.add(
-    ...[solidMaterial, decalMaterial, waterMaterial, glowMaterial, vehicleLampMaterials.on].map((material) => new Mesh(shape, material)),
-    car, ...trees
+    ...[solidMaterial, decalMaterial, waterMaterial, glowMaterial, vehicleLampMaterials.on].map(
+      (material) => new Mesh(shape, material),
+    ),
+    car,
+    ...trees,
   )
   return {
     group,
@@ -37,6 +51,6 @@ export const standIns = (): { readonly group: Group; dispose(): void } => {
       shape.dispose()
       car.dispose()
       for (const tree of trees) tree.dispose()
-    }
+    },
   }
 }

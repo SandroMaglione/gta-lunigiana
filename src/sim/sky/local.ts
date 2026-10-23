@@ -31,15 +31,24 @@ const lattice = (i: number, j: number): number => {
 
 /** Smooth value noise in [−1, 1] over a lattice of `cell` m. */
 const noise = (x: number, y: number, cell: number): number => {
-  const fx = x / cell, fy = y / cell, i = Math.floor(fx), j = Math.floor(fy)
-  const tx = fx - i, ty = fy - j, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty)
+  const fx = x / cell,
+    fy = y / cell,
+    i = Math.floor(fx),
+    j = Math.floor(fy)
+  const tx = fx - i,
+    ty = fy - j,
+    sx = tx * tx * (3 - 2 * tx),
+    sy = ty * ty * (3 - 2 * ty)
   const south = lattice(i, j) + (lattice(i + 1, j) - lattice(i, j)) * sx
   const north = lattice(i, j + 1) + (lattice(i + 1, j + 1) - lattice(i, j + 1)) * sx
   return south + (north - south) * sy
 }
 
 /** The snow line's ragged edge: two octaves of value noise, ±45 m over 80 m cells and ±15 m over 20 m cells (render's snow draws the same). */
-export const EDGE = [{ cell: 80, height: 45 }, { cell: 20, height: 15 }] as const
+export const EDGE = [
+  { cell: 80, height: 45 },
+  { cell: 20, height: 15 },
+] as const
 /** The snow cover fades in over this many metres of height to either side of its edge. */
 export const FEATHER = 10
 /** Below the snow's edge meltwater wets a band this many metres deep where the air is above freezing, fully from `MELT_FULL` °C. */
@@ -50,7 +59,8 @@ export const MELT_FULL = 1
 export const REACH = EDGE.reduce((sum, { height }) => sum + height, 0) + FEATHER
 
 /** How many metres the snow line's edge stands lower at (x, y) (a fixed, world-locked pattern, the same every game; negative where it stands higher). */
-export const snowEdge = (x: number, y: number): number => EDGE.reduce((sum, { cell, height }) => sum + height * noise(x, y, cell), 0)
+export const snowEdge = (x: number, y: number): number =>
+  EDGE.reduce((sum, { cell, height }) => sum + height * noise(x, y, cell), 0)
 
 /** How much snow covers ground `above` m over the snow line's ragged edge: none below it, all of it above, fading over ±`FEATHER` m. */
 const coverAbove = (above: number): number => {
@@ -67,12 +77,23 @@ export const snowCoverAt = (snowLine: number, x: number, y: number, z: number): 
  * weather's wetness, and, where the air at z is above freezing, wetter toward the edge from `MELT_BAND` m below it, where meltwater
  * runs (only there: the snowmelt wets no other ground). In a frost the ground below the snow stays as dry as the weather left it.
  */
-export const groundAt = (weather: Pick<WeatherValue, "wet" | "snowLine">, x: number, y: number, z: number, air: Air): GroundWeather => {
+export const groundAt = (
+  weather: Pick<WeatherValue, "wet" | "snowLine">,
+  x: number,
+  y: number,
+  z: number,
+  air: Air,
+): GroundWeather => {
   const { snowLine, wet } = weather
-  if (snowLine >= NO_SNOW || z < snowLine - REACH - MELT_BAND) return wet === 0 ? DRY : { wet, snow: 0 }
-  const above = z + snowEdge(x, y) - snowLine, snow = coverAbove(above)
+  if (snowLine >= NO_SNOW || z < snowLine - REACH - MELT_BAND)
+    return wet === 0 ? DRY : { wet, snow: 0 }
+  const above = z + snowEdge(x, y) - snowLine,
+    snow = coverAbove(above)
   const thaw = Math.max(0, Math.min(1, celsiusAt(air, z) / MELT_FULL))
-  return { wet: Math.max(wet, thaw * Math.max(0, Math.min(1, 1 + above / MELT_BAND))) * (1 - snow), snow }
+  return {
+    wet: Math.max(wet, thaw * Math.max(0, Math.min(1, 1 + above / MELT_BAND))) * (1 - snow),
+    snow,
+  }
 }
 
 /** The fog over the map: the low ground's fog up to `valleyTop` m a.s.l. at `valleyDensity` (0…1), and the cloud down to `cloudBase` m a.s.l. at `cloudDensity` (0…1). */
@@ -107,21 +128,41 @@ const FOG_TOP = { radiation: 150, stratus: 450 } as const
  * from 05:00 and burns off from 09:00 to 11:00 local time. The fog regime's low stratus fills it up to `FOG_TOP.stratus` × its mist.
  * Above the cloud base (`BASE`) the hill fog is `CLOUD_FOG` thick under a full cover, thick fog only in the fog regime's mist.
  */
-export const fogLayers = (t: number, weather: Pick<WeatherValue, "cloud" | "storm" | "wind" | "fog" | "plan">): FogLayers => {
-  const { day, second } = romeDay(t), hour = second / 3600, { floor } = place(), { plan } = weather
-  const clear = 1 - smooth(0.25, 0.55, weather.cloud), calm = 1 - smooth(2, 3.5, weather.wind)
-  const radiation = plan.drawn && plan.day === day && plan.fog === "morning" ? clear * calm * smooth(1, 5, hour) * (1 - smooth(9, 11, hour)) : 0
-  const valleyTop = floor + Math.max(FOG_TOP.radiation * radiation, FOG_TOP.stratus * weather.fog), mist = smooth(0.3, 0.9, weather.fog)
+export const fogLayers = (
+  t: number,
+  weather: Pick<WeatherValue, "cloud" | "storm" | "wind" | "fog" | "plan">,
+): FogLayers => {
+  const { day, second } = romeDay(t),
+    hour = second / 3600,
+    { floor } = place(),
+    { plan } = weather
+  const clear = 1 - smooth(0.25, 0.55, weather.cloud),
+    calm = 1 - smooth(2, 3.5, weather.wind)
+  const radiation =
+    plan.drawn && plan.day === day && plan.fog === "morning"
+      ? clear * calm * smooth(1, 5, hour) * (1 - smooth(9, 11, hour))
+      : 0
+  const valleyTop = floor + Math.max(FOG_TOP.radiation * radiation, FOG_TOP.stratus * weather.fog),
+    mist = smooth(0.3, 0.9, weather.fog)
   return {
-    valleyTop, valleyDensity: Math.max(radiation, weather.fog),
-    cloudBase: floor + BASE.clear - BASE.cover * weather.cloud + BASE.storm * weather.storm - BASE.stratus * mist,
-    cloudDensity: smooth(0.5, 0.9, weather.cloud) * (CLOUD_FOG + (1 - CLOUD_FOG) * mist)
+    valleyTop,
+    valleyDensity: Math.max(radiation, weather.fog),
+    cloudBase:
+      floor +
+      BASE.clear -
+      BASE.cover * weather.cloud +
+      BASE.storm * weather.storm -
+      BASE.stratus * mist,
+    cloudDensity: smooth(0.5, 0.9, weather.cloud) * (CLOUD_FOG + (1 - CLOUD_FOG) * mist),
   }
 }
 
 /** How thick the fog is at `z` m a.s.l. in `layers`, 0…1: the low ground's fog below its top, the cloud's above its base, each fading in over 50 m. */
 export const fogAt = (layers: FogLayers, z: number): number =>
-  Math.max(layers.valleyDensity * (1 - smooth(layers.valleyTop - 50, layers.valleyTop, z)), layers.cloudDensity * smooth(layers.cloudBase, layers.cloudBase + 50, z))
+  Math.max(
+    layers.valleyDensity * (1 - smooth(layers.valleyTop - 50, layers.valleyTop, z)),
+    layers.cloudDensity * smooth(layers.cloudBase, layers.cloudBase + 50, z),
+  )
 
 /** What the weather is like at one point: air temperature (°C), rain and snow falling (mm/h liquid-equivalent), ground wetness and snow cover (0…1), fog (0…1). */
 export interface Conditions {
@@ -134,10 +175,26 @@ export interface Conditions {
 }
 
 /** The conditions at (x, y, z) at UTC second `t` under `weather`. */
-export const conditionsAt = (t: number, weather: WeatherValue, x: number, y: number, z: number): Conditions => {
-  const air = airAt(t, weather), celsius = celsiusAt(air, z), falling = weather.precip * orographic(z), share = snowShare(celsius)
+export const conditionsAt = (
+  t: number,
+  weather: WeatherValue,
+  x: number,
+  y: number,
+  z: number,
+): Conditions => {
+  const air = airAt(t, weather),
+    celsius = celsiusAt(air, z),
+    falling = weather.precip * orographic(z),
+    share = snowShare(celsius)
   const ground = groundAt(weather, x, y, z, air)
-  return { celsius, rain: falling * (1 - share), snow: falling * share, wet: ground.wet, snowCover: ground.snow, fog: fogAt(fogLayers(t, weather), z) }
+  return {
+    celsius,
+    rain: falling * (1 - share),
+    snow: falling * share,
+    wet: ground.wet,
+    snowCover: ground.snow,
+    fog: fogAt(fogLayers(t, weather), z),
+  }
 }
 
 /**
@@ -148,7 +205,15 @@ export const conditionsAt = (t: number, weather: WeatherValue, x: number, y: num
 const WIND_UP = { over: 1550, most: 2.5 } as const
 
 /** The wind at `z` m a.s.l. under `weather`, m/s (x east, y north: the way the air moves): the low ground's, stronger on exposed ground (`WIND_UP`). */
-export const windAt = (weather: Pick<WeatherValue, "wind" | "windAngle">, z: number): { readonly x: number; readonly y: number } => {
-  const speed = weather.wind * Math.max(1, Math.min(WIND_UP.most, 1 + ((WIND_UP.most - 1) * (z - place().floor)) / WIND_UP.over))
+export const windAt = (
+  weather: Pick<WeatherValue, "wind" | "windAngle">,
+  z: number,
+): { readonly x: number; readonly y: number } => {
+  const speed =
+    weather.wind *
+    Math.max(
+      1,
+      Math.min(WIND_UP.most, 1 + ((WIND_UP.most - 1) * (z - place().floor)) / WIND_UP.over),
+    )
   return { x: Ops.cos(weather.windAngle) * speed, y: Ops.sin(weather.windAngle) * speed }
 }

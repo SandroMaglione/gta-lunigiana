@@ -850,7 +850,7 @@ The simulation's weather tests, 60 of them, run in about 5.6 s, most of it the 3
 (5.5 s):
 
 ```sh
-node --test src/sim/sky/*.test.ts src/sim/sky.test.ts
+node --test src/sim/sky/__tests__/*.test.ts src/sim/__tests__/sky.test.ts
 ```
 
 - `calendar.test.ts` and `astro.test.ts`: the calendar, Rome's summer time, and the sun and moon
@@ -871,17 +871,17 @@ node --test src/sim/sky/*.test.ts src/sim/sky.test.ts
   storm cell and lightning, the readout, and the map's place.
 - `mapfree.test.ts`: the modules the schema and the HUD import decode no map, and the place once
   the map is decoded.
-- `src/sim/sky.test.ts`: the clock and the weather in a runtime, requests applied before the first
-  update, a forced storm's lightning, the weather seed kept and replayed, the seed alone planning
-  the days, `WeatherRng` kept apart from `Rng`, and a longer braking distance in the rain.
+- `src/sim/__tests__/sky.test.ts`: the clock and the weather in a runtime, requests applied before
+  the first update, a forced storm's lightning, the weather seed kept and replayed, the seed alone
+  planning the days, `WeatherRng` kept apart from `Rng`, and a longer braking distance in the rain.
 - Elsewhere: `handling.test.ts` (wet and snow braking, the lock following grip), `walls.test.ts`
   (traffic on a wet road), `index.test.ts` (determinism and saves at rate 600 with a forced storm),
-  the render's `src/render/sky/*.test.ts` (the sun and moon over the loaded map's place, the melt
-  band's line against `celsiusAt`, the buffers at 30 mm/h), the audio's `director/weather.test.ts`
-  (the wind's height law from the map's floor, the usual wind against the weather's own), and the
-  HUD's `clock.test.ts`, `sky.test.ts` (Auto heads for and settles on the day's plan),
-  `debug-sky.test.ts` (the odds and seed text, the odds readout equal to `oddsAt`, the regime's
-  countdown) and `title.test.ts`.
+  the render's `src/render/sky/__tests__/*.test.ts` (the sun and moon over the loaded map's place,
+  the melt band's line against `celsiusAt`, the buffers at 30 mm/h), the audio's
+  `director/__tests__/weather.test.ts` (the wind's height law from the map's floor, the usual wind
+  against the weather's own), and the HUD's `clock.test.ts`, `sky.test.ts` (Auto heads for and
+  settles on the day's plan), `debug-sky.test.ts` (the odds and seed text, the odds readout equal
+  to `oddsAt`, the regime's countdown) and `title.test.ts`.
 
 `pnpm check` runs them all.
 

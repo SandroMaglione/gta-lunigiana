@@ -18,7 +18,8 @@ import type { SkyFrame } from "./frame.ts"
 export const TIME_WRAP = 600
 
 /** The angular frequency (rad/s) nearest `omega` that turns a whole number of times in TIME_WRAP: `sin(uTime · it)` does not jump when `uTime` wraps. */
-export const phaseLocked = (omega: number): number => (2 * Math.PI * Math.max(1, Math.round((omega * TIME_WRAP) / (2 * Math.PI)))) / TIME_WRAP
+export const phaseLocked = (omega: number): number =>
+  (2 * Math.PI * Math.max(1, Math.round((omega * TIME_WRAP) / (2 * Math.PI)))) / TIME_WRAP
 
 /** The shared uniform cells (render-sky adds the surface-weather ones here): write `.value`, never replace the objects. */
 export const SKY_UNIFORMS = {
@@ -56,7 +57,7 @@ export const SKY_UNIFORMS = {
   /** The camera's right axis (three space): canopies sway along it, by whole texels. */
   uSwayAxis: { value: new Vector3(1, 0, 0) },
   /** The view's zoom, texels per metre. */
-  uTexelsPerMetre: { value: 8 }
+  uTexelsPerMetre: { value: 8 },
 }
 
 /** Copies this frame and the post pass's `exposure` into `SKY_UNIFORMS`: the sky host calls it once per frame, before the scene renders. */

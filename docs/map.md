@@ -358,7 +358,7 @@ file itself.
 
 ## Checks and tools
 
-`src/sim/map/map.test.ts` checks the built map in about 4 s: heightmap coverage, spawns clear
+`src/sim/map/__tests__/map.test.ts` checks the built map in about 4 s: heightmap coverage, spawns clear
 of walls and off traffic lanes (with parking in each village the map was widened for: Equi
 Terme, Gragnola, Colognola, Campiglione, Viano, Vinca, Ugliancaldo and Tenerano), no walls on
 roads, no drivable road inside a footprint, closed building interiors, one traffic component
@@ -368,7 +368,7 @@ straight line between them), bridge and underpass clearances, no perched water, 
 widths, and valid names, classes, styles, area kinds and districts (each of those villages is
 its own HUD name, Equi Terme's station and spa included, and Monte Sagro and Pizzo d'Uccello
 name themselves; CTR street names cased like "Via XX Settembre" and "Via Castel dell'Aquila").
-Run `pnpm test` after every `pnpm map`. `src/sim/map/packed.test.ts` round-trips a small map
+Run `pnpm test` after every `pnpm map`. `src/sim/map/__tests__/packed.test.ts` round-trips a small map
 through `packMap` and `decodeMap` (negative values, the widest 2-byte deltas, an empty section, a
 newline inside a name) and checks that a value or delta too big for its section throws.
 

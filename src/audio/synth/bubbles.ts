@@ -27,24 +27,38 @@ export const minnaert = (r: number): number => 3 / r
 const damping = (r: number): number => 0.13 / r + 0.0072 * r ** -1.5
 
 /** `seconds` of `bubbles` at `sampleRate`, RMS 0.2; bubbles ringing past the end wrap to the start, so it loops seamlessly. */
-export const bubbleTexture = (sampleRate: number, seconds: number, bubbles: Bubbles, random: () => number = Math.random): Float32Array<ArrayBuffer> => {
+export const bubbleTexture = (
+  sampleRate: number,
+  seconds: number,
+  bubbles: Bubbles,
+  random: () => number = Math.random,
+): Float32Array<ArrayBuffer> => {
   const { rate, rMin, rMax, gamma, xi } = bubbles
-  const n = Math.floor(sampleRate * seconds), out = new Float32Array(n)
-  const a0 = rMin ** -gamma, a1 = rMax ** -gamma
+  const n = Math.floor(sampleRate * seconds),
+    out = new Float32Array(n)
+  const a0 = rMin ** -gamma,
+    a1 = rMax ** -gamma
   for (let t = 0; t < seconds; t += -Math.log(1 - random()) / rate) {
     // Inverse-CDF radius: log-uniform for gamma 0, else r^−gamma per log-radius.
-    const r = gamma === 0 ? rMin * (rMax / rMin) ** random() : (a0 - random() * (a0 - a1)) ** (-1 / gamma)
+    const r =
+      gamma === 0 ? rMin * (rMax / rMin) ** random() : (a0 - random() * (a0 - a1)) ** (-1 / gamma)
     const f0 = minnaert(r)
     if (f0 > 0.45 * sampleRate) continue
     // Depth factor D = rnd^10 (most bubbles faint), amplitude D·(r/rMax)^1.5; only D > 0.9 rises in pitch.
-    const d = damping(r), depth = random() ** 10, rise = depth > 0.9 ? xi * d : 0
+    const d = damping(r),
+      depth = random() ** 10,
+      rise = depth > 0.9 ? xi * d : 0
     const len = Math.min(n, Math.ceil((5 / d) * sampleRate))
-    const w = (2 * Math.PI * f0) / sampleRate, decay = Math.exp(-d / sampleRate)
-    let amp = depth * (r / rMax) ** 1.5, i = Math.floor(t * sampleRate)
+    const w = (2 * Math.PI * f0) / sampleRate,
+      decay = Math.exp(-d / sampleRate)
+    let amp = depth * (r / rMax) ** 1.5,
+      i = Math.floor(t * sampleRate)
     if (rise === 0) {
       // A steady damped sine by its two-term recurrence: no sin() per sample.
-      const c = 2 * decay * Math.cos(w), k2 = decay * decay
-      let prev = 0, cur = amp * Math.sin(w)
+      const c = 2 * decay * Math.cos(w),
+        k2 = decay * decay
+      let prev = 0,
+        cur = amp * Math.sin(w)
       for (let j = 0; j < len; j++, i = i + 1 === n ? 0 : i + 1) {
         out[i]! += cur
         const next = c * cur - k2 * prev

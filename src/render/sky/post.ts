@@ -39,7 +39,11 @@ const PATH = { near: 60, least: 16, most: 240 } as const
 /** The valley fog thins over this height above its top, the cloud under its base, m. */
 const FALLOFF = { valley: 25, cloud: 40 } as const
 /** The most a texel is veiled: `near` at and before the focus plane (the player and the road stay readable in the thickest fog), rising to `far` over `over` m deeper. */
-const MOST: { readonly near: number; readonly far: number; readonly over: number } = { near: 0.6, far: 0.92, over: 400 }
+const MOST: { readonly near: number; readonly far: number; readonly over: number } = {
+  near: 0.6,
+  far: 0.92,
+  over: 400,
+}
 /** Around the player the veil thins to BUBBLE.least of itself, from `near` to `far` m on the ground: the road ahead stays readable. */
 const BUBBLE = { least: 0.45, near: 6, far: 50 } as const
 /**
@@ -85,7 +89,7 @@ export const makePost = () => ({
   uFogColor: { value: new Color() },
   uExposure: { value: 1 },
   uNight: { value: 0 },
-  uGrey: { value: 0 }
+  uGrey: { value: 0 },
 })
 /** One view's post uniforms. */
 export type PostUniforms = ReturnType<typeof makePost>
@@ -156,25 +160,42 @@ export interface Atmosphere {
  * The scene's light as the fog gathers it (linear, a lightning flash included): the key light on level
  * ground (colour × intensity × the sine of its elevation), and the hemisphere's sky and ground colours × its intensity.
  */
-export interface FogLight { readonly key: Rgb; readonly sky: Rgb; readonly ground: Rgb }
+export interface FogLight {
+  readonly key: Rgb
+  readonly sky: Rgb
+  readonly ground: Rgb
+}
 
 const FOG_COLOUR = linear(PALETTE.fog)
 
 /** The atmosphere for `layers` (the sim's fog, m a.s.l.), the rain and snow falling at the focus (mm/h) and the scene's `light`. */
-export const atmosphere = (layers: FogLayers, falling: { readonly rain: number; readonly snow: number }, light: FogLight): Atmosphere => {
+export const atmosphere = (
+  layers: FogLayers,
+  falling: { readonly rain: number; readonly snow: number },
+  light: FogLight,
+): Atmosphere => {
   const p = Math.max(0, falling.rain) + HAZE.snow * Math.max(0, falling.snow)
-  const gather = (c: 0 | 1 | 2) => (FOG_COLOUR[c] * (light.key[c] + FOG.sky * light.sky[c] + FOG.ground * light.ground[c])) / Math.PI
+  const gather = (c: 0 | 1 | 2) =>
+    (FOG_COLOUR[c] * (light.key[c] + FOG.sky * light.sky[c] + FOG.ground * light.ground[c])) /
+    Math.PI
   return {
     valley: { top: yOf(layers.valleyTop), density: EXTINCTION * layers.valleyDensity ** 2 },
     cloud: { base: yOf(layers.cloudBase), density: EXTINCTION * layers.cloudDensity ** 2 },
     haze: { veil: HAZE.veil * p ** 0.5, perMetre: HAZE.perMetre * p ** 0.7 },
     most: MOST.near,
-    colour: [gather(0), gather(1), gather(2)]
+    colour: [gather(0), gather(1), gather(2)],
   }
 }
 
 /** The exposure, the night and weather grades and the focus (three space) the post pass takes besides the atmosphere. */
-export interface PostView { readonly exposure: number; readonly night: number; readonly grey: number; readonly x: number; readonly y: number; readonly z: number }
+export interface PostView {
+  readonly exposure: number
+  readonly night: number
+  readonly grey: number
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}
 
 /** Writes `a` and `view` into `post`'s cells (in place: the blit material holds them). */
 export const writePost = (post: PostUniforms, a: Atmosphere, view: PostView): void => {

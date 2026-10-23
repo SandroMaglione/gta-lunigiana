@@ -31,7 +31,8 @@ const kineticEnergy = (rate: number): number => {
 }
 
 /** How far (dB) the rain voices play under their nominal at `rate` mm/h: the drops' kinetic energy against a downpour's, 12 dB a decade (21 dB under at 1 mm/h). */
-export const rainQuiet = (rate: number): number => 10 * Math.log10(kineticEnergy(DOWNPOUR) / kineticEnergy(rate))
+export const rainQuiet = (rate: number): number =>
+  10 * Math.log10(kineticEnergy(DOWNPOUR) / kineticEnergy(rate))
 
 /** Smoothing of rate and ground changes, s: a regime change runs over real seconds, and the voice follows it gently. */
 const TAU = 1
@@ -43,10 +44,12 @@ type Table = ReadonlyArray<readonly [number, ...ReadonlyArray<number>]>
 
 /** `table`'s gains at `rate`, interpolated in log rate. */
 const byRate = (table: Table, rate: number): ReadonlyArray<number> => {
-  const x = Math.log(Math.min(table[table.length - 1]![0], Math.max(table[0]![0], rate || 0)))
+  const x = Math.log(Math.min(table.at(-1)![0], Math.max(table[0]![0], rate || 0)))
   let i = 1
   while (i < table.length - 1 && Math.log(table[i]![0]) < x) i++
-  const a = table[i - 1]!, b = table[i]!, t = Math.max(0, Math.min(1, (x - Math.log(a[0])) / (Math.log(b[0]) - Math.log(a[0]))))
+  const a = table[i - 1]!,
+    b = table[i]!,
+    t = Math.max(0, Math.min(1, (x - Math.log(a[0])) / (Math.log(b[0]) - Math.log(a[0]))))
   return a.slice(1).map((g, k) => g + (b[k + 1]! - g) * t)
 }
 
@@ -62,7 +65,7 @@ const RAIN_LAYERS: Table = [
   [4, 0.56, 0, 1.16, 0.41],
   [10, 0.61, 0.12, 0.67, 0.37],
   [25, 0.63, 0.19, 0.42, 0.26],
-  [60, 0.63, 0.24, 0, 0.22]
+  [60, 0.63, 0.24, 0, 0.22],
 ]
 /** A drop's ring on leaves (a 4 kHz band) and its tock on roofs and paving (bands at 1.8 kHz and 600 Hz) pass less of it than open ground's 900 Hz highpass: these bring each to as loud. */
 const SURFACES = { leaves: 2.2, hard: 3.1, ground: 1 } as const
@@ -91,14 +94,22 @@ interface RainMix {
 
 /** The layers at `sound`'s rate and ground: the drops ring as what they land on, its shares adding in power (a forest edge sounds as loud as either side). */
 export const rainMix = (sound: Rain): RainMix => {
-  const [bed, roar, sparse, dense] = byRate(RAIN_LAYERS, sound.rate), forest = unit(sound.forest), built = unit(sound.built) * (1 - forest)
+  const [bed, roar, sparse, dense] = byRate(RAIN_LAYERS, sound.rate),
+    forest = unit(sound.forest),
+    built = unit(sound.built) * (1 - forest)
   return {
-    bed: bed!, roar: roar!, sparse: sparse!, dense: dense!,
+    bed: bed!,
+    roar: roar!,
+    sparse: sparse!,
+    dense: dense!,
     leaves: SURFACES.leaves * Math.sqrt(forest),
     hard: SURFACES.hard * Math.sqrt(built),
     ground: SURFACES.ground * Math.sqrt(Math.max(0, 1 - forest - built)),
-    water: unit(sound.water) * Math.min(WATER.most, WATER.plink * 10 ** (rainQuiet(sound.rate) / 20)) * smoothstep(0.5, 4, sound.rate || 0),
-    top: 9000 + 2000 * forest
+    water:
+      unit(sound.water) *
+      Math.min(WATER.most, WATER.plink * 10 ** (rainQuiet(sound.rate) / 20)) *
+      smoothstep(0.5, 4, sound.rate || 0),
+    top: 9000 + 2000 * forest,
   }
 }
 
@@ -118,7 +129,9 @@ const once = (make: (ctx: BaseAudioContext) => AudioBuffer) => {
 }
 
 /** Sparse drops near the ears. */
-const sparseOf = once((ctx) => bufferOf(ctx, crackleSamples(ctx.sampleRate * LOOP_SECONDS, ctx.sampleRate, SPARSE)))
+const sparseOf = once((ctx) =>
+  bufferOf(ctx, crackleSamples(ctx.sampleRate * LOOP_SECONDS, ctx.sampleRate, SPARSE)),
+)
 /** Rain on water, peaking at 1. */
 const bubblesOf = once((ctx) => {
   const samples = bubbleTexture(ctx.sampleRate, LOOP_SECONDS / 2, RAIN_ON_WATER)
@@ -128,34 +141,63 @@ const bubblesOf = once((ctx) => {
 
 /** Rain around the listener: `rate` mm/h on leaves, roofs and paving, open ground and water in the shares given. */
 export const rain: VoiceFactory<Rain> = ({ ctx, out, kit }) => {
-  const level = outlet(ctx, out), law = new GainNode(ctx, { gain: 0 }), sheets = new GainNode(ctx, { gain: 1 })
+  const level = outlet(ctx, out),
+    law = new GainNode(ctx, { gain: 0 }),
+    sheets = new GainNode(ctx, { gain: 1 })
   sheets.connect(law).connect(level)
   // The wind drives it in sheets: the gust signal at half pace swells it ±1 dB.
   const gust = loop(ctx, kit.gust, 0.5)
   gust.connect(new GainNode(ctx, { gain: 0.12 })).connect(sheets.gain)
   const layer = () => new GainNode(ctx, { gain: 0 })
   // The hiss: pink, open above 350 Hz with a lift at 2.5 kHz.
-  const pink = loop(ctx, kit.pink), top = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 9000, Q: 0.7 }), bed = layer()
-  pink.connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: 350, Q: 0.7 }))
-    .connect(new BiquadFilterNode(ctx, { type: "peaking", frequency: 2500, Q: 0.8, gain: 3 })).connect(top).connect(bed).connect(sheets)
+  const pink = loop(ctx, kit.pink),
+    top = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 9000, Q: 0.7 }),
+    bed = layer()
+  pink
+    .connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: 350, Q: 0.7 }))
+    .connect(new BiquadFilterNode(ctx, { type: "peaking", frequency: 2500, Q: 0.8, gain: 3 }))
+    .connect(top)
+    .connect(bed)
+    .connect(sheets)
   // The runoff's roar off roofs, gutters and streets in heavy rain.
-  const brown = loop(ctx, kit.brown), roar = layer()
-  brown.connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 600 })).connect(roar).connect(sheets)
+  const brown = loop(ctx, kit.brown),
+    roar = layer()
+  brown
+    .connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 600 }))
+    .connect(roar)
+    .connect(sheets)
   // The drops near the ears: a sparse layer of big ones and the kit's dense grains, through what they land on.
-  const big = loop(ctx, sparseOf(ctx)), small = loop(ctx, kit.crackle), sparse = layer(), dense = layer(), drops = new GainNode(ctx)
+  const big = loop(ctx, sparseOf(ctx)),
+    small = loop(ctx, kit.crackle),
+    sparse = layer(),
+    dense = layer(),
+    drops = new GainNode(ctx)
   big.connect(sparse).connect(drops)
   small.connect(dense).connect(drops)
-  const leaves = layer(), hard = layer(), ground = layer()
-  drops.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 4000, Q: 1.5 })).connect(leaves).connect(sheets)
-  drops.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1800, Q: 2 })).connect(hard).connect(sheets)
+  const leaves = layer(),
+    hard = layer(),
+    ground = layer()
+  drops
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 4000, Q: 1.5 }))
+    .connect(leaves)
+    .connect(sheets)
+  drops
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 1800, Q: 2 }))
+    .connect(hard)
+    .connect(sheets)
   drops.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 600, Q: 4 })).connect(hard)
-  drops.connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: 900, Q: 0.7 })).connect(ground).connect(sheets)
-  const bubbles = loop(ctx, bubblesOf(ctx)), water = layer()
+  drops
+    .connect(new BiquadFilterNode(ctx, { type: "highpass", frequency: 900, Q: 0.7 }))
+    .connect(ground)
+    .connect(sheets)
+  const bubbles = loop(ctx, bubblesOf(ctx)),
+    water = layer()
   bubbles.connect(water).connect(sheets)
   let first = true
   return {
     update: (sound, now) => {
-      const mix = rainMix(sound), set = (node: GainNode, value: number) => glide(node.gain, value, now, first, TAU)
+      const mix = rainMix(sound),
+        set = (node: GainNode, value: number) => glide(node.gain, value, now, first, TAU)
       glide(law.gain, 10 ** (-rainQuiet(sound.rate) / 20), now, first, TAU)
       set(bed, mix.bed)
       set(roar, mix.roar)
@@ -168,7 +210,7 @@ export const rain: VoiceFactory<Rain> = ({ ctx, out, kit }) => {
       glide(top.frequency, mix.top, now, first, TAU)
       first = false
     },
-    stop: (now) => fadeOut(level, [pink, gust, brown, big, small, bubbles], now)
+    stop: (now) => fadeOut(level, [pink, gust, brown, big, small, bubbles], now),
   }
 }
 
@@ -176,7 +218,18 @@ export const rain: VoiceFactory<Rain> = ({ ctx, out, kit }) => {
  * The modes a drop rings on a car (Hz, Q): the roof panel, damped steel on bitumen pads (95–560 Hz, Q 6–8), and the windscreen
  * (Farnell's glass pane: 254–669 Hz and a cluster near 2 kHz, Q 1.5–3), the glass's half as loud.
  */
-const MODES = [[95, 8, 1], [160, 8, 1], [240, 7, 1], [380, 6, 0.8], [560, 6, 0.6], [254, 3, 0.5], [443, 3, 0.5], [551, 2.5, 0.4], [669, 2, 0.4], [1990, 1.5, 0.3]] as const
+const MODES = [
+  [95, 8, 1],
+  [160, 8, 1],
+  [240, 7, 1],
+  [380, 6, 0.8],
+  [560, 6, 0.6],
+  [254, 3, 0.5],
+  [443, 3, 0.5],
+  [551, 2.5, 0.4],
+  [669, 2, 0.4],
+  [1990, 1.5, 0.3],
+] as const
 /** The rate the drumming is made at, Hz: it holds nothing above 3.5 kHz. */
 const DRUM_RATE = 16000
 /** Drops per second in the drumming loop (two copies play, so about 85 a second on the car's 2.5 m² in a light shower). */
@@ -187,18 +240,35 @@ const DRUMS = 40
  * then every mode ringing as strongly as where it landed lets it, most drops small and a few big; RMS 0.2, looping seamlessly
  * (a mode ringing past the end wraps to the start).
  */
-export const drumSamples = (sampleRate: number, seconds: number, perSecond: number, random: () => number = Math.random): Float32Array<ArrayBuffer> => {
-  const n = Math.floor(sampleRate * seconds), out = new Float32Array(n)
-  for (let t = -Math.log(1 - random()) / perSecond; t < seconds; t += -Math.log(1 - random()) / perSecond) {
-    const size = random() ** 3, i0 = Math.floor(t * sampleRate)
-    for (let j = 0, click = Math.ceil(0.0005 * sampleRate); j < click; j++) out[(i0 + j) % n]! += 0.3 * size * (random() * 2 - 1)
+export const drumSamples = (
+  sampleRate: number,
+  seconds: number,
+  perSecond: number,
+  random: () => number = Math.random,
+): Float32Array<ArrayBuffer> => {
+  const n = Math.floor(sampleRate * seconds),
+    out = new Float32Array(n)
+  for (
+    let t = -Math.log(1 - random()) / perSecond;
+    t < seconds;
+    t += -Math.log(1 - random()) / perSecond
+  ) {
+    const size = random() ** 3,
+      i0 = Math.floor(t * sampleRate)
+    for (let j = 0, click = Math.ceil(0.0005 * sampleRate); j < click; j++)
+      out[(i0 + j) % n]! += 0.3 * size * (random() * 2 - 1)
     for (const [hz, q, gain] of MODES) {
       if (hz >= 0.45 * sampleRate) continue
       // A damped sine by its two-term recurrence, until 40 dB down.
-      const decay = (Math.PI * hz) / q, r = Math.exp(-decay / sampleRate), w = (2 * Math.PI * hz) / sampleRate
-      const c = 2 * r * Math.cos(w), k2 = r * r, length = Math.min(n, Math.ceil((Math.log(100) / decay) * sampleRate))
+      const decay = (Math.PI * hz) / q,
+        r = Math.exp(-decay / sampleRate),
+        w = (2 * Math.PI * hz) / sampleRate
+      const c = 2 * r * Math.cos(w),
+        k2 = r * r,
+        length = Math.min(n, Math.ceil((Math.log(100) / decay) * sampleRate))
       // A Rayleigh draw: how strongly a drop landing at a random spot excites this mode.
-      let prev = 0, cur = size * gain * rayleigh(random) * Math.sin(w)
+      let prev = 0,
+        cur = size * gain * rayleigh(random) * Math.sin(w)
       for (let j = 0, i = i0 % n; j < length; j++, i = i + 1 === n ? 0 : i + 1) {
         out[i]! += cur
         const next = c * cur - k2 * prev
@@ -227,11 +297,15 @@ const ROOF_LAYERS: Table = [
   [4, 0.24, 1.63, 0.41],
   [10, 0.2, 1.8, 0.59],
   [25, 0.15, 1.63, 0.76],
-  [60, 0.14, 1.46, 0.83]
+  [60, 0.14, 1.46, 0.83],
 ]
 
 /** The roof voice's layer gains at `sound`'s rate: drops you can count in a shower, a drumming patter by 4 mm/h, a roar past 20. */
-interface RoofMix { readonly drums: number; readonly dense: number; readonly roar: number }
+interface RoofMix {
+  readonly drums: number
+  readonly dense: number
+  readonly roar: number
+}
 
 /** The layers at `sound`'s rate. */
 export const roofMix = (sound: Roof): RoofMix => {
@@ -241,21 +315,35 @@ export const roofMix = (sound: Roof): RoofMix => {
 
 /** Rain drumming on the roof and the windscreen of the car the listener sits in, at `rate` mm/h; the cabin closes everything over 3.5 kHz. */
 export const roof: VoiceFactory<Roof> = ({ ctx, out, kit }) => {
-  const level = outlet(ctx, out), law = new GainNode(ctx, { gain: 0 }), cabin = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 3500, Q: 0.7 })
+  const level = outlet(ctx, out),
+    law = new GainNode(ctx, { gain: 0 }),
+    cabin = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 3500, Q: 0.7 })
   cabin.connect(law).connect(level)
   const layer = () => new GainNode(ctx, { gain: 0 })
   // Two copies of the drumming loop at different paces, so the pattern never repeats within a minute.
-  const drumming = drumsOf(ctx), one = loop(ctx, drumming), two = loop(ctx, drumming, 1.13), drums = layer()
+  const drumming = drumsOf(ctx),
+    one = loop(ctx, drumming),
+    two = loop(ctx, drumming, 1.13),
+    drums = layer()
   one.connect(drums)
   two.connect(drums)
   drums.connect(cabin)
   // The dense patter, the kit's grains ringing the panel's three strongest modes, and the sheet's roar: the panel, under 1 kHz.
-  const panel = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 1000, Q: 0.7 }), grains = loop(ctx, kit.crackle), dense = layer()
+  const panel = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 1000, Q: 0.7 }),
+    grains = loop(ctx, kit.crackle),
+    dense = layer()
   panel.connect(cabin)
-  for (const hz of [160, 380, 560]) grains.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: 4 })).connect(dense)
+  for (const hz of [160, 380, 560])
+    grains
+      .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: hz, Q: 4 }))
+      .connect(dense)
   dense.connect(panel)
-  const pink = loop(ctx, kit.pink), roar = layer()
-  pink.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 300, Q: 0.7 })).connect(roar).connect(panel)
+  const pink = loop(ctx, kit.pink),
+    roar = layer()
+  pink
+    .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 300, Q: 0.7 }))
+    .connect(roar)
+    .connect(panel)
   let first = true
   return {
     update: (sound, now) => {
@@ -266,6 +354,6 @@ export const roof: VoiceFactory<Roof> = ({ ctx, out, kit }) => {
       glide(roar.gain, mix.roar, now, first, TAU)
       first = false
     },
-    stop: (now) => fadeOut(level, [one, two, grains, pink], now)
+    stop: (now) => fadeOut(level, [one, two, grains, pink], now),
   }
 }

@@ -9,8 +9,19 @@
  *
  * @module render/sky/precipitation
  */
-import { BufferGeometry, Color, Float32BufferAttribute, Group, LineSegments, Points, ShaderMaterial, Vector2, Vector3 } from "three"
+import {
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  Group,
+  LineSegments,
+  Points,
+  ShaderMaterial,
+  Vector2,
+  Vector3,
+} from "three"
 
+import { DRAW_ORDER } from "../order.ts"
 import { PALETTE } from "../palette.ts"
 import type { SkyFrame } from "./frame.ts"
 import { stream } from "./random.ts"
@@ -35,7 +46,10 @@ const LAYERS = [0.75, 1, 1.3] as const
  * rate^`power`: heavy rain (10 mm/h) ≈ 1 streak per 100 texels at 8 texels/m, moderate snow (1 mm/h
  * of water) ≈ 1 flake per 90. Snow falls 8× slower than rain, so the same water is many more flakes.
  */
-const DENSITY = { rain: { perM2: 0.6, at: 10, power: 0.6 }, snow: { perM2: 0.7, at: 1, power: 0.5 } } as const satisfies Record<Kind, unknown>
+const DENSITY = {
+  rain: { perM2: 0.6, at: 10, power: 0.6 },
+  snow: { perM2: 0.7, at: 1, power: 0.5 },
+} as const satisfies Record<Kind, unknown>
 /** Rain streak length on the camera plane, m (4–6 texels): motion blur, exaggerated. */
 const STREAK = 0.7
 /** Snowflakes drift this far sideways, m, as they fall, swaying at ≈ 1.3 rad/s (phase-locked to the uTime wrap). */
@@ -44,8 +58,6 @@ const WOBBLE = { metres: 0.3, rate: phaseLocked(1.3) } as const
 const BOX = { margin: 4, step: 16 } as const
 /** Longest frame step integrated, s: a hitch or a jump in sim time does not fling the drops. */
 const MAX_DT = 0.25
-/** Draw order among the transparent effects: after the bolt and every other effect, the rain and snow lie over the view. */
-const PRECIPITATION_ORDER = 3
 
 /** Drops per square metre of the camera plane for `mmPerHour` (liquid water) of `kind`. */
 export const dropDensity = (kind: Kind, mmPerHour: number): number => {
@@ -54,24 +66,43 @@ export const dropDensity = (kind: Kind, mmPerHour: number): number => {
 }
 
 /** How many drops of `kind` a wrap box of `area` m² holds at `mmPerHour`, capped at the buffer. */
-export const dropCount = (kind: Kind, mmPerHour: number, area: number): number => Math.min(MOST[kind], Math.round(dropDensity(kind, mmPerHour) * area))
+export const dropCount = (kind: Kind, mmPerHour: number, area: number): number =>
+  Math.min(MOST[kind], Math.round(dropDensity(kind, mmPerHour) * area))
 
 /** The wrap box for a view of `width` × `height` screen metres: the view plus a margin, in whole 16 m steps. */
 export const wrapBox = (width: number, height: number, out: Vector2): Vector2 =>
-  out.set(Math.ceil((width + 2 * BOX.margin) / BOX.step) * BOX.step, Math.ceil((height + 2 * BOX.margin) / BOX.step) * BOX.step)
+  out.set(
+    Math.ceil((width + 2 * BOX.margin) / BOX.step) * BOX.step,
+    Math.ceil((height + 2 * BOX.margin) / BOX.step) * BOX.step,
+  )
 
 /**
  * The on-screen velocity (camera plane: along `right`, along `up`, m/s) of something falling at
  * `fall` m/s through air moving with `wind` (sim frame: x east, y north).
  */
-export const planeVelocity = (wind: { readonly x: number; readonly y: number }, fall: number, right: Vector3, up: Vector3, out: Vector2): Vector2 => {
+export const planeVelocity = (
+  wind: { readonly x: number; readonly y: number },
+  fall: number,
+  right: Vector3,
+  up: Vector3,
+  out: Vector2,
+): Vector2 => {
   // three space: (east, up, −north)
-  return out.set(wind.x * right.x - fall * right.y - wind.y * right.z, wind.x * up.x - fall * up.y - wind.y * up.z)
+  return out.set(
+    wind.x * right.x - fall * right.y - wind.y * right.z,
+    wind.x * up.x - fall * up.y - wind.y * up.z,
+  )
 }
 
 /** `scroll` moved by `velocity` × `dt` and wrapped into [0, box) per axis (float64 on the CPU: no drift after hours of play). */
-export const advanceScroll = (scroll: Vector2, velocity: Vector2, dt: number, box: Vector2): Vector2 => {
-  const x = (scroll.x + velocity.x * dt) % box.x, y = (scroll.y + velocity.y * dt) % box.y
+export const advanceScroll = (
+  scroll: Vector2,
+  velocity: Vector2,
+  dt: number,
+  box: Vector2,
+): Vector2 => {
+  const x = (scroll.x + velocity.x * dt) % box.x,
+    y = (scroll.y + velocity.y * dt) % box.y
   return scroll.set(x < 0 ? x + box.x : x, y < 0 ? y + box.y : y)
 }
 
@@ -118,14 +149,17 @@ export class Precipitation {
   readonly snow: Points<BufferGeometry, ShaderMaterial>
   /** The wrap box on the camera plane, m. */
   readonly box = new Vector2(1, 1)
-  private readonly scroll = { rain: LAYERS.map(() => new Vector2()), snow: LAYERS.map(() => new Vector2()) } as const satisfies Record<Kind, unknown>
+  private readonly scroll = {
+    rain: LAYERS.map(() => new Vector2()),
+    snow: LAYERS.map(() => new Vector2()),
+  } as const satisfies Record<Kind, unknown>
   private readonly shared = {
     uBox: { value: this.box },
     uFocus: { value: new Vector2() },
     uCentre: { value: new Vector3() },
     uRight: { value: new Vector3() },
     uUp: { value: new Vector3() },
-    uTexel: { value: 0.125 }
+    uTexel: { value: 0.125 },
   }
   private readonly velocity = new Vector2()
   private readonly layer = new Vector2()
@@ -134,18 +168,29 @@ export class Precipitation {
   /** `seed` lays the drops (the same every load). */
   constructor(seed = 1) {
     const r = stream(seed)
-    const rainSeeds = new Float32Array(MOST.rain * 6), tail = new Float32Array(MOST.rain * 2)
+    const rainSeeds = new Float32Array(MOST.rain * 6),
+      tail = new Float32Array(MOST.rain * 2)
     for (let i = 0; i < MOST.rain; i++) {
-      const x = r(), y = r(), z = r()
+      const x = r(),
+        y = r(),
+        z = r()
       rainSeeds.set([x, y, z, x, y, z], i * 6)
       tail[i * 2 + 1] = 1
     }
     const rainGeometry = new BufferGeometry()
     rainGeometry.setAttribute("position", new Float32BufferAttribute(rainSeeds, 3))
     rainGeometry.setAttribute("tail", new Float32BufferAttribute(tail, 1))
-    this.rain = new LineSegments(rainGeometry, new ShaderMaterial({
-      uniforms: { ...this.shared, uScroll: { value: this.scroll.rain }, uStreak: { value: new Vector2() }, uColor: { value: new Color() }, uAlpha: { value: 0.55 } },
-      vertexShader: /* glsl */ `
+    this.rain = new LineSegments(
+      rainGeometry,
+      new ShaderMaterial({
+        uniforms: {
+          ...this.shared,
+          uScroll: { value: this.scroll.rain },
+          uStreak: { value: new Vector2() },
+          uColor: { value: new Color() },
+          uAlpha: { value: 0.55 },
+        },
+        vertexShader: /* glsl */ `
         attribute float tail;
         uniform vec2 uStreak;
         ${PLACE}
@@ -155,18 +200,27 @@ export class Precipitation {
           gl_Position = project(wrapped() - uStreak * tail);
         }
       `,
-      fragmentShader: FRAGMENT,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    }))
+        fragmentShader: FRAGMENT,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    )
     const snowSeeds = new Float32Array(MOST.snow * 3)
     for (let i = 0; i < snowSeeds.length; i++) snowSeeds[i] = r()
     const snowGeometry = new BufferGeometry()
     snowGeometry.setAttribute("position", new Float32BufferAttribute(snowSeeds, 3))
-    this.snow = new Points(snowGeometry, new ShaderMaterial({
-      uniforms: { ...this.shared, uScroll: { value: this.scroll.snow }, uTime: { value: 0 }, uColor: { value: new Color() }, uAlpha: { value: 0.9 } },
-      vertexShader: /* glsl */ `
+    this.snow = new Points(
+      snowGeometry,
+      new ShaderMaterial({
+        uniforms: {
+          ...this.shared,
+          uScroll: { value: this.scroll.snow },
+          uTime: { value: 0 },
+          uColor: { value: new Color() },
+          uAlpha: { value: 0.9 },
+        },
+        vertexShader: /* glsl */ `
         uniform float uTime;
         ${PLACE}
         void main() {
@@ -177,15 +231,16 @@ export class Precipitation {
           gl_PointSize = position.z > 0.9 ? 2.0 : 1.0; // texels of the render target (not PointsMaterial: it multiplies by the pixel ratio)
         }
       `,
-      fragmentShader: FRAGMENT,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    }))
+        fragmentShader: FRAGMENT,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    )
     for (const drops of [this.rain, this.snow]) {
       drops.geometry.setDrawRange(0, 0)
       drops.frustumCulled = false // drawn around the focus by the shader, wherever the geometry's bounds say
-      drops.renderOrder = PRECIPITATION_ORDER
+      drops.renderOrder = DRAW_ORDER.precipitation
       this.object.add(drops)
     }
   }
@@ -196,11 +251,18 @@ export class Precipitation {
    * `viewMetres` sizes the wrap box: pass the view at the widest zoom (`view.view / WIDEST_ZOOM`),
    * so the zoom easing never resizes the box (which reshuffles every drop).
    */
-  update(frame: SkyFrame, focus: Vector3, axes: { readonly right: Vector3; readonly up: Vector3 }, texelsPerMetre: number, viewMetres: { readonly width: number; readonly height: number }): void {
+  update(
+    frame: SkyFrame,
+    focus: Vector3,
+    axes: { readonly right: Vector3; readonly up: Vector3 },
+    texelsPerMetre: number,
+    viewMetres: { readonly width: number; readonly height: number },
+  ): void {
     const dt = Number.isNaN(this.last) ? 0 : Math.min(MAX_DT, Math.max(0, frame.now - this.last))
     this.last = frame.now
     wrapBox(viewMetres.width, viewMetres.height, this.box)
-    const u = this.shared, texel = 1 / texelsPerMetre
+    const u = this.shared,
+      texel = 1 / texelsPerMetre
     u.uFocus.value.set(focus.dot(axes.right), focus.dot(axes.up))
     u.uCentre.value.copy(focus)
     u.uRight.value.copy(axes.right)
@@ -208,16 +270,30 @@ export class Precipitation {
     u.uTexel.value = texel
     const area = this.box.x * this.box.y
     for (const kind of ["rain", "snow"] as const) {
-      const drops = kind === "rain" ? this.rain : this.snow, uniforms = drops.material.uniforms
+      const drops = kind === "rain" ? this.rain : this.snow,
+        uniforms = drops.material.uniforms
       planeVelocity(frame.wind, FALL[kind], axes.right, axes.up, this.velocity)
-      this.scroll[kind].forEach((scroll, i) => advanceScroll(scroll, this.layer.copy(this.velocity).multiplyScalar(LAYERS[i]!), dt, this.box))
+      this.scroll[kind].forEach((scroll, i) =>
+        advanceScroll(
+          scroll,
+          this.layer.copy(this.velocity).multiplyScalar(LAYERS[i]!),
+          dt,
+          this.box,
+        ),
+      )
       const count = dropCount(kind, kind === "rain" ? frame.rain : frame.snow, area)
       drops.geometry.setDrawRange(0, kind === "rain" ? 2 * count : count)
-      uniforms["uColor"]!.value.setHex(kind === "rain" ? PALETTE.rain : PALETTE.snowFlake).multiplyScalar(frame.ambient)
+      const color = uniforms["uColor"]!.value as Color
+      color.setHex(kind === "rain" ? PALETTE.rain : PALETTE.snowFlake).multiplyScalar(frame.ambient)
     }
     // The streak points back along the rain's on-screen velocity, rounded to whole texels.
-    const v = planeVelocity(frame.wind, FALL.rain, axes.right, axes.up, this.velocity), speed = v.length() || 1
-    this.rain.material.uniforms["uStreak"]!.value.set(Math.round((v.x / speed) * STREAK / texel) * texel, Math.round((v.y / speed) * STREAK / texel) * texel)
+    const v = planeVelocity(frame.wind, FALL.rain, axes.right, axes.up, this.velocity),
+      speed = v.length() || 1
+    const streak = this.rain.material.uniforms["uStreak"]!.value as Vector2
+    streak.set(
+      Math.round(((v.x / speed) * STREAK) / texel) * texel,
+      Math.round(((v.y / speed) * STREAK) / texel) * texel,
+    )
     this.snow.material.uniforms["uTime"]!.value = frame.now % TIME_WRAP
   }
 }

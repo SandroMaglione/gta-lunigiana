@@ -29,9 +29,11 @@ export interface Emitter {
 }
 
 /** Smoothing time constants, s: gain, pan, send and Doppler; the cutoff glides slower. */
-const GLIDE = 0.05, CUTOFF_GLIDE = 0.1
+const GLIDE = 0.05,
+  CUTOFF_GLIDE = 0.1
 /** Release fade time constant, s, and how many of them after the release the nodes are freed (−52 dB). */
-const FADE = 0.08, LINGER = 6
+const FADE = 0.08,
+  LINGER = 6
 /**
  * Web Audio reads a lowpass Q in dB. 20·log10(√½) ≈ −3.01 dB is Butterworth: maximally flat, no
  * resonance bump, −3 dB at the cutoff, so an open path (20 kHz) stays transparent.
@@ -42,7 +44,11 @@ const LOWPASS_Q = 20 * Math.log10(Math.SQRT1_2)
 export const makeEmitter = (ctx: BaseAudioContext, bus: Bus, at: Placement): Emitter => {
   const nyquist = ctx.sampleRate / 2
   const input = new GainNode(ctx)
-  const lowpass = new BiquadFilterNode(ctx, { type: "lowpass", Q: LOWPASS_Q, frequency: Math.min(at.cutoff, nyquist) })
+  const lowpass = new BiquadFilterNode(ctx, {
+    type: "lowpass",
+    Q: LOWPASS_Q,
+    frequency: Math.min(at.cutoff, nyquist),
+  })
   const gain = new GainNode(ctx, { gain: at.gain })
   const panner = new StereoPannerNode(ctx, { pan: at.pan })
   const send = new GainNode(ctx, { gain: at.wet })
@@ -69,6 +75,6 @@ export const makeEmitter = (ctx: BaseAudioContext, bus: Bus, at: Placement): Emi
       gain.gain.setTargetAtTime(0, now, fade)
       free(now + LINGER * fade)
     },
-    free
+    free,
   }
 }

@@ -35,7 +35,12 @@ const VERTEX = /* glsl */ `
  * ambient light, at night it adds its vertex colour (warm window light, lantern light) × `uLamps`.
  */
 export const glowMaterial = new ShaderMaterial({
-  uniforms: { uLamps: SKY_UNIFORMS.uLamps, uAmbient: SKY_UNIFORMS.uAmbient, uExposure: SKY_UNIFORMS.uExposure, uGlass: { value: new Color(PALETTE.windowGlass) } },
+  uniforms: {
+    uLamps: SKY_UNIFORMS.uLamps,
+    uAmbient: SKY_UNIFORMS.uAmbient,
+    uExposure: SKY_UNIFORMS.uExposure,
+    uGlass: { value: new Color(PALETTE.windowGlass) },
+  },
   vertexColors: true,
   vertexShader: VERTEX,
   fragmentShader: /* glsl */ `
@@ -48,7 +53,7 @@ export const glowMaterial = new ShaderMaterial({
       if (uLamps < ${GLOW_FROM.toFixed(2)}) discard;
       gl_FragColor = vec4(uGlass * uAmbient + vLit * (uLamps * ${GLOW_GAIN.toFixed(2)} / uExposure), 1.0);
     }
-  `
+  `,
 })
 
 const LAMP_FRAGMENT = /* glsl */ `
@@ -62,12 +67,18 @@ const LAMP_FRAGMENT = /* glsl */ `
   }
 `
 /** A vehicle lamp material: `on` shines at night (HDR), off keeps the day look (vertex colour × ambient). One program for both. */
-const lampMaterial = (on: boolean): ShaderMaterial => new ShaderMaterial({
-  uniforms: { uLamps: SKY_UNIFORMS.uLamps, uAmbient: SKY_UNIFORMS.uAmbient, uExposure: SKY_UNIFORMS.uExposure, uOn: { value: on ? 1 : 0 } },
-  vertexColors: true,
-  vertexShader: VERTEX,
-  fragmentShader: LAMP_FRAGMENT
-})
+const lampMaterial = (on: boolean): ShaderMaterial =>
+  new ShaderMaterial({
+    uniforms: {
+      uLamps: SKY_UNIFORMS.uLamps,
+      uAmbient: SKY_UNIFORMS.uAmbient,
+      uExposure: SKY_UNIFORMS.uExposure,
+      uOn: { value: on ? 1 : 0 },
+    },
+    vertexColors: true,
+    vertexShader: VERTEX,
+    fragmentShader: LAMP_FRAGMENT,
+  })
 
 /** The vehicle lamp materials (shared by every vehicle): lamps on (moving traffic, the player's car) and off (parked). */
 export const vehicleLampMaterials = { on: lampMaterial(true), off: lampMaterial(false) } as const

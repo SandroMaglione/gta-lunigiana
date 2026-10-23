@@ -27,7 +27,8 @@ export interface SunTimes {
 /** The UTC second within a second where the sun's elevation crosses `SUNRISE_ELEVATION` between `from` (on one side) and `to` (on the other). */
 const crossing = (from: number, to: number): number => {
   const above = sunOver(from).elevation > SUNRISE_ELEVATION
-  let low = from, high = to
+  let low = from,
+    high = to
   while (high - low > 0.5) {
     const mid = (low + high) / 2
     if (sunOver(mid).elevation > SUNRISE_ELEVATION === above) low = mid
@@ -42,11 +43,13 @@ const crossing = (from: number, to: number): number => {
  * then by bisection. Undefined on a day the sun never crosses the horizon (never at Italy's latitudes).
  */
 export const sunTimes = (t: number): SunTimes | undefined => {
-  const local = t + romeOffset(t), midnight = utcFromRome(Math.floor(local / DAY) * DAY)
+  const local = t + romeOffset(t),
+    midnight = utcFromRome(Math.floor(local / DAY) * DAY)
   let sunrise: number | undefined, sunset: number | undefined
   let before = sunOver(midnight).elevation > SUNRISE_ELEVATION
   for (let hour = 1; hour <= 24; hour++) {
-    const at = midnight + hour * 3600, now = sunOver(at).elevation > SUNRISE_ELEVATION
+    const at = midnight + hour * 3600,
+      now = sunOver(at).elevation > SUNRISE_ELEVATION
     if (now !== before) {
       if (now) sunrise ??= crossing(at - 3600, at)
       else sunset ??= crossing(at - 3600, at)
