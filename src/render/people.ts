@@ -42,16 +42,60 @@ const HANG: Arm = [0, 0.1]
 /** Each frame's pose (TUNED by eye: the walk's legs ≈ ±20°, the run's thigh up 43° and the rear heel kicked up, arms bent 90°). */
 const STANCES: Record<PersonFrame, Stance> = {
   stand: { lean: 0, legs: [STILL, STILL], arms: [HANG, HANG] },
-  walk1: { lean: 0, legs: [[0.35, 0.05], [-0.3, 0.3]], arms: [[-0.3, 0.2], [0.3, 0.3]] },
-  walk2: { lean: 0, legs: [[-0.3, 0.3], [0.35, 0.05]], arms: [[0.3, 0.3], [-0.3, 0.2]] },
-  run1: { lean: 0.2, legs: [[0.75, 0.5], [-0.45, 1.3]], arms: [[-0.6, 1.5], [0.6, 1.5]] },
-  run2: { lean: 0.2, legs: [[-0.45, 1.3], [0.75, 0.5]], arms: [[0.6, 1.5], [-0.6, 1.5]] },
+  walk1: {
+    lean: 0,
+    legs: [
+      [0.35, 0.05],
+      [-0.3, 0.3],
+    ],
+    arms: [
+      [-0.3, 0.2],
+      [0.3, 0.3],
+    ],
+  },
+  walk2: {
+    lean: 0,
+    legs: [
+      [-0.3, 0.3],
+      [0.35, 0.05],
+    ],
+    arms: [
+      [0.3, 0.3],
+      [-0.3, 0.2],
+    ],
+  },
+  run1: {
+    lean: 0.2,
+    legs: [
+      [0.75, 0.5],
+      [-0.45, 1.3],
+    ],
+    arms: [
+      [-0.6, 1.5],
+      [0.6, 1.5],
+    ],
+  },
+  run2: {
+    lean: 0.2,
+    legs: [
+      [-0.45, 1.3],
+      [0.75, 0.5],
+    ],
+    arms: [
+      [0.6, 1.5],
+      [-0.6, 1.5],
+    ],
+  },
   shock: { lean: 0, legs: [STILL, STILL], arms: ["head", "head"] },
-  talk: { lean: 0, legs: [STILL, STILL], arms: [HANG, [0.25, 1.5]] }
+  talk: { lean: 0, legs: [STILL, STILL], arms: [HANG, [0.25, 1.5]] },
 }
 
 /** The point `length` m from `from` along a limb swung `angle` rad forward of straight down. */
-const swing = (from: Vec, length: number, angle: number): Vec => [from[0] + Math.sin(angle) * length, from[1] - Math.cos(angle) * length, from[2]]
+const swing = (from: Vec, length: number, angle: number): Vec => [
+  from[0] + Math.sin(angle) * length,
+  from[1] - Math.cos(angle) * length,
+  from[2],
+]
 
 /**
  * A person's build, m. Stylised like the old figure (a big head reads at the game's pixel size): head 0.19 of the height,
@@ -59,54 +103,85 @@ const swing = (from: Vec, length: number, angle: number): Vec => [from[0] + Math
  * an adult seven and a half); widths follow the height, kids a little stockier, women narrower in the shoulders.
  */
 const measure = (look: Look) => {
-  const h = look.height, kid = look.age === "kid"
-  const head = kid ? 0.3 * Math.sqrt(h / 1.2) : 0.19 * h, legs = (kid ? 0.42 : 0.47) * h
+  const h = look.height,
+    kid = look.age === "kid"
+  const head = kid ? 0.3 * Math.sqrt(h / 1.2) : 0.19 * h,
+    legs = (kid ? 0.42 : 0.47) * h
   const w = kid ? (1.1 * h) / ADULT : Math.sqrt(h / ADULT)
   return {
-    head, legs, torso: h - legs - head, foot: 0.07 * w, depth: 0.13 * w, shoulder: (look.female ? 0.21 : 0.245) * w,
-    hip: 0.1 * w, leg: 0.17 * w, arm: 0.12 * w,
+    head,
+    legs,
+    torso: h - legs - head,
+    foot: 0.07 * w,
+    depth: 0.13 * w,
+    shoulder: (look.female ? 0.21 : 0.245) * w,
+    hip: 0.1 * w,
+    leg: 0.17 * w,
+    arm: 0.12 * w,
     // Upper arm, forearm and hand as shares of the height (Drillis & Contini 1966: 0.186, 0.146, 0.108; the hand drawn shorter).
-    upper: 0.186 * h, fore: 0.146 * h, hand: 0.09 * h
+    upper: 0.186 * h,
+    fore: 0.146 * h,
+    hand: 0.09 * h,
   }
 }
 
 /** The colour of a flat cap: one of two tweeds, fixed by the look. */
-const tweed = (look: Look): number => ((look.shirt ^ look.pants) & 1) === 0 ? PALETTE.tweedBrown : PALETTE.tweedGrey
+const tweed = (look: Look): number =>
+  ((look.shirt ^ look.pants) & 1) === 0 ? PALETTE.tweedBrown : PALETTE.tweedGrey
 
 /**
  * Whether a person wears long sleeves: elders do, and about a third of the others, fixed by the look (the hair, skin and shirt
  * colours: not the trousers, which a dress sets to the shirt's colour).
  */
-export const longSleeves = (look: Look): boolean => look.age === "elder" || (look.hair ^ look.skin ^ look.shirt) % 3 === 0
+export const longSleeves = (look: Look): boolean =>
+  look.age === "elder" || (look.hair ^ look.skin ^ look.shirt) % 3 === 0
 
 /** One frame of a person. */
 const personFrame = (look: Look, stance: Stance): BufferGeometry => {
-  const f = new Figure(), m = measure(look)
+  const f = new Figure(),
+    m = measure(look)
   const lean = stance.lean + (look.age === "elder" ? STOOP : 0)
   const sleeve = longSleeves(look) ? look.shirt : look.skin
   const skirted = look.outfit === "skirt" || look.outfit === "dress"
-  const thighColour = skirted ? look.skin : look.pants, shinColour = look.outfit === "trousers" ? look.pants : look.skin
+  const thighColour = skirted ? look.skin : look.pants,
+    shinColour = look.outfit === "trousers" ? look.pants : look.skin
   const half = (m.legs - m.foot) / 2
 
   let lowest = Infinity
   stance.legs.forEach(([thigh, knee], side) => {
     const hip: Vec = [0, m.legs, (side === 0 ? -1 : 1) * m.hip]
-    const kneeAt = swing(hip, half, thigh), ankle = swing(kneeAt, half, thigh - knee)
+    const kneeAt = swing(hip, half, thigh),
+      ankle = swing(kneeAt, half, thigh - knee)
     f.limb(hip, kneeAt, m.leg, m.leg, thighColour)
     f.limb(kneeAt, ankle, m.leg * 0.9, m.leg * 0.9, shinColour)
-    f.box(leaning([ankle[0], ankle[1] - m.foot, ankle[2]]), [-0.05, 0, -m.leg / 2], [0.1 + m.leg / 2, m.foot, m.leg / 2], PALETTE.shoe)
+    f.box(
+      leaning([ankle[0], ankle[1] - m.foot, ankle[2]]),
+      [-0.05, 0, -m.leg / 2],
+      [0.1 + m.leg / 2, m.foot, m.leg / 2],
+      PALETTE.shoe,
+    )
     lowest = Math.min(lowest, ankle[1] - m.foot)
   })
   if (skirted) {
     // A skirt flares from the waist to just over the knee; a dress is the same in the shirt's colour.
-    const top: [number, number] = [m.depth + 0.01, m.hip + m.leg / 2 + 0.01], flare: [number, number] = [m.depth + 0.08, top[1] + 0.06]
-    f.frustum(leaning([0, 0, 0]), m.legs * 0.5, m.legs + 0.06, flare, top, look.outfit === "dress" ? look.shirt : look.pants)
+    const top: [number, number] = [m.depth + 0.01, m.hip + m.leg / 2 + 0.01],
+      flare: [number, number] = [m.depth + 0.08, top[1] + 0.06]
+    f.frustum(
+      leaning([0, 0, 0]),
+      m.legs * 0.5,
+      m.legs + 0.06,
+      flare,
+      top,
+      look.outfit === "dress" ? look.shirt : look.pants,
+    )
   }
 
   const torso: Basis = leaning([0, m.legs, 0], lean)
   f.box(torso, [-m.depth, 0, -m.shoulder], [m.depth, m.torso, m.shoulder], look.shirt)
   const head: Basis = leaning(at(torso, [0.01, m.torso, 0]), lean * 0.4)
-  const hx = m.head * 0.47, hz = m.head * 0.45, hs = m.head
+  const hx = m.head * 0.47,
+    hz = m.head * 0.45,
+    hs = m.head
   f.box(head, [-hx, 0, -hz], [hx, hs, hz], look.skin)
   hair(f, head, look, hx, hz, hs)
 
@@ -116,7 +191,11 @@ const personFrame = (look: Look, stance: Stance): BufferGeometry => {
     let elbow: Vec, wrist: Vec, tip: Vec
     if (arm === "head") {
       // Elbows out and up, the hands flat on the sides of the head.
-      elbow = [shoulder[0] + 0.3 * m.upper, shoulder[1] + 0.45 * m.upper, shoulder[2] + s * 0.84 * m.upper]
+      elbow = [
+        shoulder[0] + 0.3 * m.upper,
+        shoulder[1] + 0.45 * m.upper,
+        shoulder[2] + s * 0.84 * m.upper,
+      ]
       wrist = at(head, [hx * 0.2, hs * 0.35, s * (hz + m.arm / 2)])
       tip = [wrist[0], wrist[1] + m.hand, wrist[2]]
     } else {
@@ -134,9 +213,11 @@ const personFrame = (look: Look, stance: Stance): BufferGeometry => {
 
 /** The hair (or cap) on a head spanning x ±hx (the face at +x), y 0…hs and z ±hz in `head`'s frame. */
 const hair = (f: Figure, head: Basis, look: Look, hx: number, hz: number, hs: number): void => {
-  const o = 0.015, colour = look.hair
+  const o = 0.015,
+    colour = look.hair
   const top = () => f.box(head, [-hx - o, hs * 0.78, -hz - o], [hx + o, hs + 0.03, hz + o], colour)
-  const back = (from: number) => f.box(head, [-hx - 0.02, from, -hz - o], [-hx + 0.06, hs + 0.03, hz + o], colour)
+  const back = (from: number) =>
+    f.box(head, [-hx - 0.02, from, -hz - o], [-hx + 0.06, hs + 0.03, hz + o], colour)
   switch (look.hairdo) {
     case "short":
       top()
@@ -146,7 +227,13 @@ const hair = (f: Figure, head: Basis, look: Look, hx: number, hz: number, hs: nu
       // Falls to the shoulders at the back and covers the sides of the head.
       top()
       f.box(head, [-hx - 0.03, -0.12 * hs, -hz - 0.02], [-hx + 0.07, hs + 0.03, hz + 0.02], colour)
-      for (const s of [-1, 1]) f.box(head, [-hx - o, hs * 0.25, s > 0 ? hz : -hz - 0.025], [0, hs, s > 0 ? hz + 0.025 : -hz], colour)
+      for (const s of [-1, 1])
+        f.box(
+          head,
+          [-hx - o, hs * 0.25, s > 0 ? hz : -hz - 0.025],
+          [0, hs, s > 0 ? hz + 0.025 : -hz],
+          colour,
+        )
       break
     case "bun":
       top()
@@ -156,7 +243,13 @@ const hair = (f: Figure, head: Basis, look: Look, hx: number, hz: number, hs: nu
     case "bald":
       // A horseshoe fringe round the back and the sides; the crown shows the skin.
       f.box(head, [-hx - o, hs * 0.35, -hz - o], [-hx + 0.04, hs * 0.62, hz + o], colour)
-      for (const s of [-1, 1]) f.box(head, [-hx, hs * 0.35, s > 0 ? hz : -hz - o], [0, hs * 0.62, s > 0 ? hz + o : -hz], colour)
+      for (const s of [-1, 1])
+        f.box(
+          head,
+          [-hx, hs * 0.35, s > 0 ? hz : -hz - o],
+          [0, hs * 0.62, s > 0 ? hz + o : -hz],
+          colour,
+        )
       break
     case "cap": {
       // A flat cap (coppola) with a short brim over the eyes, short hair showing under it at the back.
@@ -171,7 +264,9 @@ const hair = (f: Figure, head: Basis, look: Look, hx: number, hz: number, hs: nu
 
 /** Every frame of a person with this look. */
 const personFrames = (look: Look): Record<PersonFrame, BufferGeometry> =>
-  Object.fromEntries(PERSON_FRAMES.map((frame) => [frame, personFrame(look, STANCES[frame])])) as Record<PersonFrame, BufferGeometry>
+  Object.fromEntries(
+    PERSON_FRAMES.map((frame) => [frame, personFrame(look, STANCES[frame])]),
+  ) as Record<PersonFrame, BufferGeometry>
 
 /** Below this speed (m/s) a person is drawn standing (TUNED: a chat partner turning on the spot is not walking). */
 const STILL_SPEED = 0.2
@@ -208,8 +303,12 @@ export interface Doing {
 export const framePerson = (d: Doing): PersonFrame => {
   if (d.lying) return "stand"
   if (d.mood === "shock") return "shock"
-  if (d.speed < STILL_SPEED) return d.mood === "chat" && Math.floor(d.clock / TALK_BEAT + d.phase * 2) % 2 === 1 ? "talk" : "stand"
-  if (d.mood === "flee" || d.speed > RUN_GAIT) return Math.floor(d.walked / (RUN_STEP * d.height)) % 2 === 0 ? "run1" : "run2"
+  if (d.speed < STILL_SPEED)
+    return d.mood === "chat" && Math.floor(d.clock / TALK_BEAT + d.phase * 2) % 2 === 1
+      ? "talk"
+      : "stand"
+  if (d.mood === "flee" || d.speed > RUN_GAIT)
+    return Math.floor(d.walked / (RUN_STEP * d.height)) % 2 === 0 ? "run1" : "run2"
   return WALK_CYCLE[Math.floor(d.walked / ((WALK_STEP * d.height) / 2)) % 4]!
 }
 
@@ -221,7 +320,10 @@ const POOL = 0.8
  * those would reach into the walls beside them. Within a gait one box encloses every frame, so the silhouette does not jump
  * every half step, and the body's own limbs never poke out in front of it (they would show yellow).
  */
-const GAITS = { walk: ["stand", "walk1", "walk2"], run: ["run1", "run2"] } as const satisfies Record<string, ReadonlyArray<PersonFrame>>
+const GAITS = {
+  walk: ["stand", "walk1", "walk2"],
+  run: ["run1", "run2"],
+} as const satisfies Record<string, ReadonlyArray<PersonFrame>>
 
 /** A person node: its look's frames, the one for what it does now, lying along its heading when down or dead. */
 export class PersonNode extends FigureNode<PersonFrame> implements Doing {
@@ -239,7 +341,13 @@ export class PersonNode extends FigureNode<PersonFrame> implements Doing {
     const front = frames.stand.boundingBox?.max.x ?? 0
     // Lying is the standing figure tipped forward about its right axis onto its face, the feet where it stood; the pool spreads
     // under the chest and head.
-    super(frames, "stand", material, { turn: [0, 0, -Math.PI / 2], shift: [0, front, 0] }, { x: 0.6 * look.height, z: 0, radius: POOL, seed })
+    super(
+      frames,
+      "stand",
+      material,
+      { turn: [0, 0, -Math.PI / 2], shift: [0, front, 0] },
+      { x: 0.6 * look.height, z: 0, radius: POOL, seed },
+    )
     this.height = look.height
     this.phase = seeded(seed + 0x9e3779b9)()
   }
@@ -248,7 +356,15 @@ export class PersonNode extends FigureNode<PersonFrame> implements Doing {
   pose(): void {
     const frame = framePerson(this)
     this.body.geometry = this.frames[frame]
-    this.showProxy(!this.xrayed ? undefined : this.lying ? "lying" : frame === "run1" || frame === "run2" ? "run" : "walk")
+    this.showProxy(
+      this.xrayed
+        ? this.lying
+          ? "lying"
+          : frame === "run1" || frame === "run2"
+            ? "run"
+            : "walk"
+        : undefined,
+    )
   }
 
   /** Shows its x-ray silhouette (`on`), fitted to its gait or to its body lying down, or hides it. */
@@ -262,7 +378,9 @@ export class PersonNode extends FigureNode<PersonFrame> implements Doing {
     if (key === "walk" || key === "run") return xray(GAITS[key].map((frame) => this.frames[frame]))
     // The box round the body as it lies, not the standing box turned with it: that would reach under the ground.
     const { turn, shift } = this.lies
-    const lying = this.frames.stand.clone().applyMatrix4(new Matrix4().makeRotationFromEuler(new Euler(...turn)).setPosition(...shift))
+    const lying = this.frames.stand
+      .clone()
+      .applyMatrix4(new Matrix4().makeRotationFromEuler(new Euler(...turn)).setPosition(...shift))
     const proxy = xray([lying])
     lying.dispose()
     return proxy

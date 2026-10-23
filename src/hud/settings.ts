@@ -14,10 +14,15 @@ import { element } from "./title.ts"
  * What a key pressed in the dialog does: Esc cancels its default (the browser closing the dialog itself, which a held-down repeat or
  * Ctrl+Esc would do) and goes on to the window's router, which closes it; any other key stops, so it neither drives nor walks.
  */
-export const settingsKey = (event: Pick<KeyboardEvent, "key">): "cancel" | "stop" => (event.key === "Escape" ? "cancel" : "stop")
+export const settingsKey = (event: Pick<KeyboardEvent, "key">): "cancel" | "stop" =>
+  event.key === "Escape" ? "cancel" : "stop"
 
 /** Checks the radio of `preset` (none for a hand-set mix of knobs) and shows the Custom note only then. */
-export const markPreset = (radios: ReadonlyArray<{ readonly value: string; checked: boolean }>, custom: Pick<HTMLElement, "hidden">, preset: string | undefined): void => {
+export const markPreset = (
+  radios: ReadonlyArray<{ readonly value: string; checked: boolean }>,
+  custom: Pick<HTMLElement, "hidden">,
+  preset: string | undefined,
+): void => {
   for (const radio of radios) radio.checked = radio.value === preset
   custom.hidden = preset !== undefined
 }
@@ -25,15 +30,28 @@ export const markPreset = (radios: ReadonlyArray<{ readonly value: string; check
 /** Binds the settings to their markup (#settings) and to `store`, closed. Choosing a preset applies it at once. */
 export const makeSettings = (document: Document, store: HandlingStore) => {
   const dialog = element(document, "settings") as HTMLDialogElement
-  const physics = element(document, "settings-physics"), custom = element(document, "settings-custom")
+  const physics = element(document, "settings-physics"),
+    custom = element(document, "settings-custom")
   const radios = PRESET_IDS.map((id) => {
     const { label, description } = HANDLING_PRESETS[id]
-    const radio = Object.assign(document.createElement("input"), { type: "radio", name: "physics", id: `physics-${id}`, value: id })
-    const about = Object.assign(document.createElement("p"), { id: `${radio.id}-about`, textContent: description })
+    const radio = Object.assign(document.createElement("input"), {
+      type: "radio",
+      name: "physics",
+      id: `physics-${id}`,
+      value: id,
+    })
+    const about = Object.assign(document.createElement("p"), {
+      id: `${radio.id}-about`,
+      textContent: description,
+    })
     radio.setAttribute("aria-describedby", about.id)
     radio.addEventListener("change", () => store.choose(id))
     const row = Object.assign(document.createElement("div"), { className: "preset" })
-    row.append(radio, Object.assign(document.createElement("label"), { htmlFor: radio.id, textContent: label }), about)
+    row.append(
+      radio,
+      Object.assign(document.createElement("label"), { htmlFor: radio.id, textContent: label }),
+      about,
+    )
     physics.append(row)
     return radio
   })
@@ -56,6 +74,6 @@ export const makeSettings = (document: Document, store: HandlingStore) => {
       dialog.showModal()
       const focus = radios.find((radio) => radio.checked) ?? radios[0]
       focus?.focus()
-    }
+    },
   }
 }

@@ -1,0 +1,22 @@
+# Git hooks, installed by `pnpm install` (the `prepare` script runs `lefthook install`).
+# pre-commit formats and lints the staged files; pre-push runs the same gates as CI, bar the tests.
+pre-commit:
+  piped: true
+  jobs:
+    - name: format
+      glob: "*.{ts,js,json,jsonc,yml,yaml,html,css}"
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    - name: lint
+      glob: "*.ts"
+      run: pnpm exec oxlint --deny-warnings --report-unused-disable-directives {staged_files}
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: format
+      run: pnpm format:check
+    - name: typecheck
+      run: pnpm typecheck
+    - name: lint
+      run: pnpm lint

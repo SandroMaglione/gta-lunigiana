@@ -1,17 +1,29 @@
 /**
  * Map vocabulary shared by the build (src/tools) and the runtime map module:
- * road classes, building styles, area kinds and the tree-trunk wall size. Imports no data,
- * so the build can use it before monzone.bin exists. Game code imports these
- * through `./index.ts`.
+ * where the map lies on the Earth, road classes, building styles, area kinds and the tree-trunk
+ * wall size. Imports no data, so the build can use it before monzone.bin exists. Game code imports
+ * these through `./index.ts`; the sky (`src/sim/sky`) reads the loaded map's place through
+ * `place()` (sky/place.ts) instead.
  *
  * @module map/kinds
  */
+
+/** The map's origin, degrees (north, east): x and y count metres east and north of it. The build projects with it and writes it as `MAP.origin`. */
+export const ORIGIN = { lat: 44.16175, lon: 10.13 } as const
 
 /**
  * Highway classes the build emits, widest first. The build folds OSM `primary` (the SR445) into
  * tertiary, `living_street` into residential, `footway` and `pedestrian` into path.
  */
-export const ROAD_CLASSES = ["tertiary", "unclassified", "residential", "service", "track", "path", "steps"] as const
+export const ROAD_CLASSES = [
+  "tertiary",
+  "unclassified",
+  "residential",
+  "service",
+  "track",
+  "path",
+  "steps",
+] as const
 export type RoadClass = (typeof ROAD_CLASSES)[number]
 
 const roadClasses: ReadonlySet<string> = new Set(ROAD_CLASSES)
@@ -29,8 +41,11 @@ export const ROADS = {
   service: { w: 3.5, paved: false, use: "traffic" },
   track: { w: 3, paved: false, use: "drive" },
   path: { w: 1.5, paved: false, use: "walk" },
-  steps: { w: 2, paved: false, use: "walk" }
-} as const satisfies Record<RoadClass, { readonly w: number; readonly paved: boolean; readonly use: "traffic" | "drive" | "walk" }>
+  steps: { w: 2, paved: false, use: "walk" },
+} as const satisfies Record<
+  RoadClass,
+  { readonly w: number; readonly paved: boolean; readonly use: "traffic" | "drive" | "walk" }
+>
 
 /** Whether the player can drive a road of this class (tracks included). */
 export const isDrivable = (cls: string): boolean => isRoadClass(cls) && ROADS[cls].use !== "walk"
@@ -39,13 +54,39 @@ export const isDrivable = (cls: string): boolean => isRoadClass(cls) && ROADS[cl
 export const isTraffic = (cls: string): boolean => isRoadClass(cls) && ROADS[cls].use === "traffic"
 
 /** Facade styles the build emits. */
-export const BUILDING_STYLES = ["plaster", "stone", "church", "tower", "industrial", "station", "ruin"] as const
+export const BUILDING_STYLES = [
+  "plaster",
+  "stone",
+  "church",
+  "tower",
+  "industrial",
+  "station",
+  "ruin",
+] as const
 export type BuildingStyle = (typeof BUILDING_STYLES)[number]
 
 /** Land-use kinds the build emits. */
 export const AREA_KINDS = [
-  "forest", "cemetery", "pitch", "park", "parking", "vineyard", "farmland", "farmyard", "industrial", "residential", "platform", "school", "ruins",
-  "grassland", "paved", "quarry", "rock", "sparse", "scree", "scrub"
+  "forest",
+  "cemetery",
+  "pitch",
+  "park",
+  "parking",
+  "vineyard",
+  "farmland",
+  "farmyard",
+  "industrial",
+  "residential",
+  "platform",
+  "school",
+  "ruins",
+  "grassland",
+  "paved",
+  "quarry",
+  "rock",
+  "sparse",
+  "scree",
+  "scrub",
 ] as const
 export type AreaKind = (typeof AREA_KINDS)[number]
 
@@ -59,5 +100,22 @@ export const TRUNK = 0.5
 /** Appends the four edges (ax, ay, bx, by) of the TRUNK square centred on (x, y) to `out`. */
 export const pushTrunk = (out: Array<number>, x: number, y: number): void => {
   const h = TRUNK / 2
-  out.push(x - h, y - h, x + h, y - h, x + h, y - h, x + h, y + h, x + h, y + h, x - h, y + h, x - h, y + h, x - h, y - h)
+  out.push(
+    x - h,
+    y - h,
+    x + h,
+    y - h,
+    x + h,
+    y - h,
+    x + h,
+    y + h,
+    x + h,
+    y + h,
+    x - h,
+    y + h,
+    x - h,
+    y + h,
+    x - h,
+    y - h,
+  )
 }

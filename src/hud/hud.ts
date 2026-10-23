@@ -1,19 +1,23 @@
 /**
- * The HUD: plain DOM over the canvas (markup in index.html). It reads only the PlayerView model
- * and the map, and touches the DOM only when a text changes.
+ * The HUD: plain DOM over the canvas (markup in index.html). It reads only the PlayerView and
+ * SkyView models and the map, and touches the DOM only when a text changes.
  *
  * @module hud
  */
-import type { PlayerViewModel } from "../sim/index.ts"
+import type { PlayerViewModel, SkyViewModel } from "../sim/index.ts"
+import { heightAt } from "../sim/map/index.ts"
+import { clockText, weatherText } from "./clock.ts"
 import { locationAt } from "./location.ts"
 import { makeMinimap } from "./minimap.ts"
-import { element } from "./title.ts"
+import { element, set } from "./title.ts"
 import { makeWorldMap } from "./worldmap.ts"
 
 /** What the action key would do now, and to which vehicle (none when getting out); undefined when nothing. */
-export const actionFor = (view: PlayerViewModel): { readonly verb: string; readonly vehicle?: string } | undefined => {
+export const actionFor = (
+  view: PlayerViewModel,
+): { readonly verb: string; readonly vehicle?: string } | undefined => {
   if (view.mode === "driving") return { verb: "exit" }
-  if (view.mode === "down" || view.nearby === undefined) return undefined
+  if (view.mode === "down" || view.mode === "dead" || view.nearby === undefined) return undefined
   const { occupied, stolen, label } = view.nearby
   return { verb: occupied ? "carjack" : stolen ? "enter" : "steal", vehicle: label }
 }
@@ -21,34 +25,43 @@ export const actionFor = (view: PlayerViewModel): { readonly verb: string; reado
 /** The action prompt for the current view, or "" when there is nothing to do. */
 export const promptText = (view: PlayerViewModel): string => {
   const action = actionFor(view)
-  return action === undefined ? "" : action.vehicle === undefined ? `F — ${action.verb}` : `F — ${action.verb} ${action.vehicle}`
+  return action === undefined
+    ? ""
+    : action.vehicle === undefined
+      ? `F — ${action.verb}`
+      : `F — ${action.verb} ${action.vehicle}`
 }
 
 /** Speedometer reading in km/h (always positive, rounded). */
 export const kmh = (metresPerSecond: number): number => Math.round(Math.abs(metresPerSecond) * 3.6)
 
-/** Binds the HUD to its markup; `update` once per frame with the interpolated player position and the view's yaw. */
+/** Binds the HUD to its markup; `update` once per frame with the interpolated player position, the view's yaw and the sky. */
 export const makeHud = (document: Document) => {
-  const road = element(document, "hud-road"), district = element(document, "hud-district")
-  const stolen = element(document, "hud-stolen"), knocked = element(document, "hud-knocked")
-  const speedo = element(document, "hud-speedo"), speed = element(document, "hud-speed"), vehicle = element(document, "hud-vehicle")
-  const prompt = element(document, "hud-prompt")
+  const road = element(document, "hud-road"),
+    district = element(document, "hud-district")
+  const clock = element(document, "hud-clock"),
+    weather = element(document, "hud-weather")
+  const stolen = element(document, "hud-stolen"),
+    knocked = element(document, "hud-knocked")
+  const speedo = element(document, "hud-speedo"),
+    speed = element(document, "hud-speed"),
+    vehicle = element(document, "hud-vehicle")
+  const prompt = element(document, "hud-prompt"),
+    wasted = element(document, "hud-wasted")
   const minimap = makeMinimap(document)
   const worldMap = makeWorldMap(document)
   let last = { x: Number.NaN, y: Number.NaN, angle: 0 }
-  const toggleMap = (): void => (worldMap.open ? worldMap.hide() : worldMap.show(last.x, last.y, last.angle))
+  const toggleMap = (): void =>
+    worldMap.open ? worldMap.hide() : worldMap.show(last.x, last.y, last.angle)
   const corner = element(document, "hud-minimap")
   corner.append(minimap.canvas)
   // A touch screen has no M key: a tap on the minimap opens the map, and one on the map closes it.
   corner.addEventListener("click", toggleMap)
   element(document, "hud-map").addEventListener("click", () => worldMap.hide())
-  const set = (node: HTMLElement, text: string) => {
-    if (node.textContent !== text) node.textContent = text
-  }
   const show = (node: HTMLElement, visible: boolean) => {
     if (node.hidden === visible) node.hidden = !visible
   }
-  let located = { x: Number.NaN, y: Number.NaN }
+  let located = { x: Number.NaN, y: Number.NaN, z: 0 }
   return {
     /** Whether the full map is open (the host pauses the game while it is). */
     mapOpen: (): boolean => worldMap.open,
@@ -59,15 +72,28 @@ export const makeHud = (document: Document) => {
     repaintMap: (): void => {
       if (worldMap.open) worldMap.show(last.x, last.y, last.angle)
     },
-    update: (view: PlayerViewModel, x: number, y: number, angle: number, yaw: number): void => {
+    update: (
+      view: PlayerViewModel,
+      x: number,
+      y: number,
+      angle: number,
+      yaw: number,
+      sky: SkyViewModel,
+    ): void => {
       last = { x, y, angle }
-      // Names change slowly: look them up again only after moving a couple of metres.
+      // Names and heights change slowly: look them up again only after moving a couple of metres.
       if (!(Math.hypot(x - located.x, y - located.y) < 2)) {
-        located = { x, y }
+        located = { x, y, z: heightAt(x, y) }
         const here = locationAt(x, y)
         set(road, here.road ?? "")
         set(district, here.district)
       }
+      const time = clockText(sky.local.hour * 3600 + sky.local.minute * 60)
+      if (clock.textContent !== time) {
+        clock.textContent = time
+        clock.setAttribute("datetime", time)
+      }
+      set(weather, weatherText(sky, located.x, located.y, located.z))
       set(stolen, String(view.score.stolen))
       set(knocked, String(view.score.knocked))
       show(speedo, view.vehicle !== undefined)
@@ -78,8 +104,10 @@ export const makeHud = (document: Document) => {
       const text = promptText(view)
       show(prompt, text !== "")
       set(prompt, text)
+      // Killed by a blast: "Sei morto" until the player comes back at the start (`Respawn`).
+      show(wasted, view.mode === "dead")
       minimap.draw(x, y, angle, yaw)
-    }
+    },
   }
 }
 
@@ -101,11 +129,16 @@ export type OverlayAction = "toggleMap" | "closeMap" | "toggleSettings"
  * Latin layout (AZERTY too); layouts whose keys type no ASCII character (Cyrillic, Greek) fall back
  * to its position.
  */
-export const overlayKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">, open: Overlays): OverlayAction | undefined => {
+export const overlayKey = (
+  event: Pick<KeyboardEvent, "key" | "code" | "repeat" | "ctrlKey" | "metaKey" | "altKey">,
+  open: Overlays,
+): OverlayAction | undefined => {
   if (open.title || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return undefined
   if (event.key === "Escape") return open.map ? "closeMap" : "toggleSettings"
   const key = event.key.toLowerCase()
-  return !open.settings && (key === "m" || (event.code === "KeyM" && !/^[ -~]$/.test(key))) ? "toggleMap" : undefined
+  return !open.settings && (key === "m" || (event.code === "KeyM" && !/^[ -~]$/.test(key)))
+    ? "toggleMap"
+    : undefined
 }
 
 /**
@@ -114,7 +147,10 @@ export const overlayKey = (event: Pick<KeyboardEvent, "key" | "code" | "repeat" 
  * modal dialog on Esc. Add it before the title card's listener (`titleReady`), so the key that
  * dismisses the card still finds it up.
  */
-export const routeOverlayKeys = (window: Pick<Window, "addEventListener">, overlays: { readonly open: () => Overlays } & Readonly<Record<OverlayAction, () => void>>): void => {
+export const routeOverlayKeys = (
+  window: Pick<Window, "addEventListener">,
+  overlays: { readonly open: () => Overlays } & Readonly<Record<OverlayAction, () => void>>,
+): void => {
   window.addEventListener("keydown", (event) => {
     const action = overlayKey(event, overlays.open())
     if (action === undefined) return
@@ -128,8 +164,15 @@ export const routeOverlayKeys = (window: Pick<Window, "addEventListener">, overl
  * `paused` is false; while it is true, `skip`, after draining the controls' press edges (keys and
  * touch) so presses made over the pause do not act when play resumes (held keys stay held).
  */
-export const pausable = <R>(paused: () => boolean, controls: { readonly snapshot: () => unknown }, tick: () => R, skip: R) => (): R => {
-  if (!paused()) return tick()
-  controls.snapshot()
-  return skip
-}
+export const pausable =
+  <R>(
+    paused: () => boolean,
+    controls: { readonly snapshot: () => unknown },
+    tick: () => R,
+    skip: R,
+  ) =>
+  (): R => {
+    if (!paused()) return tick()
+    controls.snapshot()
+    return skip
+  }

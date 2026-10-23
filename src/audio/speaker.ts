@@ -10,16 +10,33 @@
 import { makeKit } from "./buffers.ts"
 import { makeEmitter, type Emitter } from "./emitter.ts"
 import { makeMixer, SILENCE_DB, type Mixer } from "./mixer.ts"
-import type { Continuous, Kit, OneShot, Placement, Shot, Shots, Speaker, Voice, VoiceFactory, Voices } from "./types.ts"
+import type {
+  Continuous,
+  Kit,
+  OneShot,
+  Placement,
+  Shot,
+  Shots,
+  Speaker,
+  Voice,
+  VoiceFactory,
+  Voices,
+} from "./types.ts"
 
 /** At most this many one-shots play (or wait to) at once. */
 const MAX_SHOTS = 32
+/** A one-shot cut short (`stop`) fades with this time constant, s: a tail under a louder sound ebbs away (35 dB a second), not stops. */
+const STOP_FADE = 0.25
 
 /**
  * The one-shot cap: below `cap` playing, a new sound of `gain` just plays (undefined); at the cap
  * it is dropped unless louder than the quietest playing one, which it replaces.
  */
-export const crowded = <T extends { readonly gain: number }>(playing: ReadonlyArray<T>, gain: number, cap = MAX_SHOTS): T | "drop" | undefined => {
+export const crowded = <T extends { readonly gain: number }>(
+  playing: ReadonlyArray<T>,
+  gain: number,
+  cap = MAX_SHOTS,
+): T | "drop" | undefined => {
   if (playing.length < cap) return undefined
   let quietest = playing[0]!
   for (const shot of playing) if (shot.gain < quietest.gain) quietest = shot
@@ -44,13 +61,18 @@ interface Held {
 }
 
 interface Playing {
+  readonly sound: OneShot
   readonly gain: number
   readonly end: number
   readonly emitter: Emitter
 }
 
 /** The speaker for `host`'s page, playing `voices` and `shots`; `pause` it while the game is paused. */
-export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker & {
+export const makeSpeaker = (
+  host: Window,
+  voices: Voices,
+  shots: Shots,
+): Speaker & {
   /** Suspends the context while `paused` (idempotent; call every frame). */
   readonly pause: (paused: boolean) => void
   /** The output's RMS level, dBFS. */
@@ -79,11 +101,18 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
   const start = (): Live => {
     const ctx = new AudioContext()
     try {
-      const kit = makeKit(ctx), mixer = makeMixer(ctx)
+      const kit = makeKit(ctx),
+        mixer = makeMixer(ctx)
       // Each in its own task, so building the offline graphs never stalls the gesture's frame; a throw inside
       // `prepare` rejects like a failed render.
       for (const [kind, shot] of Object.entries(shots)) {
-        host.setTimeout(() => void Promise.resolve().then(() => shot.prepare?.(ctx, kit)).catch((error: unknown) => fail(kind, error)), 0)
+        host.setTimeout(
+          () =>
+            void Promise.resolve()
+              .then(() => shot.prepare?.(ctx, kit))
+              .catch((error: unknown) => fail(kind, error)),
+          0,
+        )
       }
       return { ctx, kit, mixer }
     } catch (error) {
@@ -94,6 +123,7 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
   }
   const unlock = (event: Event) => {
     // Creating or resuming without user activation fails and makes Chrome warn; older browsers lack the flag.
+    // oxlint-disable-next-line typescript/no-unnecessary-boolean-literal-compare -- userActivation is undefined there, despite the DOM types
     if (!event.isTrusted || host.navigator.userActivation?.isActive === false) return
     if (live === undefined) {
       try {
@@ -109,12 +139,22 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
   for (const type of GESTURES) host.addEventListener(type, unlock)
   host.document.addEventListener("visibilitychange", apply)
 
-  const voice = ({ ctx, kit, mixer }: Live, kind: Continuous["kind"], at: Placement, now: number): Held => {
+  const voice = (
+    { ctx, kit, mixer }: Live,
+    kind: Continuous["kind"],
+    at: Placement,
+    now: number,
+  ): Held => {
     // Silent at first: the first `place` fades the voice in instead of clicking.
     const emitter = makeEmitter(ctx, mixer, { ...at, gain: 0 })
     try {
       const factory = voices[kind] as VoiceFactory<Continuous>
-      return { kind, voice: factory({ ctx, out: emitter.input, cents: emitter.cents, kit }), emitter, held: true }
+      return {
+        kind,
+        voice: factory({ ctx, out: emitter.input, cents: emitter.cents, kit }),
+        emitter,
+        held: true,
+      }
     } catch (error) {
       emitter.free(now)
       throw error
@@ -156,7 +196,8 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
     },
     play: (sound, at, delay) => {
       if (live === undefined || broken.has(sound.kind)) return
-      const { ctx, kit, mixer } = live, now = ctx.currentTime
+      const { ctx, kit, mixer } = live,
+        now = ctx.currentTime
       playing = playing.filter((shot) => shot.end > now)
       const victim = crowded(playing, at.gain)
       if (victim === "drop") return
@@ -171,11 +212,17 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
         const shot = shots[sound.kind] as Shot<OneShot>
         const end = shot.play({ ctx, out: emitter.input, kit }, sound, now + Math.max(0, delay))
         emitter.free(end + 0.1)
-        playing.push({ gain: at.gain, end, emitter })
+        playing.push({ sound, gain: at.gain, end, emitter })
       } catch (error) {
         emitter?.free(now)
         fail(sound.kind, error)
       }
+    },
+    stop: (sound) => {
+      if (live === undefined) return
+      const now = live.ctx.currentTime
+      for (const shot of playing) if (shot.sound === sound) shot.emitter.release(now, STOP_FADE)
+      playing = playing.filter((shot) => shot.sound !== sound)
     },
     flush: () => {
       if (live === undefined) return
@@ -194,6 +241,6 @@ export const makeSpeaker = (host: Window, voices: Voices, shots: Shots): Speaker
       apply()
     },
     level: () => live?.mixer.level() ?? SILENCE_DB,
-    context: () => live?.ctx
+    context: () => live?.ctx,
   }
 }

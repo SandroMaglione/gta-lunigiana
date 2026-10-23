@@ -21,7 +21,16 @@ import { VEHICLES, type VehicleModel } from "../vehicles.ts"
  * lanes), and nobody runs from that. Checked every SAMPLES-th of the horizon. A vehicle behind them (TUNED) they only hear,
  * BEHIND s before it would be on them.
  */
-export const DANGER = { slowest: KNOCK_SPEED, brush: 0.5, fast: 10, close: 0.75, startle: 0.1, horizon: 1.5, behind: 0.6, samples: 15 } as const
+export const DANGER = {
+  slowest: KNOCK_SPEED,
+  brush: 0.5,
+  fast: 10,
+  close: 0.75,
+  startle: 0.1,
+  horizon: 1.5,
+  behind: 0.6,
+  samples: 15,
+} as const
 /** A vehicle faster than USUAL × its street's own traffic (`cruiseSpeed`) is going fast for that street (TUNED). */
 export const USUAL = 1.2
 /** A horn is meant for whoever stands in front of the honking car within this many metres of its axis: the traffic AI's cone. */
@@ -47,12 +56,16 @@ export interface Car {
  */
 const nearMiss = (at: Vec2.Vec2, velocity: Vec2.Vec2, car: Car, horizon: number): number => {
   const { length, width } = VEHICLES[car.model]
-  const k = length / 2 - width / 2, fx = Ops.cos(car.angle), fy = Ops.sin(car.angle)
+  const k = length / 2 - width / 2,
+    fx = Ops.cos(car.angle),
+    fy = Ops.sin(car.angle)
   let least = Number.MAX_VALUE
   for (let i = 0; i <= DANGER.samples; i++) {
     const t = (horizon * i) / DANGER.samples
-    const rx = at.x - car.x + (velocity.x - car.vx) * t, ry = at.y - car.y + (velocity.y - car.vy) * t
-    const along = rx * fx + ry * fy, across = ry * fx - rx * fy
+    const rx = at.x - car.x + (velocity.x - car.vx) * t,
+      ry = at.y - car.y + (velocity.y - car.vy) * t
+    const along = rx * fx + ry * fy,
+      across = ry * fx - rx * fy
     const beyond = along - Math.max(-k, Math.min(k, along))
     least = Math.min(least, beyond * beyond + across * across)
   }
@@ -61,11 +74,16 @@ const nearMiss = (at: Vec2.Vec2, velocity: Vec2.Vec2, car: Car, horizon: number)
 
 /** Whether `car`, closing on someone standing at `at` (facing its angle) and moving at `velocity`, is about to hit them (see DANGER). */
 export const endangers = (at: PoseValue, velocity: Vec2.Vec2, car: Car): boolean => {
-  const closing = (at.x - car.x) * (car.vx - velocity.x) + (at.y - car.y) * (car.vy - velocity.y) > 0
+  const closing =
+    (at.x - car.x) * (car.vx - velocity.x) + (at.y - car.y) * (car.vy - velocity.y) > 0
   if (!closing) return false
   const ahead = (car.x - at.x) * Ops.cos(at.angle) + (car.y - at.y) * Ops.sin(at.angle) >= 0
   const gap = nearMiss(at, velocity, car, ahead ? DANGER.horizon : DANGER.behind)
-  return gap < DANGER.brush || (car.speed > DANGER.fast && gap < DANGER.close + DANGER.startle * Math.max(0, car.speed - car.usual * USUAL))
+  return (
+    gap < DANGER.brush ||
+    (car.speed > DANGER.fast &&
+      gap < DANGER.close + DANGER.startle * Math.max(0, car.speed - car.usual * USUAL))
+  )
 }
 
 /**
@@ -76,32 +94,50 @@ export const endangers = (at: PoseValue, velocity: Vec2.Vec2, car: Car): boolean
  */
 export const alarm = (at: Vec2.Vec2, velocity: Vec2.Vec2, car: Car, dt: number) => {
   const { length, width, brakes } = VEHICLES[car.model]
-  const fx = Ops.cos(car.angle), fy = Ops.sin(car.angle), stop = (car.speed * car.speed) / (2 * brakes.decel)
-  const rx = at.x - car.x, ry = at.y - car.y, ahead = rx * fx + ry * fy - length / 2 - PERSON_RADIUS
+  const fx = Ops.cos(car.angle),
+    fy = Ops.sin(car.angle),
+    stop = (car.speed * car.speed) / (2 * brakes.decel)
+  const rx = at.x - car.x,
+    ry = at.y - car.y,
+    ahead = rx * fx + ry * fy - length / 2 - PERSON_RADIUS
   const before = ahead + ((car.vx - velocity.x) * fx + (car.vy - velocity.y) * fy) * dt
-  const close = Math.abs(ry * fx - rx * fy) < width / 2 + PERSON_RADIUS && ahead >= 0 && ahead < stop
+  const close =
+    Math.abs(ry * fx - rx * fy) < width / 2 + PERSON_RADIUS && ahead >= 0 && ahead < stop
   return { alarming: car.speed > car.usual * USUAL || close, fresh: close && before >= stop }
 }
 
 /** Whether someone at `at` stands in front of the honking `car`, within its cone: the one it honks at. */
 export const honkedAt = (at: Vec2.Vec2, car: PoseValue): boolean => {
-  const fx = Ops.cos(car.angle), fy = Ops.sin(car.angle), rx = at.x - car.x, ry = at.y - car.y
+  const fx = Ops.cos(car.angle),
+    fy = Ops.sin(car.angle),
+    rx = at.x - car.x,
+    ry = at.y - car.y
   return rx * fx + ry * fy > 0 && Math.abs(ry * fx - rx * fy) < HORN_AIM
 }
 
 /** Whether no walk wall stands between `a` and `b`. */
-export const inSight = (a: Vec2.Vec2, b: Vec2.Vec2): boolean => !crossesAny(wallsAlong("walk", a.x, a.y, b.x - a.x, b.y - a.y, 0), a, b)
+export const inSight = (a: Vec2.Vec2, b: Vec2.Vec2): boolean =>
+  !crossesAny(wallsAlong("walk", a.x, a.y, b.x - a.x, b.y - a.y, 0), a, b)
 
 /**
  * The verge of `route` on the person's own side of a vehicle's path, so they never cross in front of it (either, when they stand
  * right in it), the farther from the path.
  */
-export const vergeAway = (route: RouteValue, at: Vec2.Vec2, car: Vec2.Vec2, velocity: Vec2.Vec2): RouteValue => {
-  const lane = laneOf(route.edge, route.forward), along = alongLane(lane, at.x, at.y), verge = walkSide(roadOf(route.edge))
+export const vergeAway = (
+  route: RouteValue,
+  at: Vec2.Vec2,
+  car: Vec2.Vec2,
+  velocity: Vec2.Vec2,
+): RouteValue => {
+  const lane = laneOf(route.edge, route.forward),
+    along = alongLane(lane, at.x, at.y),
+    verge = walkSide(roadOf(route.edge))
   const left = (p: Vec2.Vec2) => velocity.x * (p.y - car.y) - velocity.y * (p.x - car.x)
   const here = left(at)
   const sides = [verge, -verge].map((side) => ({ side, off: left(lanePoint(lane, along, side)) }))
   const mine = sides.filter(({ off }) => off * here > 0)
-  const best = (mine.length > 0 ? mine : sides).reduce((a, b) => (Math.abs(b.off) > Math.abs(a.off) ? b : a))
+  const best = (mine.length > 0 ? mine : sides).reduce((a, b) =>
+    Math.abs(b.off) > Math.abs(a.off) ? b : a,
+  )
   return { ...route, side: best.side }
 }

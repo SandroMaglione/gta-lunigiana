@@ -3,9 +3,33 @@ import { Ops, Random, Vec2 } from "@typeonce/ritmo-math"
 
 import { crossesAny, walkBy, wallsAlong, wrapAngle } from "../body.ts"
 import { MEAN_HEIGHT } from "../population/looks.ts"
-import { alongLane, endNode, type Lane, laneOf, lanePoint, nextWalkEdge, roadOf, walkSide } from "../route.ts"
 import {
-  Dead, Down, Follows, Game, type Look, Motion, Pedestrian, type PedestrianValue, Person, Pose, type PoseValue, Rng, Route, type RouteValue, STEP, Time
+  alongLane,
+  endNode,
+  type Lane,
+  laneOf,
+  lanePoint,
+  nextWalkEdge,
+  roadOf,
+  walkSide,
+} from "../route.ts"
+import {
+  Dead,
+  Down,
+  Follows,
+  Game,
+  type Look,
+  Motion,
+  Pedestrian,
+  type PedestrianValue,
+  Person,
+  Pose,
+  type PoseValue,
+  Rng,
+  Route,
+  type RouteValue,
+  STEP,
+  Time,
 } from "../schema.ts"
 import { slide } from "./foot.ts"
 
@@ -24,7 +48,10 @@ const RUN_PACE = { kid: 3.5, adult: 4.5, elder: 2.5 } as const
 /** A person's walking and running pace, m/s. */
 export const paceOf = (look: Look): { readonly walk: number; readonly run: number } => {
   const sex = look.female ? 1 : 0
-  const scale = Math.min(1 + HEIGHT_SPREAD, Math.max(1 - HEIGHT_SPREAD, look.height / MEAN_HEIGHT[look.age][sex]))
+  const scale = Math.min(
+    1 + HEIGHT_SPREAD,
+    Math.max(1 - HEIGHT_SPREAD, look.height / MEAN_HEIGHT[look.age][sex]),
+  )
   return { walk: WALK_PACE[look.age][sex] * scale, run: RUN_PACE[look.age] * scale }
 }
 
@@ -63,7 +90,11 @@ const FOLLOW_GAIN = 2
 const CATCH_UP = 3
 
 /** The same verge of `route`, travelled the other way. */
-const turnBack = (route: RouteValue): RouteValue => ({ ...route, forward: !route.forward, side: -route.side })
+const turnBack = (route: RouteValue): RouteValue => ({
+  ...route,
+  forward: !route.forward,
+  side: -route.side,
+})
 
 /** `route` turned, if need be, so that it leads from `at` away from `threat` (keeping to the same verge). */
 export const runFrom = (route: RouteValue, at: Vec2.Vec2, threat: Vec2.Vec2): RouteValue => {
@@ -73,12 +104,14 @@ export const runFrom = (route: RouteValue, at: Vec2.Vec2, threat: Vec2.Vec2): Ro
 
 /** Where a follower walks: `side` m to the right of `leader` and `back` m behind it, in the leader's heading frame. */
 export const placeBeside = (leader: PoseValue, side: number, back: number): Vec2.Vec2 => {
-  const fx = Ops.cos(leader.angle), fy = Ops.sin(leader.angle)
+  const fx = Ops.cos(leader.angle),
+    fy = Ops.sin(leader.angle)
   return { x: leader.x + side * fy - back * fx, y: leader.y - side * fx - back * fy }
 }
 
 /** The point LOOK m on from `along` down `lane`, on its verge `side`, kept within the lane and short of `most` m along it. */
-const vergeAhead = (lane: Lane, along: number, side: number, most = lane.length) => lanePoint(lane, Math.max(0, Math.min(lane.length, most, along + LOOK)), side)
+const vergeAhead = (lane: Lane, along: number, side: number, most = lane.length) =>
+  lanePoint(lane, Math.max(0, Math.min(lane.length, most, along + LOOK)), side)
 
 /**
  * A follower's velocity: the leader's own plus FOLLOW_GAIN × the gap to its `place`, at most `run` m/s, so it keeps pace, catches
@@ -87,13 +120,29 @@ const vergeAhead = (lane: Lane, along: number, side: number, most = lane.length)
  * along the leader's lane (`route`, the leader's), on the line through the leader rather than the verge (which may run into the
  * wall the leader slides along), and no nearer the leader than its place is: in single file round the corner.
  */
-export const followVelocity = (at: Vec2.Vec2, place: Vec2.Vec2, leader: Vec2.Vec2, leaderVelocity: Vec2.Vec2, run: number, route: RouteValue): Vec2.Vec2 => {
+export const followVelocity = (
+  at: Vec2.Vec2,
+  place: Vec2.Vec2,
+  leader: Vec2.Vec2,
+  leaderVelocity: Vec2.Vec2,
+  run: number,
+  route: RouteValue,
+): Vec2.Vec2 => {
   const goal = Vec2.distanceSquared(at, place) > CATCH_UP ** 2 ? leader : place
   const way = Vec2.subtract(goal, at)
   if (crossesAny(wallsAlong("walk", at.x, at.y, way.x, way.y, 0), at, goal)) {
-    const lane = laneOf(route.edge, route.forward), side = (leader.x - lane.x) * lane.rx + (leader.y - lane.y) * lane.ry
-    const target = vergeAhead(lane, alongLane(lane, at.x, at.y), side, alongLane(lane, leader.x, leader.y) - Vec2.distance(place, leader))
-    const speed = Math.min(run, Vec2.length(leaderVelocity) + FOLLOW_GAIN * Vec2.distance(target, at))
+    const lane = laneOf(route.edge, route.forward),
+      side = (leader.x - lane.x) * lane.rx + (leader.y - lane.y) * lane.ry
+    const target = vergeAhead(
+      lane,
+      alongLane(lane, at.x, at.y),
+      side,
+      alongLane(lane, leader.x, leader.y) - Vec2.distance(place, leader),
+    )
+    const speed = Math.min(
+      run,
+      Vec2.length(leaderVelocity) + FOLLOW_GAIN * Vec2.distance(target, at),
+    )
     return Vec2.scale(Vec2.normalizeOr(Vec2.subtract(target, at), Vec2.zero), speed)
   }
   const wish = Vec2.add(leaderVelocity, Vec2.scale(way, FOLLOW_GAIN))
@@ -102,16 +151,25 @@ export const followVelocity = (at: Vec2.Vec2, place: Vec2.Vec2, leader: Vec2.Vec
 }
 
 /** `angle` turned toward `target` by at most `most` rad. */
-const turnToward = (angle: number, target: number, most: number): number => angle + Math.max(-most, Math.min(most, wrapAngle(target - angle)))
+const turnToward = (angle: number, target: number, most: number): number =>
+  angle + Math.max(-most, Math.min(most, wrapAngle(target - angle)))
 
 /** A gatherer's distance from the victim: its own, stable for its entity id. */
-const gatherDistance = (id: number, look: Look): number => (look.age === "kid" ? KID_BESIDE : GATHER_NEAR + GATHER_SPREAD * ((id * 0.6180339887) % 1))
+const gatherDistance = (id: number, look: Look): number =>
+  look.age === "kid" ? KID_BESIDE : GATHER_NEAR + GATHER_SPREAD * ((id * 0.6180339887) % 1)
 
 /**
  * One step along `route` at `speed`: the velocity toward a point LOOK ahead on its verge, the route (on to a random next edge
  * at a junction, to the other verge or back when blocked), and the steps it has been getting nowhere.
  */
-const alongRoute = (pose: PoseValue, motion: Vec2.Vec2, start: RouteValue, wasBlocked: number, speed: number, random: Random.Random) => {
+const alongRoute = (
+  pose: PoseValue,
+  motion: Vec2.Vec2,
+  start: RouteValue,
+  wasBlocked: number,
+  speed: number,
+  random: Random.Random,
+) => {
   let route = start
   let lane = laneOf(route.edge, route.forward)
   let along = alongLane(lane, pose.x, pose.y)
@@ -125,14 +183,18 @@ const alongRoute = (pose: PoseValue, motion: Vec2.Vec2, start: RouteValue, wasBl
   const velocity = Vec2.scale(Vec2.normalizeOr(Vec2.subtract(target, pose), Vec2.zero), speed)
   // Motion is last step's real velocity (walls and Contacts' shoves included). Progress is measured along the lane:
   // crossing to the other verge counts, sliding sideways along a wall that blocks the way does not.
-  const progress = (motion.x * lane.dx + motion.y * lane.dy) / Math.max(1e-9, velocity.x * lane.dx + velocity.y * lane.dy)
+  const progress =
+    (motion.x * lane.dx + motion.y * lane.dy) /
+    Math.max(1e-9, velocity.x * lane.dx + velocity.y * lane.dy)
   const blocked = progress < PROGRESS ? wasBlocked + 1 : 0
-  if (blocked > 0 && blocked % BLOCKED_STEPS === 0) route = (blocked / BLOCKED_STEPS) % 2 === 1 ? { ...route, side: -route.side } : turnBack(route)
+  if (blocked > 0 && blocked % BLOCKED_STEPS === 0)
+    route = (blocked / BLOCKED_STEPS) % 2 === 1 ? { ...route, side: -route.side } : turnBack(route)
   return { velocity, route, blocked }
 }
 
 /** Whether two routes are the same, so an unchanged one is not written back. */
-export const sameRoute = (a: RouteValue, b: RouteValue) => a.edge === b.edge && a.forward === b.forward && a.side === b.side
+export const sameRoute = (a: RouteValue, b: RouteValue) =>
+  a.edge === b.edge && a.forward === b.forward && a.side === b.side
 
 /**
  * Pedestrians move as their mood (set by Perceive) says, each at its own pace (`paceOf`): walking their lane along
@@ -141,97 +203,146 @@ export const sameRoute = (a: RouteValue, b: RouteValue) => a.edge === b.edge && 
  * to a stop facing what they attend to; gathering, they walk to a spot near the victim and stand facing them. A follower keeps
  * its place beside its leader and takes the leader's route, or stays by a leader on the ground. Knocked down or dead, they slide.
  */
-export const Pedestrians = Game.System("Lunigiana/Pedestrians", {
-  queries: {
-    peds: Game.Query({
-      selection: {
-        pose: Game.Query.write(Pose),
-        motion: Game.Query.write(Motion),
-        route: Game.Query.write(Route),
-        ped: Game.Query.write(Pedestrian),
-        look: Game.Query.read(Person),
-        follows: Game.Query.optional(Follows),
-        down: Game.Query.optional(Down),
-        dead: Game.Query.optional(Dead)
-      }
-    }),
-    leaders: Game.Query({
-      selection: { pose: Game.Query.read(Pose), motion: Game.Query.read(Motion), route: Game.Query.read(Route), down: Game.Query.optional(Down), dead: Game.Query.optional(Dead) },
-      with: [Pedestrian]
-    })
+export const Pedestrians = Game.System(
+  "Lunigiana/Pedestrians",
+  {
+    queries: {
+      peds: Game.Query({
+        selection: {
+          pose: Game.Query.write(Pose),
+          motion: Game.Query.write(Motion),
+          route: Game.Query.write(Route),
+          ped: Game.Query.write(Pedestrian),
+          look: Game.Query.read(Person),
+          follows: Game.Query.optional(Follows),
+          down: Game.Query.optional(Down),
+          dead: Game.Query.optional(Dead),
+        },
+      }),
+      leaders: Game.Query({
+        selection: {
+          pose: Game.Query.read(Pose),
+          motion: Game.Query.read(Motion),
+          route: Game.Query.read(Route),
+          down: Game.Query.optional(Down),
+          dead: Game.Query.optional(Dead),
+        },
+        with: [Pedestrian],
+      }),
+    },
+    resources: {
+      rng: Game.System.writeResource(Rng),
+      time: Game.System.thisTick(Game.System.readResource(Time)),
+    },
   },
-  resources: { rng: Game.System.writeResource(Rng), time: Game.System.thisTick(Game.System.readResource(Time)) }
-}, ({ queries, resources }) => {
-  const { dt } = resources.time.get()
-  if (dt <= 0) return
-  const random = Random.draw(resources.rng)
-  // Each leader's slowest follower on its feet, by its running pace: a leader fleeing runs no faster, so no kid is left behind.
-  const slowest = new Map<number, number>()
-  for (const { data } of queries.peds.each()) {
-    const follows = data.follows.value()
-    if (follows === undefined || data.down.present || data.dead.present) continue
-    const leader = Game.Entity.id(follows.leader), run = paceOf(data.look.get()).run
-    slowest.set(leader, Math.min(run, slowest.get(leader) ?? run))
-  }
-  for (const { entity, data } of queries.peds.each()) {
-    const pose = data.pose.get()
-    const motion = data.motion.get()
-    if (data.down.present || data.dead.present) {
-      const velocity = slide({ x: motion.vx, y: motion.vy }, dt)
-      const moved = walkBy(pose, Vec2.scale(velocity, dt))
-      const angle = Vec2.lengthSquared(velocity) > 0.01 ? Ops.atan2(velocity.y, velocity.x) : pose.angle
-      data.pose.set({ x: moved.position.x, y: moved.position.y, angle })
-      data.motion.set({ vx: velocity.x, vy: velocity.y, spin: 0 })
-      continue
+  ({ queries, resources }) => {
+    const { dt } = resources.time.get()
+    if (dt <= 0) return
+    const random = Random.draw(resources.rng)
+    // Each leader's slowest follower on its feet, by its running pace: a leader fleeing runs no faster, so no kid is left behind.
+    const slowest = new Map<number, number>()
+    for (const { data } of queries.peds.each()) {
+      const follows = data.follows.value()
+      if (follows === undefined || data.down.present || data.dead.present) continue
+      const leader = Game.Entity.id(follows.leader),
+        run = paceOf(data.look.get()).run
+      slowest.set(leader, Math.min(run, slowest.get(leader) ?? run))
     }
-    const look = data.look.get()
-    const pace = paceOf(look)
-    const was = data.ped.get()
-    let mood: PedestrianValue = was
-    let route = data.route.get()
-    const toward = Ops.atan2(mood.fy - pose.y, mood.fx - pose.x)
-    const follows = data.follows.value()
-    const found = follows === undefined || mood.mood === "gather" ? undefined : queries.leaders.getHandle(follows.leader)
-    const leader = found?.ok === true && !found.value.data.down.present && !found.value.data.dead.present ? found.value.data : undefined
-    // The heading to turn to when (all but) still; undefined: keep facing the way it moves.
-    let face: number | undefined
-    let velocity: Vec2.Vec2
-    if (follows !== undefined && leader !== undefined) {
-      const at = leader.pose.get(), going = leader.motion.get()
-      if (!sameRoute(route, leader.route.get())) route = leader.route.get()
-      velocity = followVelocity(pose, placeBeside(at, follows.side, follows.back), at, { x: going.vx, y: going.vy }, pace.run, route)
-      face = mood.mood === "walk" || mood.mood === "flee" ? at.angle : toward
-      mood = { ...mood, blocked: 0 }
-    } else if (mood.mood === "walk" || mood.mood === "flee") {
-      const fleeing = mood.mood === "flee"
-      const run = Math.min(pace.run, slowest.get(entity.id) ?? pace.run)
-      const step = alongRoute(pose, { x: motion.vx, y: motion.vy }, route, mood.blocked, fleeing ? run : pace.walk, random)
-      velocity = step.velocity
-      route = step.route
-      // Someone fleeing is turning and speeding up (ACCEL), which the count would take for a wall: it stays at zero, so they keep
-      // to the way they chose until they walk again.
-      mood = { ...mood, blocked: fleeing ? 0 : step.blocked }
-    } else if (mood.mood === "gather") {
-      const victim = { x: mood.fx, y: mood.fy }
-      const spot = Vec2.add(victim, Vec2.scale(Vec2.normalizeOr(Vec2.subtract(pose, victim), { x: 1, y: 0 }), gatherDistance(entity.id, look)))
-      const gap = Vec2.distance(spot, pose)
-      velocity = gap < ARRIVED ? Vec2.zero : Vec2.scale(Vec2.subtract(spot, pose), Math.min(pace.walk, gap / dt) / gap)
-      face = toward
-      mood = { ...mood, blocked: 0 }
-    } else {
-      velocity = Vec2.moveToward({ x: motion.vx, y: motion.vy }, Vec2.zero, STOP * dt)
-      face = toward
-      mood = { ...mood, blocked: 0 }
-    }
+    for (const { entity, data } of queries.peds.each()) {
+      const pose = data.pose.get()
+      const motion = data.motion.get()
+      if (data.down.present || data.dead.present) {
+        const velocity = slide({ x: motion.vx, y: motion.vy }, dt)
+        const moved = walkBy(pose, Vec2.scale(velocity, dt))
+        const angle =
+          Vec2.lengthSquared(velocity) > 0.01 ? Ops.atan2(velocity.y, velocity.x) : pose.angle
+        data.pose.set({ x: moved.position.x, y: moved.position.y, angle })
+        data.motion.set({ vx: velocity.x, vy: velocity.y, spin: 0 })
+        continue
+      }
+      const look = data.look.get()
+      const pace = paceOf(look)
+      const was = data.ped.get()
+      let mood: PedestrianValue = was
+      let route = data.route.get()
+      const toward = Ops.atan2(mood.fy - pose.y, mood.fx - pose.x)
+      const follows = data.follows.value()
+      const found =
+        follows === undefined || mood.mood === "gather"
+          ? undefined
+          : queries.leaders.getHandle(follows.leader)
+      const leader =
+        found?.ok === true && !found.value.data.down.present && !found.value.data.dead.present
+          ? found.value.data
+          : undefined
+      // The heading to turn to when (all but) still; undefined: keep facing the way it moves.
+      let face: number | undefined
+      let velocity: Vec2.Vec2
+      if (follows !== undefined && leader !== undefined) {
+        const at = leader.pose.get(),
+          going = leader.motion.get()
+        if (!sameRoute(route, leader.route.get())) route = leader.route.get()
+        velocity = followVelocity(
+          pose,
+          placeBeside(at, follows.side, follows.back),
+          at,
+          { x: going.vx, y: going.vy },
+          pace.run,
+          route,
+        )
+        face = mood.mood === "walk" || mood.mood === "flee" ? at.angle : toward
+        mood = { ...mood, blocked: 0 }
+      } else if (mood.mood === "walk" || mood.mood === "flee") {
+        const fleeing = mood.mood === "flee"
+        const run = Math.min(pace.run, slowest.get(entity.id) ?? pace.run)
+        const step = alongRoute(
+          pose,
+          { x: motion.vx, y: motion.vy },
+          route,
+          mood.blocked,
+          fleeing ? run : pace.walk,
+          random,
+        )
+        velocity = step.velocity
+        route = step.route
+        // Someone fleeing is turning and speeding up (ACCEL), which the count would take for a wall: it stays at zero, so they keep
+        // to the way they chose until they walk again.
+        mood = { ...mood, blocked: fleeing ? 0 : step.blocked }
+      } else if (mood.mood === "gather") {
+        const victim = { x: mood.fx, y: mood.fy }
+        const spot = Vec2.add(
+          victim,
+          Vec2.scale(
+            Vec2.normalizeOr(Vec2.subtract(pose, victim), { x: 1, y: 0 }),
+            gatherDistance(entity.id, look),
+          ),
+        )
+        const gap = Vec2.distance(spot, pose)
+        velocity =
+          gap < ARRIVED
+            ? Vec2.zero
+            : Vec2.scale(Vec2.subtract(spot, pose), Math.min(pace.walk, gap / dt) / gap)
+        face = toward
+        mood = { ...mood, blocked: 0 }
+      } else {
+        velocity = Vec2.moveToward({ x: motion.vx, y: motion.vy }, Vec2.zero, STOP * dt)
+        face = toward
+        mood = { ...mood, blocked: 0 }
+      }
 
-    velocity = Vec2.moveToward({ x: motion.vx, y: motion.vy }, velocity, ACCEL * dt)
-    const moved = walkBy(pose, Vec2.scale(velocity, dt))
-    const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
-    const still = Vec2.lengthSquared(real) <= (face === undefined ? 0.01 : STILL * STILL)
-    const angle = !still ? Ops.atan2(real.y, real.x) : face === undefined ? pose.angle : turnToward(pose.angle, face, TURN * dt)
-    data.pose.set({ x: moved.position.x, y: moved.position.y, angle })
-    data.motion.set({ vx: real.x, vy: real.y, spin: 0 })
-    if (!sameRoute(route, data.route.get())) data.route.set(route)
-    if (mood.blocked !== was.blocked) data.ped.set(mood)
-  }
-})
+      velocity = Vec2.moveToward({ x: motion.vx, y: motion.vy }, velocity, ACCEL * dt)
+      const moved = walkBy(pose, Vec2.scale(velocity, dt))
+      const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
+      const still = Vec2.lengthSquared(real) <= (face === undefined ? 0.01 : STILL * STILL)
+      const angle = still
+        ? face === undefined
+          ? pose.angle
+          : turnToward(pose.angle, face, TURN * dt)
+        : Ops.atan2(real.y, real.x)
+      data.pose.set({ x: moved.position.x, y: moved.position.y, angle })
+      data.motion.set({ vx: real.x, vy: real.y, spin: 0 })
+      if (!sameRoute(route, data.route.get())) data.route.set(route)
+      if (mood.blocked !== was.blocked) data.ped.set(mood)
+    }
+  },
+)

@@ -21,11 +21,16 @@ const GLIDE = 0.025
 /** Half-width of an amplitude glide, s: quick, so closures and bursts stay crisp. */
 const RAMP = 0.006
 /** Formant bandwidths B1–B4, Hz (Klatt 1980's defaults, rounded), and F5 with its bandwidth for an adult male tract. */
-const BANDWIDTHS = [70, 100, 150, 220] as const, F5 = 4500, B5 = 300
+const BANDWIDTHS = [70, 100, 150, 220] as const,
+  F5 = 4500,
+  B5 = 300
 /** TUNED: aspiration (`ah`: /h/, a stop's VOT), breath noise on voicing, and frication levels re the voicing, so /s/ sits ≈ 10–15 dB under the vowels as in speech (measured in render.test.ts). */
-const ASPIRATION = 0.3, BREATH = 0.09, FRICATION = 2
+const ASPIRATION = 0.3,
+  BREATH = 0.09,
+  FRICATION = 2
 /** Amplitude left at a trill's tongue contact, and the contact's half-length, s (a contact closes ≈ 40 % of a 40 ms cycle). */
-const CONTACT_FLOOR = 0.2, CONTACT = 0.008
+const CONTACT_FLOOR = 0.2,
+  CONTACT = 0.008
 /** Fade over the outer samples of the silent pads, s: whatever the tract still rings at the buffer's last sample ends at 0. */
 const FADE = 0.005
 /** Every render peaks here (−6 dBFS, like every synth: `src/audio/types.ts`); the director sets loudness by level. */
@@ -42,7 +47,8 @@ interface Resonator {
 const resonator = (): Resonator => ({ a: 1, b: 0, c: 0, y1: 0, y2: 0 })
 /** Sets `r` to frequency `f` and bandwidth `bw`, Hz, at `rate`. */
 const tune = (r: Resonator, f: number, bw: number, rate: number): void => {
-  const radius = Math.exp((-Math.PI * Math.min(bw, rate / 4)) / rate), hz = Math.min(f, 0.45 * rate)
+  const radius = Math.exp((-Math.PI * Math.min(bw, rate / 4)) / rate),
+    hz = Math.min(f, 0.45 * rate)
   r.c = -radius * radius
   r.b = 2 * radius * Math.cos((2 * Math.PI * hz) / rate)
   r.a = 1 - r.b - r.c
@@ -73,7 +79,9 @@ interface Bandpass {
   y2: number
 }
 const setBand = (f: Bandpass, hz: number, bw: number, rate: number): void => {
-  const w = (2 * Math.PI * Math.min(hz, 0.45 * rate)) / rate, alpha = Math.sin(w) / (2 * (Math.min(hz, 0.45 * rate) / bw)), a0 = 1 + alpha
+  const w = (2 * Math.PI * Math.min(hz, 0.45 * rate)) / rate,
+    alpha = Math.sin(w) / (2 * (Math.min(hz, 0.45 * rate) / bw)),
+    a0 = 1 + alpha
   f.b0 = alpha / a0
   f.a1 = (-2 * Math.cos(w)) / a0
   f.a2 = (1 - alpha) / a0
@@ -97,8 +105,16 @@ interface Blend {
 }
 
 /** Sets `blend` to where `t` sits in `targets[i]`, glided over `width` s each side of a boundary (never past half of either stretch). */
-const across = (blend: Blend, targets: ReadonlyArray<Target>, i: number, t: number, width: number): Blend => {
-  const cur = targets[i]!, prev = targets[i - 1], next = targets[i + 1]
+const across = (
+  blend: Blend,
+  targets: ReadonlyArray<Target>,
+  i: number,
+  t: number,
+  width: number,
+): Blend => {
+  const cur = targets[i]!,
+    prev = targets[i - 1],
+    next = targets[i + 1]
   blend.from = blend.to = cur
   blend.w = 0
   if (next !== undefined) {
@@ -120,17 +136,23 @@ const across = (blend: Blend, targets: ReadonlyArray<Target>, i: number, t: numb
 }
 
 /** `get` of `blend`'s targets, weighed. */
-const mix = ({ from, to, w }: Blend, get: (target: Target) => number): number => get(from) + (get(to) - get(from)) * w
+const mix = ({ from, to, w }: Blend, get: (target: Target) => number): number =>
+  get(from) + (get(to) - get(from)) * w
 
 /**
  * The band the frication at `t` goes through: `targets[i]`'s own when it hisses, else that of a neighbour whose frication
  * ramps across the boundary into it (`width` s each side, as `glide`), so a burst's onset and tail keep its band.
  */
 const noiseAt = (targets: ReadonlyArray<Target>, i: number, t: number, width: number): Band => {
-  const cur = targets[i]!, prev = targets[i - 1], next = targets[i + 1], half = (x: Target) => (x.end - x.start) / 2
+  const cur = targets[i]!,
+    prev = targets[i - 1],
+    next = targets[i + 1],
+    half = (x: Target) => (x.end - x.start) / 2
   if (cur.af > 0) return cur.noise
-  if (next !== undefined && next.af > 0 && cur.end - t < Math.min(width, half(cur), half(next))) return next.noise
-  if (prev !== undefined && prev.af > 0 && t - cur.start < Math.min(width, half(cur), half(prev))) return prev.noise
+  if (next !== undefined && next.af > 0 && cur.end - t < Math.min(width, half(cur), half(next)))
+    return next.noise
+  if (prev !== undefined && prev.af > 0 && t - cur.start < Math.min(width, half(cur), half(prev)))
+    return prev.noise
   return cur.noise
 }
 
@@ -144,31 +166,68 @@ const pitchAt = (pitch: Plan["pitch"], t: number): number => {
       return t1 > t0 ? f00 + ((f1 - f00) * (t - t0)) / (t1 - t0) : f1
     }
   }
-  return pitch[pitch.length - 1]![1]
+  return pitch.at(-1)![1]
 }
 
 /** Renders `plan` at `rate` Hz, noise and perturbations drawn from `random`; peaks at 0.5. */
-export const renderPlan = (plan: Plan, rate: number, random: () => number): Float32Array<ArrayBuffer> => {
-  const { targets, pitch, quality } = plan, out = new Float32Array(Math.round(plan.seconds * rate))
+export const renderPlan = (
+  plan: Plan,
+  rate: number,
+  random: () => number,
+): Float32Array<ArrayBuffer> => {
+  const { targets, pitch, quality } = plan,
+    out = new Float32Array(Math.round(plan.seconds * rate))
   const gauss = () => (random() + random() + random() - 1.5) * 2
-  const nasalPole = resonator(), nasalZero = resonator(), formants = [resonator(), resonator(), resonator(), resonator(), resonator()]
+  const nasalPole = resonator(),
+    nasalZero = resonator(),
+    formants = [resonator(), resonator(), resonator(), resonator(), resonator()]
   // Two sections in series: 12 dB/octave skirts, so a fricative's noise stays in its band (/ʃ/ under /s/).
-  const bands: Array<Bandpass> = [0, 1].map(() => ({ b0: 0, a1: 0, a2: 0, x1: 0, x2: 0, y1: 0, y2: 0 }))
+  const bands: Array<Bandpass> = [0, 1].map(() => ({
+    b0: 0,
+    a1: 0,
+    a2: 0,
+    x1: 0,
+    x2: 0,
+    y1: 0,
+    y2: 0,
+  }))
   tune(nasalPole, quality.pole, 100, rate)
   tune(formants[4]!, F5 * quality.tract, B5, rate)
-  const tilt = Math.exp((-2 * Math.PI * quality.tilt) / rate), dc = 1 - (2 * Math.PI * 40) / rate
-  const flutterPhase = random() * 100, frameLength = Math.max(1, Math.round(FRAME * rate))
+  const tilt = Math.exp((-2 * Math.PI * quality.tilt) / rate),
+    dc = 1 - (2 * Math.PI * 40) / rate
+  const flutterPhase = random() * 100,
+    frameLength = Math.max(1, Math.round(FRAME * rate))
   // The formants' slow glide (per frame) and the source amplitudes' quick one (per sample), reused so the loop allocates nothing.
-  const slow: Blend = { from: targets[0]!, to: targets[0]!, w: 0 }, quick: Blend = { ...slow }
-  let tuned: Band | undefined, i = 0, phase = 1, f0 = pitch[0]![1], amp = 1, tilted = 0, hpIn = 0, hpOut = 0
+  const slow: Blend = { from: targets[0]!, to: targets[0]!, w: 0 },
+    quick: Blend = { ...slow }
+  let tuned: Band | undefined,
+    i = 0,
+    phase = 1,
+    f0 = pitch[0]![1],
+    amp = 1,
+    tilted = 0,
+    hpIn = 0,
+    hpOut = 0
   for (let n = 0; n < out.length; n++) {
     const t = n / rate
     while (i < targets.length - 1 && t >= targets[i]!.end) i++
     const cur = targets[i]!
     if (n % frameLength === 0) {
-      const breathy = 1 + 1.5 * quality.breath, frame = across(slow, targets, i, t + FRAME / 2, GLIDE)
-      for (let k = 0; k < 4; k++) tune(formants[k]!, mix(frame, (x) => x.formants[k]!), BANDWIDTHS[k]! * (k === 0 ? breathy : 1) * quality.tract ** 0.5, rate)
-      tune(nasalZero, mix(frame, (x) => x.zero), 100, rate)
+      const breathy = 1 + 1.5 * quality.breath,
+        frame = across(slow, targets, i, t + FRAME / 2, GLIDE)
+      for (let k = 0; k < 4; k++)
+        tune(
+          formants[k]!,
+          mix(frame, (x) => x.formants[k]!),
+          BANDWIDTHS[k]! * (k === 0 ? breathy : 1) * quality.tract ** 0.5,
+          rate,
+        )
+      tune(
+        nasalZero,
+        mix(frame, (x) => x.zero),
+        100,
+        rate,
+      )
     }
     // The noise band follows the targets, not the 5 ms frames: a 6 ms burst would otherwise start in the closure's band.
     const noise = noiseAt(targets, i, t, RAMP)
@@ -176,22 +235,33 @@ export const renderPlan = (plan: Plan, rate: number, random: () => number): Floa
     if (phase >= 1) {
       // A new glottal cycle: its F0 with flutter (Klatt & Klatt 1990: three slow sines) and jitter, its amplitude with shimmer.
       phase -= 1
-      const s = t + flutterPhase, wander = (Math.sin(2 * Math.PI * 12.7 * s) + Math.sin(2 * Math.PI * 7.1 * s) + Math.sin(2 * Math.PI * 4.7 * s)) / 3
+      const s = t + flutterPhase,
+        wander =
+          (Math.sin(2 * Math.PI * 12.7 * s) +
+            Math.sin(2 * Math.PI * 7.1 * s) +
+            Math.sin(2 * Math.PI * 4.7 * s)) /
+          3
       f0 = pitchAt(pitch, t) * (1 + quality.flutter * wander) * (1 + quality.jitter * gauss())
       amp = Math.max(0, 1 + quality.shimmer * gauss())
     }
     phase += f0 / rate
     // KLGLOTT88: flow ∝ u² − u³ over the open phase u = phase / oq; its derivative (lip radiation included) excites the tract.
-    const u = phase / quality.oq, open = u < 1
+    const u = phase / quality.oq,
+      open = u < 1
     const { from, to, w } = across(quick, targets, i, t, RAMP)
-    const av = from.av + (to.av - from.av) * w, ah = from.ah + (to.ah - from.ah) * w, af = from.af + (to.af - from.af) * w
+    const av = from.av + (to.av - from.av) * w,
+      ah = from.ah + (to.ah - from.ah) * w,
+      af = from.af + (to.af - from.af) * w
     const pulse = open ? 2 * u - 3 * u * u : 0
     tilted = pulse * amp * av + tilt * (tilted - pulse * amp * av)
-    const breath = (random() * 2 - 1) * (ah * ASPIRATION + quality.breath * av * (open ? 1 : 0.3) * BREATH)
+    const breath =
+      (random() * 2 - 1) * (ah * ASPIRATION + quality.breath * av * (open ? 1 : 0.3) * BREATH)
     let y = antiresonate(nasalZero, resonate(nasalPole, tilted + breath))
     for (const r of formants) y = resonate(r, y)
     if (cur.contacts > 0) {
-      const span = (cur.end - cur.start) / cur.contacts, at = cur.start + span * (Math.floor((t - cur.start) / span) + 0.5), x = (t - at) / CONTACT
+      const span = (cur.end - cur.start) / cur.contacts,
+        at = cur.start + span * (Math.floor((t - cur.start) / span) + 0.5),
+        x = (t - at) / CONTACT
       y *= 1 - (1 - CONTACT_FLOOR) * Math.exp(-x * x)
     }
     y += bandpass(bands[1]!, bandpass(bands[0]!, random() * 2 - 1)) * af * FRICATION
@@ -212,5 +282,10 @@ export const renderPlan = (plan: Plan, rate: number, random: () => number): Floa
 }
 
 /** `speech` rendered at `rate` Hz: said, or yelled when `loud`; noise and perturbations from `random`. Peaks at 0.5. */
-export const renderSpeech = (speech: Speech, loud: boolean, rate: number, random: () => number): Float32Array<ArrayBuffer> =>
+export const renderSpeech = (
+  speech: Speech,
+  loud: boolean,
+  rate: number,
+  random: () => number,
+): Float32Array<ArrayBuffer> =>
   renderPlan(planLine(speech.line, speech.speaker, loud), rate, random)

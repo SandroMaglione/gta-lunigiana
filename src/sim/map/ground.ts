@@ -12,7 +12,13 @@ import type { RoadClass } from "./kinds.ts"
 
 /** How far each road class's surface floats above its profile (m); wider classes on top, so junctions never z-fight. */
 export const ROAD_LIFT = {
-  tertiary: 0.16, unclassified: 0.14, residential: 0.12, service: 0.1, track: 0.08, steps: 0.07, path: 0.06
+  tertiary: 0.16,
+  unclassified: 0.14,
+  residential: 0.12,
+  service: 0.1,
+  track: 0.08,
+  steps: 0.07,
+  path: 0.06,
 } as const satisfies Record<RoadClass, number>
 
 const hm = MAP.heightmap
@@ -21,14 +27,22 @@ const hm = MAP.heightmap
  * the edge, which is how the apron beyond the map bounds continues the landscape.
  */
 export const terrainNodeZ = (i: number, j: number): number =>
-  hm.data[Math.min(hm.rows - 1, Math.max(0, j)) * hm.cols + Math.min(hm.cols - 1, Math.max(0, i))]! / 10
+  hm.data[
+    Math.min(hm.rows - 1, Math.max(0, j)) * hm.cols + Math.min(hm.cols - 1, Math.max(0, i))
+  ]! / 10
 
 /** Terrain elevation under (x, y) on the drawn mesh: each cell is split along its south-west to north-east diagonal. */
 export const terrainZ = (x: number, y: number): number => {
-  const fx = (x - hm.x0) / hm.cell, fy = (y - hm.y0) / hm.cell
-  const i = Math.floor(fx), j = Math.floor(fy)
-  const u = fx - i, v = fy - j
-  const sw = terrainNodeZ(i, j), se = terrainNodeZ(i + 1, j), nw = terrainNodeZ(i, j + 1), ne = terrainNodeZ(i + 1, j + 1)
+  const fx = (x - hm.x0) / hm.cell,
+    fy = (y - hm.y0) / hm.cell
+  const i = Math.floor(fx),
+    j = Math.floor(fy)
+  const u = fx - i,
+    v = fy - j
+  const sw = terrainNodeZ(i, j),
+    se = terrainNodeZ(i + 1, j),
+    nw = terrainNodeZ(i, j + 1),
+    ne = terrainNodeZ(i + 1, j + 1)
   return u >= v ? sw + (se - sw) * u + (ne - se) * v : sw + (ne - nw) * u + (nw - sw) * v
 }
 
@@ -53,16 +67,26 @@ for (const road of MAP.roads) {
   const lift = ROAD_LIFT[roadClassOf(road)]
   for (let k = 0; k + 1 < road.z.length; k++) {
     const s: RoadSegment = {
-      ax: road.pts[2 * k]!, ay: road.pts[2 * k + 1]!, bx: road.pts[2 * k + 2]!, by: road.pts[2 * k + 3]!,
-      za: road.z[k]!, zb: road.z[k + 1]!, half: road.w / 2 + 0.3, lift, lifted
+      ax: road.pts[2 * k]!,
+      ay: road.pts[2 * k + 1]!,
+      bx: road.pts[2 * k + 2]!,
+      by: road.pts[2 * k + 3]!,
+      za: road.z[k]!,
+      zb: road.z[k + 1]!,
+      half: road.w / 2 + 0.3,
+      lift,
+      lifted,
     }
-    const x0 = Math.floor((Math.min(s.ax, s.bx) - s.half) / BUCKET), x1 = Math.floor((Math.max(s.ax, s.bx) + s.half) / BUCKET)
-    const y0 = Math.floor((Math.min(s.ay, s.by) - s.half) / BUCKET), y1 = Math.floor((Math.max(s.ay, s.by) + s.half) / BUCKET)
-    for (let bx = x0; bx <= x1; bx++) for (let by = y0; by <= y1; by++) {
-      const list = buckets.get(keyOf(bx + 2048, by + 2048))
-      if (list === undefined) buckets.set(keyOf(bx + 2048, by + 2048), [s])
-      else list.push(s)
-    }
+    const x0 = Math.floor((Math.min(s.ax, s.bx) - s.half) / BUCKET),
+      x1 = Math.floor((Math.max(s.ax, s.bx) + s.half) / BUCKET)
+    const y0 = Math.floor((Math.min(s.ay, s.by) - s.half) / BUCKET),
+      y1 = Math.floor((Math.max(s.ay, s.by) + s.half) / BUCKET)
+    for (let bx = x0; bx <= x1; bx++)
+      for (let by = y0; by <= y1; by++) {
+        const list = buckets.get(keyOf(bx + 2048, by + 2048))
+        if (list === undefined) buckets.set(keyOf(bx + 2048, by + 2048), [s])
+        else list.push(s)
+      }
   }
 }
 
@@ -90,13 +114,17 @@ export const ON_DECK = 0.5
  * onto it.
  */
 export const groundZ = (x: number, y: number, near?: number): number => {
-  const segments = buckets.get(keyOf(Math.floor(x / BUCKET) + 2048, Math.floor(y / BUCKET) + 2048)) ?? []
-  let best = terrainZ(x, y), sum = 0, weights = 0
+  const segments =
+    buckets.get(keyOf(Math.floor(x / BUCKET) + 2048, Math.floor(y / BUCKET) + 2048)) ?? []
+  let best = terrainZ(x, y),
+    sum = 0,
+    weights = 0
   for (const s of segments) {
     if (s.lifted) continue
     const { d2, t } = segDist2(x, y, s.ax, s.ay, s.bx, s.by)
     if (d2 > s.half * s.half) continue
-    const depth = s.half - Math.sqrt(d2), weight = depth * depth + 1e-9
+    const depth = s.half - Math.sqrt(d2),
+      weight = depth * depth + 1e-9
     sum += weight * roadZ(s.za + (s.zb - s.za) * t, x, y, s.lift, false)
     weights += weight
   }
@@ -114,12 +142,26 @@ export const groundZ = (x: number, y: number, near?: number): number => {
 
 /** The surface elevation of `road` at the point of it nearest (x, y), m a.s.l.: where a vehicle on that road stands, whatever is above or below. */
 export const roadLevel = (road: Road, x: number, y: number): number => {
-  let best = Number.MAX_VALUE, level = road.z[0]!
+  let best = Number.MAX_VALUE,
+    level = road.z[0]!
   for (let k = 0; k + 1 < road.z.length; k++) {
-    const { d2, t } = segDist2(x, y, road.pts[2 * k]!, road.pts[2 * k + 1]!, road.pts[2 * k + 2]!, road.pts[2 * k + 3]!)
+    const { d2, t } = segDist2(
+      x,
+      y,
+      road.pts[2 * k]!,
+      road.pts[2 * k + 1]!,
+      road.pts[2 * k + 2]!,
+      road.pts[2 * k + 3]!,
+    )
     if (d2 < best) [best, level] = [d2, road.z[k]! + (road.z[k + 1]! - road.z[k]!) * t]
   }
-  return roadZ(level, x, y, ROAD_LIFT[roadClassOf(road)], road.bridge === true || road.tunnel === true)
+  return roadZ(
+    level,
+    x,
+    y,
+    ROAD_LIFT[roadClassOf(road)],
+    road.bridge === true || road.tunnel === true,
+  )
 }
 
 /** The ground at (x, y) on the level of the terrain there: a road at grade, never a deck above or a tunnel below. */
@@ -137,7 +179,9 @@ export const drawnZ = (x: number, y: number, near: number): number => {
   let top = near
   const over = (h: number) => h > top && h <= near + DRAWN_REACH
   if (over(terrainZ(x, y))) top = terrainZ(x, y)
-  for (const s of buckets.get(keyOf(Math.floor(x / BUCKET) + 2048, Math.floor(y / BUCKET) + 2048)) ?? []) {
+  for (const s of buckets.get(
+    keyOf(Math.floor(x / BUCKET) + 2048, Math.floor(y / BUCKET) + 2048),
+  ) ?? []) {
     const h = s.lifted ? undefined : onSegment(s, x, y)
     if (h !== undefined && over(h)) top = h
   }

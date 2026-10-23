@@ -50,7 +50,8 @@ export const rmsDb = (samples: Float32Array): number => {
 /** The return gain that puts a fully wet send `db` below the dry: the dry pan keeps power, so divide by the IR's energy. */
 const returnGain = (ir: AudioBuffer, db: number): number => {
   let energy = 0
-  for (let c = 0; c < ir.numberOfChannels; c++) for (const v of ir.getChannelData(c)) energy += v * v
+  for (let c = 0; c < ir.numberOfChannels; c++)
+    for (const v of ir.getChannelData(c)) energy += v * v
   return 10 ** (db / 20) / Math.sqrt(energy)
 }
 
@@ -58,10 +59,18 @@ const returnGain = (ir: AudioBuffer, db: number): number => {
 export const makeMixer = (ctx: BaseAudioContext): Mixer => {
   const master = new GainNode(ctx, { gain: MASTER })
   const analyser = new AnalyserNode(ctx, { fftSize: 2048 })
-  master.connect(new DynamicsCompressorNode(ctx, LIMITER)).connect(new GainNode(ctx, { gain: 10 ** (-MAKEUP_DB / 20) })).connect(analyser).connect(ctx.destination)
-  const reverb = new GainNode(ctx), buffer = impulseResponse(ctx, STREET.seconds, STREET.rt60, STREET.preDelay)
+  master
+    .connect(new DynamicsCompressorNode(ctx, LIMITER))
+    .connect(new GainNode(ctx, { gain: 10 ** (-MAKEUP_DB / 20) }))
+    .connect(analyser)
+    .connect(ctx.destination)
+  const reverb = new GainNode(ctx),
+    buffer = impulseResponse(ctx, STREET.seconds, STREET.rt60, STREET.preDelay)
   // Normalisation would scale the IR by its own rule; returnGain calibrates it instead.
-  reverb.connect(new ConvolverNode(ctx, { buffer, disableNormalization: true })).connect(new GainNode(ctx, { gain: returnGain(buffer, WET_DB) })).connect(master)
+  reverb
+    .connect(new ConvolverNode(ctx, { buffer, disableNormalization: true }))
+    .connect(new GainNode(ctx, { gain: returnGain(buffer, WET_DB) }))
+    .connect(master)
   const samples = new Float32Array(analyser.fftSize)
   return {
     dry: master,
@@ -69,6 +78,6 @@ export const makeMixer = (ctx: BaseAudioContext): Mixer => {
     level: () => {
       analyser.getFloatTimeDomainData(samples)
       return rmsDb(samples)
-    }
+    },
   }
 }

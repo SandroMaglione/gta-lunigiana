@@ -11,10 +11,15 @@ import { pathDifference, type Point3 } from "../occlusion.ts"
 import { forestAlong } from "../places.ts"
 
 /** The obstacles on one path: Maekawa path difference, m, and metres of forest. */
-export interface Between { readonly delta: number; readonly forest: number }
+export interface Between {
+  readonly delta: number
+  readonly forest: number
+}
 
 /** A key is re-measured this often at most (s), this many a frame, and forgotten this long after its last ask (s). */
-const REFRESH = 0.15, PER_FRAME = 12, FORGET = 2
+const REFRESH = 0.15,
+  PER_FRAME = 12,
+  FORGET = 2
 
 interface Entry {
   between: Between
@@ -24,7 +29,10 @@ interface Entry {
   to: Point3
 }
 
-const measure = (from: Point3, to: Point3): Between => ({ delta: pathDifference(from, to), forest: forestAlong(from.x, from.y, to.x, to.y) })
+const measure = (from: Point3, to: Point3): Between => ({
+  delta: pathDifference(from, to),
+  forest: forestAlong(from.x, from.y, to.x, to.y),
+})
 
 /** A fresh cache. */
 export const makeOccluder = () => {
@@ -56,7 +64,7 @@ export const makeOccluder = () => {
         entry.between = measure(entry.from, entry.to)
         entry.measured = now
       }
-    }
+    },
   }
 }
 

@@ -22,11 +22,16 @@
  */
 import type { MonzoneMap, MonzoneMapJson } from "./index.ts"
 
-type Corner = { readonly minX: number; readonly minY: number }
+interface Corner {
+  readonly minX: number
+  readonly minY: number
+}
 
 /** Where wall coordinates count from, decimetres: 100 m south-west of the bounds' corner. */
-export const packOrigin = (bounds: Corner): { readonly x: number; readonly y: number } =>
-  ({ x: Math.round(bounds.minX * 10) - 1000, y: Math.round(bounds.minY * 10) - 1000 })
+export const packOrigin = (bounds: Corner): { readonly x: number; readonly y: number } => ({
+  x: Math.round(bounds.minX * 10) - 1000,
+  y: Math.round(bounds.minY * 10) - 1000,
+})
 
 /** Where tree coordinates count from, whole metres: `packOrigin` rounded down to the metre. */
 export const treeOrigin = (bounds: Corner): { readonly x: number; readonly y: number } => {
@@ -55,14 +60,26 @@ export const mapFile = (): Uint8Array => {
   const file = provided
   provided = undefined
   if (file !== undefined) return file
-  if (globalThis.process?.getBuiltinModule === undefined) throw new Error("map: monzone.bin not loaded; the host must call provideMap(bytes) before importing src/sim/map/index.ts")
-  return process.getBuiltinModule("node:zlib").gunzipSync(process.getBuiltinModule("node:fs").readFileSync(MAP_URL))
+  if (globalThis.process?.getBuiltinModule === undefined)
+    throw new Error(
+      "map: monzone.bin not loaded; the host must call provideMap(bytes) before importing src/sim/map/index.ts",
+    )
+  return process
+    .getBuiltinModule("node:zlib")
+    .gunzipSync(process.getBuiltinModule("node:fs").readFileSync(MAP_URL))
 }
 
 /** The `n` integers of the section at byte `at`: `size` byte planes of zigzag deltas from the value `stride` back. */
-const unpack = (file: Uint8Array, at: number, n: number, size: number, stride: number): Int32Array => {
+const unpack = (
+  file: Uint8Array,
+  at: number,
+  n: number,
+  size: number,
+  stride: number,
+): Int32Array => {
   const out = new Int32Array(n)
-  for (let p = 0; p < size; p++) for (let k = 0; k < n; k++) out[k] |= file[at + p * n + k]! << (8 * p) // plane by plane: a third faster
+  for (let p = 0; p < size; p++)
+    for (let k = 0; k < n; k++) out[k] = out[k]! | (file[at + p * n + k]! << (8 * p)) // plane by plane: a third faster
   for (let k = 0; k < n; k++) {
     const z = out[k]!
     out[k] = ((z >>> 1) ^ -(z & 1)) + (k >= stride ? out[k - stride]! : 0)
@@ -73,20 +90,23 @@ const unpack = (file: Uint8Array, at: number, n: number, size: number, stride: n
 /** Heightmap nodes in decimetres from rows of `cols` deltas (each row starts absolute). */
 const unpackRows = (deltas: Int32Array, cols: number): Int16Array => {
   const out = new Int16Array(deltas.length)
-  for (let k = 0; k < out.length; k++) out[k] = k % cols === 0 ? deltas[k]! : out[k - 1]! + deltas[k]!
+  for (let k = 0; k < out.length; k++)
+    out[k] = k % cols === 0 ? deltas[k]! : out[k - 1]! + deltas[k]!
   return out
 }
 
 /** Wall segments (ax, ay, bx, by) in metres from decimetres from `packOrigin(bounds)`. */
 const unpackWalls = (dm: Int32Array, bounds: Corner): Float64Array => {
-  const out = new Float64Array(dm.length), o = packOrigin(bounds)
+  const out = new Float64Array(dm.length),
+    o = packOrigin(bounds)
   for (let k = 0; k < dm.length; k++) out[k] = (dm[k]! + (k % 2 === 0 ? o.x : o.y)) / 10
   return out
 }
 
 /** Trees (x, y, scale): whole metres from `treeOrigin(bounds)`, the scale in hundredths. */
 const unpackTrees = (w: Int32Array, bounds: Corner): Float64Array => {
-  const out = new Float64Array(w.length), o = treeOrigin(bounds)
+  const out = new Float64Array(w.length),
+    o = treeOrigin(bounds)
   for (let k = 0; k < w.length; k++) {
     const c = k % 3
     out[k] = c === 2 ? w[k]! / 100 : w[k]! + (c === 0 ? o.x : o.y)
@@ -97,7 +117,7 @@ const unpackTrees = (w: Int32Array, bounds: Corner): Float64Array => {
 /** The map from its gunzipped file: the JSON line, then the sections, read in file order. */
 export const decodeMap = (file: Uint8Array): MonzoneMap => {
   const line = file.indexOf(10) // JSON.stringify escapes every newline inside strings
-  const json: MonzoneMapJson = JSON.parse(new TextDecoder().decode(file.subarray(0, line)))
+  const json = JSON.parse(new TextDecoder().decode(file.subarray(0, line))) as MonzoneMapJson
   const { heightmap, walls, trees, bounds } = json
   let at = line + 1
   const section = (n: number, size: number, stride: number): Int32Array => {
@@ -105,10 +125,16 @@ export const decodeMap = (file: Uint8Array): MonzoneMap => {
     at += n * size
     return values
   }
-  const data = unpackRows(section(heightmap.cols * heightmap.rows, 2, heightmap.cols), heightmap.cols)
+  const data = unpackRows(
+    section(heightmap.cols * heightmap.rows, 2, heightmap.cols),
+    heightmap.cols,
+  )
   const walk = unpackWalls(section(4 * walls.walk, 4, 2), bounds)
   const drive = unpackWalls(section(4 * walls.drive, 4, 2), bounds)
   const treeData = unpackTrees(section(3 * trees, 2, 3), bounds)
-  if (at !== file.length) throw new Error(`map: the sections end at byte ${at} of ${file.length}; monzone.bin and this decoder disagree`)
+  if (at !== file.length)
+    throw new Error(
+      `map: the sections end at byte ${at} of ${file.length}; monzone.bin and this decoder disagree`,
+    )
   return { ...json, heightmap: { ...heightmap, data }, walls: { walk, drive }, trees: treeData }
 }

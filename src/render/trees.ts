@@ -1,32 +1,61 @@
 /**
  * Trees: chestnut-like round canopies and a few conifers, one
  * InstancedMesh per kind per chunk, built when the chunk streams in. Trees near the map edge are
- * mirrored into the apron so the forest does not stop at the bounds.
+ * mirrored into the apron so the forest does not stop at the bounds. A `canopy` vertex attribute
+ * (1 on the crown, 0 on the trunk) tells the tree material what sways in the wind.
  *
  * @module render/trees
  */
-import { Color, ConeGeometry, CylinderGeometry, IcosahedronGeometry, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type Material } from "three"
+import {
+  Color,
+  ConeGeometry,
+  CylinderGeometry,
+  Float32BufferAttribute,
+  IcosahedronGeometry,
+  InstancedMesh,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type BufferGeometry,
+  type Material,
+} from "three"
 
 import { MAP } from "../sim/map/index.ts"
 import { hash01 } from "../tools/geometry.ts"
 import { APRON, chunkOf } from "./chunks.ts"
-import { terrainY } from "./ground.ts"
 import { merge, paint } from "./geometry.ts"
+import { terrainY } from "./ground.ts"
 import { PALETTE } from "./palette.ts"
 
 const KINDS = ["broadleaf", "conifer"] as const
 type TreeKind = (typeof KINDS)[number]
 
+/** `piece` marked as crown (1: it sways rigidly in the wind) or trunk (0: it stays). */
+const crown = (piece: BufferGeometry, sways: 0 | 1): BufferGeometry =>
+  piece.setAttribute(
+    "canopy",
+    new Float32BufferAttribute(
+      new Float32Array(piece.getAttribute("position").count).fill(sways),
+      1,
+    ),
+  )
+
 /** Unit-scale tree shapes (≈ 7 m tall), trunk base at the origin; shared by every chunk. */
 const shapes = {
   broadleaf: merge([
-    paint(new CylinderGeometry(0.22, 0.3, 2, 5).translate(0, 1, 0), PALETTE.woodBrown),
-    paint(new IcosahedronGeometry(1, 0).scale(3, 2.5, 3).translate(0, 4.2, 0), PALETTE.forest)
+    crown(paint(new CylinderGeometry(0.22, 0.3, 2, 5).translate(0, 1, 0), PALETTE.woodBrown), 0),
+    crown(
+      paint(new IcosahedronGeometry(1, 0).scale(3, 2.5, 3).translate(0, 4.2, 0), PALETTE.forest),
+      1,
+    ),
   ]),
   conifer: merge([
-    paint(new CylinderGeometry(0.18, 0.24, 1.6, 5).translate(0, 0.8, 0), PALETTE.woodBrown),
-    paint(new ConeGeometry(2, 6.5, 6).translate(0, 4.2, 0), PALETTE.conifer)
-  ])
+    crown(
+      paint(new CylinderGeometry(0.18, 0.24, 1.6, 5).translate(0, 0.8, 0), PALETTE.woodBrown),
+      0,
+    ),
+    crown(paint(new ConeGeometry(2, 6.5, 6).translate(0, 4.2, 0), PALETTE.conifer), 1),
+  ]),
 } as const satisfies Record<TreeKind, BufferGeometry>
 
 /** Linear multipliers on the canopy colour: mid, sunlit, shaded. */
@@ -43,12 +72,22 @@ const eachTree = (visit: (x: number, y: number, scale: number, seed: number) => 
   const { minX, minY, maxX, maxY } = MAP.bounds
   const reach = APRON * MAP.heightmap.cell
   for (let i = 0; i + 2 < MAP.trees.length; i += 3) {
-    const x = MAP.trees[i]!, y = MAP.trees[i + 1]!, scale = MAP.trees[i + 2]!
+    const x = MAP.trees[i]!,
+      y = MAP.trees[i + 1]!,
+      scale = MAP.trees[i + 2]!
     visit(x, y, scale, i)
     // Most trees are far from every edge: no mirrors, so skip building the lists below.
     if (x - minX >= reach && maxX - x >= reach && y - minY >= reach && maxY - y >= reach) continue
-    const xs = [x, ...(x - minX < reach ? [2 * minX - x] : []), ...(maxX - x < reach ? [2 * maxX - x] : [])]
-    const ys = [y, ...(y - minY < reach ? [2 * minY - y] : []), ...(maxY - y < reach ? [2 * maxY - y] : [])]
+    const xs = [
+      x,
+      ...(x - minX < reach ? [2 * minX - x] : []),
+      ...(maxX - x < reach ? [2 * maxX - x] : []),
+    ]
+    const ys = [
+      y,
+      ...(y - minY < reach ? [2 * minY - y] : []),
+      ...(maxY - y < reach ? [2 * maxY - y] : []),
+    ]
     for (const mx of xs) for (const my of ys) if (mx !== x || my !== y) visit(mx, my, scale, i + 1)
   }
 }
@@ -69,7 +108,11 @@ export const bucketTrees = (): Map<number, ChunkTrees> => {
   return chunks
 }
 
-const matrix = new Matrix4(), rotation = new Quaternion(), up = new Vector3(0, 1, 0), at = new Vector3(), size = new Vector3()
+const matrix = new Matrix4(),
+  rotation = new Quaternion(),
+  up = new Vector3(0, 1, 0),
+  at = new Vector3(),
+  size = new Vector3()
 /** The tree meshes of one chunk, one per kind it has. Dispose them with `InstancedMesh.dispose` (the shapes are shared). */
 export const treeMeshes = (trees: ChunkTrees, material: Material): Array<InstancedMesh> => {
   const meshes: Array<InstancedMesh> = []
@@ -78,10 +121,16 @@ export const treeMeshes = (trees: ChunkTrees, material: Material): Array<Instanc
     if (list.length === 0) continue
     const mesh = new InstancedMesh(shapes[kind], material, list.length / 4)
     for (let i = 0; i < mesh.count; i++) {
-      const x = list[4 * i]!, y = list[4 * i + 1]!, scale = list[4 * i + 2]!, seed = list[4 * i + 3]!
+      const x = list[4 * i]!,
+        y = list[4 * i + 1]!,
+        scale = list[4 * i + 2]!,
+        seed = list[4 * i + 3]!
       rotation.setFromAxisAngle(up, hash01(seed, 5) * Math.PI * 2)
       const s = scale * (0.85 + 0.3 * hash01(seed, 9))
-      mesh.setMatrixAt(i, matrix.compose(at.set(x, terrainY(x, y) - 0.2, -y), rotation, size.set(s, s, s)))
+      mesh.setMatrixAt(
+        i,
+        matrix.compose(at.set(x, terrainY(x, y) - 0.2, -y), rotation, size.set(s, s, s)),
+      )
       mesh.setColorAt(i, TINTS[Math.floor(hash01(seed, 13) * TINTS.length)]!)
     }
     mesh.instanceMatrix.needsUpdate = true

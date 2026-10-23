@@ -27,13 +27,24 @@ const SLIDE_MOST = 1
  * the rig's `stability`. Off in the air, while slow, and while the handbrake is held, so a
  * handbrake turn still swings the car round.
  */
-export const steadying = (rig: Rig, vf: number, vl: number, spin: number, steer: number, wheelsDown: number, handbrake: boolean) => {
-  if (rig.stability === 0 || handbrake || wheelsDown < 2 || Math.abs(vf) < STEADY_FROM) return { yaw: 0, side: 0 }
-  const m = rig.spec.mass, most = SLIDE_MOST * m * 9.81, turning = (rig.spec.tyres.grip * 9.81) / Math.abs(vf)
+export const steadying = (
+  rig: Rig,
+  vf: number,
+  vl: number,
+  spin: number,
+  steer: number,
+  wheelsDown: number,
+  handbrake: boolean,
+) => {
+  if (rig.stability === 0 || handbrake || wheelsDown < 2 || Math.abs(vf) < STEADY_FROM)
+    return { yaw: 0, side: 0 }
+  const m = rig.spec.mass,
+    most = SLIDE_MOST * m * 9.81,
+    turning = (rig.spec.tyres.grip * 9.81) / Math.abs(vf)
   const wanted = Math.max(-turning, Math.min(turning, (vf * Ops.tan(steer)) / rig.wheelbase))
   return {
     yaw: rig.stability * rig.iz * (wanted - spin) * YAW_GAIN,
-    side: Math.max(-most, Math.min(most, -rig.stability * m * (vl - spin * rig.rear) * SLIDE_GAIN))
+    side: Math.max(-most, Math.min(most, -rig.stability * m * (vl - spin * rig.rear) * SLIDE_GAIN)),
   }
 }
 
@@ -57,14 +68,25 @@ const HOP = 1.5
  * couple of seconds. Returns the new rates and vertical speed.
  */
 export const righting = (
-  rig: Rig, up: number, down: boolean, speed: number, roll: number, pitch: number, rates: { readonly rollRate: number; readonly pitchRate: number; readonly vz: number }, h: number
+  rig: Rig,
+  up: number,
+  down: boolean,
+  speed: number,
+  roll: number,
+  pitch: number,
+  rates: { readonly rollRate: number; readonly pitchRate: number; readonly vz: number },
+  h: number,
 ) => {
   if (rig.selfRighting === 0 || !down || up >= RIGHTED || speed > RIGHTING_FROM) return rates
   const take = Math.min(1, RIGHTING_GAIN * h)
   // Slower as it nears upright, so it settles onto its wheels rather than rock over them.
-  const toward = (angle: number, rate: number) => (Math.abs(angle) < 0.05 ? rate : rate + (-Math.sign(angle) * Math.min(RIGHTING, SETTLING * Math.abs(angle)) - rate) * take)
+  const toward = (angle: number, rate: number) =>
+    Math.abs(angle) < 0.05
+      ? rate
+      : rate + (-Math.sign(angle) * Math.min(RIGHTING, SETTLING * Math.abs(angle)) - rate) * take
   return {
-    rollRate: toward(roll, rates.rollRate), pitchRate: toward(pitch, rates.pitchRate),
-    vz: up < 0 ? rates.vz + (HOP - rates.vz) * take : rates.vz
+    rollRate: toward(roll, rates.rollRate),
+    pitchRate: toward(pitch, rates.pitchRate),
+    vz: up < 0 ? rates.vz + (HOP - rates.vz) * take : rates.vz,
   }
 }

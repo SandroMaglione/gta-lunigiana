@@ -34,7 +34,7 @@ export const FAUNA = {
   dog: { radius: 0.3, mass: 25, walk: 1.2, run: 7, home: 20, lethal: 9 },
   cat: { radius: 0.15, mass: 4.5, walk: 0.7, run: 7, home: 12, lethal: 7 },
   cow: { radius: 0.75, mass: 600, walk: 0.9, run: 4, home: 35, lethal: 22 },
-  pig: { radius: 0.4, mass: 120, walk: 0.6, run: 4.5, home: 8, lethal: 13 }
+  pig: { radius: 0.4, mass: 120, walk: 0.6, run: 4.5, home: 8, lethal: 13 },
 } as const satisfies Record<Species, Fauna>
 
 /** A coat: its main colour, its markings' colour (the coat again on a plain coat), and how often it is seen. */
@@ -58,7 +58,7 @@ const COATS = {
     { coat: 0xeee8dc, patch: 0xeee8dc, weight: 0.1 }, // white (a Maremma sheepdog)
     { coat: 0xc49a6c, patch: 0xeee8dc, weight: 0.15 }, // the farm mongrels: tan, black or brown with white
     { coat: 0x1c1a19, patch: 0xeee8dc, weight: 0.12 },
-    { coat: 0x5a3a22, patch: 0xeee8dc, weight: 0.08 }
+    { coat: 0x5a3a22, patch: 0xeee8dc, weight: 0.08 },
   ],
   cat: [
     { coat: 0x8a857c, patch: 0x4e4a45, weight: 0.35 }, // grey tabby, the commonest street cat: the patch is its stripes
@@ -66,7 +66,7 @@ const COATS = {
     { coat: 0x1a1918, patch: 0xf0ebe0, weight: 0.15 }, // black and white
     { coat: 0xd98a3d, patch: 0xa8602a, weight: 0.15 }, // orange, a ginger tabby's darker stripes
     { coat: 0xf0ebe0, patch: 0xf0ebe0, weight: 0.08 }, // white
-    { coat: 0xf0ebe0, patch: 0xd98a3d, weight: 0.12 } // calico: white with orange patches (one patch colour: its black is left out)
+    { coat: 0xf0ebe0, patch: 0xd98a3d, weight: 0.12 }, // calico: white with orange patches (one patch colour: its black is left out)
   ],
   cow: [
     { coat: 0x8a6a4e, patch: 0xd8c6a8, weight: 0.3 }, // crossbred: brown with a pale belly and face
@@ -74,13 +74,13 @@ const COATS = {
     { coat: 0xe6e0d4, patch: 0xe6e0d4, weight: 0.12 }, // Chianina, white
     { coat: 0x7a6e64, patch: 0x7a6e64, weight: 0.15 }, // Bruna Alpina, grey-brown
     { coat: 0xf2f0ea, patch: 0x1c1c1c, weight: 0.15 }, // Frisona, black patches on white
-    { coat: 0xb88a52, patch: 0xb88a52, weight: 0.03 } // Pontremolese, dark wheaten
+    { coat: 0xb88a52, patch: 0xb88a52, weight: 0.03 }, // Pontremolese, dark wheaten
   ],
   pig: [
     { coat: 0xe8b4a0, patch: 0xe8b4a0, weight: 0.7 }, // pink, Large White crosses
     { coat: 0x2b2624, patch: 0x2b2624, weight: 0.1 }, // black
-    { coat: 0x2b2624, patch: 0xefe6dc, weight: 0.2 } // Cinta Senese: black with a white belt
-  ]
+    { coat: 0x2b2624, patch: 0xefe6dc, weight: 0.2 }, // Cinta Senese: black with a white belt
+  ],
 } as const satisfies Record<Species, ReadonlyArray<Coat>>
 
 /** An animal's size: its species' usual size times a factor in this range (estimate). */

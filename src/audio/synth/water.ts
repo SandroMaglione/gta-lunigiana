@@ -22,7 +22,7 @@ type Body = Water["body"]
 const BUBBLES = {
   fountain: { rate: 500, rMin: 0.0015, rMax: 0.006, gamma: 0.5, xi: 0.1 },
   stream: { rate: 800, rMin: 0.0003, rMax: 0.008, gamma: 1.5, xi: 0.1 },
-  river: { rate: 5000, rMin: 0.0002, rMax: 0.02, gamma: 2, xi: 0.3 }
+  river: { rate: 5000, rMin: 0.0002, rMax: 0.02, gamma: 2, xi: 0.3 },
 } as const satisfies Record<Body, Bubbles>
 
 /** How a body mixes its layers (TUNED by rendering: peaks within ±2 dB of 0.5 across `flow`). */
@@ -35,28 +35,45 @@ interface Mix {
   /** The stone basin's resonance at 400 Hz, dB. */
   readonly basin: number
   /** Layer gains at `flow`: the bed, the bubbles (peak-normalised), the boulder rumble. */
-  readonly layers: (flow: number) => { readonly bed: number; readonly bubbles: number; readonly rumble: number }
+  readonly layers: (flow: number) => {
+    readonly bed: number
+    readonly bubbles: number
+    readonly rumble: number
+  }
   /** Depth of the slow surge on the bed and rumble, 0…1. */
   readonly surge: (flow: number) => number
 }
 
 const MIXES = {
   fountain: {
-    bed: "bandpass", hz: (flow) => 1500 + 1000 * flow, q: 0.7, basin: 8,
+    bed: "bandpass",
+    hz: (flow) => 1500 + 1000 * flow,
+    q: 0.7,
+    basin: 8,
     layers: (flow) => ({ bed: 1.1 + 0.4 * flow, bubbles: 0.3 - 0.1 * flow, rumble: 0 }),
-    surge: () => 0.1
+    surge: () => 0.1,
   },
   stream: {
-    bed: "lowpass", hz: (flow) => 1500 + 1500 * flow, q: 0.5, basin: 0,
+    bed: "lowpass",
+    hz: (flow) => 1500 + 1500 * flow,
+    q: 0.5,
+    basin: 0,
     layers: (flow) => ({ bed: 0.55 + 0.05 * flow, bubbles: 0.4 - 0.2 * flow, rumble: 0.1 * flow }),
-    surge: (flow) => 0.1 + 0.1 * flow
+    surge: (flow) => 0.1 + 0.1 * flow,
   },
   // The Lucido's rapids: pink lowpassed at 800 + 5000·√flow Hz, brown rumble ∝ flow^1.5.
   river: {
-    bed: "lowpass", hz: (flow) => 800 + 5000 * Math.sqrt(flow), q: 0.5, basin: 0,
-    layers: (flow) => ({ bed: 0.75 - 0.35 * flow, bubbles: 0.35 - 0.25 * flow, rumble: 0.35 * flow ** 1.5 }),
-    surge: (flow) => 0.15 + 0.2 * flow
-  }
+    bed: "lowpass",
+    hz: (flow) => 800 + 5000 * Math.sqrt(flow),
+    q: 0.5,
+    basin: 0,
+    layers: (flow) => ({
+      bed: 0.75 - 0.35 * flow,
+      bubbles: 0.35 - 0.25 * flow,
+      rumble: 0.35 * flow ** 1.5,
+    }),
+    surge: (flow) => 0.15 + 0.2 * flow,
+  },
 } as const satisfies Record<Body, Mix>
 
 /** Seconds of bubbles per loop: long enough not to be heard repeating under the bed. */
@@ -84,16 +101,23 @@ const bubblesOf = (ctx: BaseAudioContext, body: Body): AudioBuffer => {
 /** A fountain, stream or river; the body's bubbles are swapped in if the held body ever changes. */
 export const water: VoiceFactory<Water> = ({ ctx, out, cents, kit }) => {
   const level = outlet(ctx, out)
-  const surge = new GainNode(ctx, { gain: 1 }), surgeDepth = new GainNode(ctx, { gain: 0 })
+  const surge = new GainNode(ctx, { gain: 1 }),
+    surgeDepth = new GainNode(ctx, { gain: 0 })
   surge.connect(level)
   // The gust signal at ×8 swings the surge at 0.25–4 Hz.
   const swell = loop(ctx, kit.gust, 8)
   swell.connect(surgeDepth).connect(surge.gain)
-  const pink = loop(ctx, kit.pink), bedFilter = new BiquadFilterNode(ctx, { type: "lowpass", Q: 0.5 })
-  const basin = new BiquadFilterNode(ctx, { type: "peaking", frequency: 400, Q: 2, gain: 0 }), bed = new GainNode(ctx, { gain: 0 })
+  const pink = loop(ctx, kit.pink),
+    bedFilter = new BiquadFilterNode(ctx, { type: "lowpass", Q: 0.5 })
+  const basin = new BiquadFilterNode(ctx, { type: "peaking", frequency: 400, Q: 2, gain: 0 }),
+    bed = new GainNode(ctx, { gain: 0 })
   pink.connect(bedFilter).connect(basin).connect(bed).connect(surge)
-  const brown = loop(ctx, kit.brown), rumble = new GainNode(ctx, { gain: 0 })
-  brown.connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 300 })).connect(rumble).connect(surge)
+  const brown = loop(ctx, kit.brown),
+    rumble = new GainNode(ctx, { gain: 0 })
+  brown
+    .connect(new BiquadFilterNode(ctx, { type: "lowpass", frequency: 300 }))
+    .connect(rumble)
+    .connect(surge)
   const drops = new GainNode(ctx, { gain: 0 })
   drops.connect(level)
   for (const source of [pink, brown]) cents.connect(source.detune)
@@ -101,7 +125,9 @@ export const water: VoiceFactory<Water> = ({ ctx, out, cents, kit }) => {
   return {
     update: (sound, now) => {
       // The first update lands at once (the outlet fades the voice in); later ones glide.
-      const mix: Mix = MIXES[sound.body], flow = unit(sound.flow), tau = body === undefined ? 0.01 : TAU
+      const mix: Mix = MIXES[sound.body],
+        flow = unit(sound.flow),
+        tau = body === undefined ? 0.01 : TAU
       if (sound.body !== body) {
         body = sound.body
         bubbles?.stop(now)
@@ -119,6 +145,7 @@ export const water: VoiceFactory<Water> = ({ ctx, out, cents, kit }) => {
       rumble.gain.setTargetAtTime(layers.rumble, now, tau)
       surgeDepth.gain.setTargetAtTime(mix.surge(flow), now, tau)
     },
-    stop: (now) => fadeOut(level, [swell, pink, brown, ...(bubbles === undefined ? [] : [bubbles])], now)
+    stop: (now) =>
+      fadeOut(level, [swell, pink, brown, ...(bubbles === undefined ? [] : [bubbles])], now),
   }
 }

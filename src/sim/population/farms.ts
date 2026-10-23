@@ -50,9 +50,19 @@ const build = () => {
     const { x, y } = buildingCentre(i)
     const cover = coverAt(x, y)
     if (!OPEN.has(cover)) return
-    list.push({ building: i, x, y, rural: residentsNear(x, y, RURAL_REACH) < RURAL, pen: PEN_KINDS.has(b.kind) || cover === "farmyard" })
+    list.push({
+      building: i,
+      x,
+      y,
+      rural: residentsNear(x, y, RURAL_REACH) < RURAL,
+      pen: PEN_KINDS.has(b.kind) || cover === "farmyard",
+    })
   })
-  const grid = staticGrid(list.length, (k) => [list[k]!.x, list[k]!.y, list[k]!.x, list[k]!.y], FARM_CELL)
+  const grid = staticGrid(
+    list.length,
+    (k) => [list[k]!.x, list[k]!.y, list[k]!.x, list[k]!.y],
+    FARM_CELL,
+  )
   // Roads in tunnels run under the fields: they keep no herd off.
   const roads = edgeIndex(graph.edges.flatMap((_, e) => (roadOf(e).tunnel === true ? [] : [e])))
   return { list, grid, roads }
@@ -91,7 +101,11 @@ export const buildingsNear = (x: number, y: number, r: number): Array<number> =>
   const found: Array<number> = []
   buildingsIn(x - r, y - r, x + r, y + r, (i) => {
     const [x0, y0, x1, y1] = buildingBoxes[i]!
-    if (MAP.buildings[i]!.ruins !== true && Math.max(x0 - x, 0, x - x1) ** 2 + Math.max(y0 - y, 0, y - y1) ** 2 <= r * r) found.push(i)
+    if (
+      MAP.buildings[i]!.ruins !== true &&
+      Math.max(x0 - x, 0, x - x1) ** 2 + Math.max(y0 - y, 0, y - y1) ** 2 <= r * r
+    )
+      found.push(i)
   })
   return found
 }
@@ -105,7 +119,9 @@ const nearBuilding = (x: number, y: number, d: number): boolean => {
     if (Math.max(x0 - x, 0, x - x1) ** 2 + Math.max(y0 - y, 0, y - y1) ** 2 > d * d) return
     const { outer } = MAP.buildings[i]!
     for (let k = 0, n = outer.length; k < n && !near; k += 2) {
-      near = segDist2(x, y, outer[k]!, outer[k + 1]!, outer[(k + 2) % n]!, outer[(k + 3) % n]!).d2 <= d * d
+      near =
+        segDist2(x, y, outer[k]!, outer[k + 1]!, outer[(k + 2) % n]!, outer[(k + 3) % n]!).d2 <=
+        d * d
     }
     near ||= pointInRing(x, y, outer)
   })
@@ -117,33 +133,55 @@ const slopeAt = (x: number, y: number): number =>
   Ops.hypot(heightAt(x + 2, y) - heightAt(x - 2, y), heightAt(x, y + 2) - heightAt(x, y - 2)) / 4
 
 /** Whether (x, y) is open, unpaved land outdoors, not too steep: where a free dog or a pig may stand. */
-export const openGround = (x: number, y: number): boolean => OPEN.has(coverAt(x, y)) && slopeAt(x, y) <= STEEPEST && !indoors(x, y)
+export const openGround = (x: number, y: number): boolean =>
+  OPEN.has(coverAt(x, y)) && slopeAt(x, y) <= STEEPEST && !indoors(x, y)
 
 /**
  * Whether (x, y) is a pasture for a herd: meadow, grassland or farmland, not too steep, `PASTURE_ROOM` clear of buildings
  * and roads, near a rural farm.
  */
 export const pasture = (x: number, y: number): boolean => {
-  if (!PASTURE.has(coverAt(x, y)) || slopeAt(x, y) > STEEPEST || nearBuilding(x, y, PASTURE_ROOM.building)) return false
+  if (
+    !PASTURE.has(coverAt(x, y)) ||
+    slopeAt(x, y) > STEEPEST ||
+    nearBuilding(x, y, PASTURE_ROOM.building)
+  )
+    return false
   const road = data().roads.nearest(x, y)
   if (distanceToEdge(road, x, y) - roadOf(road).w / 2 < PASTURE_ROOM.road) return false
   return farmsNear(x, y, PASTURE_ROOM.farm).some((f) => f.rural)
 }
 
 /** Whether (x, y) is grass a cow of the herd can stand on: pasture cover, not too steep, outdoors. */
-export const grazing = (x: number, y: number): boolean => PASTURE.has(coverAt(x, y)) && slopeAt(x, y) <= STEEPEST && !indoors(x, y)
+export const grazing = (x: number, y: number): boolean =>
+  PASTURE.has(coverAt(x, y)) && slopeAt(x, y) <= STEEPEST && !indoors(x, y)
 
 /** A point `distance` m out from a random spot on the outside of building `i`'s walls (a wall picked by its length). */
-export const offWall = (i: number, distance: number, random: Random.Random): { readonly x: number; readonly y: number } => {
+export const offWall = (
+  i: number,
+  distance: number,
+  random: Random.Random,
+): { readonly x: number; readonly y: number } => {
   const { outer } = MAP.buildings[i]!
   const n = outer.length
   // The ring's turning sense: counter-clockwise rings have the outside on the right of each wall.
   let twice = 0
-  for (let k = 0; k < n; k += 2) twice += outer[k]! * outer[(k + 3) % n]! - outer[(k + 2) % n]! * outer[k + 1]!
+  for (let k = 0; k < n; k += 2)
+    twice += outer[k]! * outer[(k + 3) % n]! - outer[(k + 2) % n]! * outer[k + 1]!
   const out = twice > 0 ? 1 : -1
   const walls = Array.from({ length: n / 2 }, (_, w) => 2 * w)
-  const k = random.weighted(walls, (w) => Ops.hypot(outer[(w + 2) % n]! - outer[w]!, outer[(w + 3) % n]! - outer[w + 1]!)) ?? 0
-  const ax = outer[k]!, ay = outer[k + 1]!, ex = outer[(k + 2) % n]! - ax, ey = outer[(k + 3) % n]! - ay
-  const length = Math.max(Ops.hypot(ex, ey), 1e-9), t = random.next()
-  return { x: ax + ex * t + (out * ey * distance) / length, y: ay + ey * t - (out * ex * distance) / length }
+  const k =
+    random.weighted(walls, (w) =>
+      Ops.hypot(outer[(w + 2) % n]! - outer[w]!, outer[(w + 3) % n]! - outer[w + 1]!),
+    ) ?? 0
+  const ax = outer[k]!,
+    ay = outer[k + 1]!,
+    ex = outer[(k + 2) % n]! - ax,
+    ey = outer[(k + 3) % n]! - ay
+  const length = Math.max(Ops.hypot(ex, ey), 1e-9),
+    t = random.next()
+  return {
+    x: ax + ex * t + (out * ey * distance) / length,
+    y: ay + ey * t - (out * ex * distance) / length,
+  }
 }

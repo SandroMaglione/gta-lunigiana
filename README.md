@@ -5,7 +5,7 @@
 
 ![Title card](docs/screenshots/title.png)
 
-Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and run people down, on a map built from survey data of the real places. As many people are out as live nearby, so the village centres are busy and the country roads empty: villagers of every age walk alone, in couples, with their kids or a dog, stop to chat, glare at a speeding car, jump out of its way and are shocked by a death, while cats and dogs roam the villages and cows and pigs the farms. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look.
+Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and run people down, on a map built from survey data of the real places. As many people are out as live nearby, so the village centres are busy and the country roads empty: villagers of every age walk alone, in couples, with their kids or a dog, stop to chat, glare at a speeding car, jump out of its way and are shocked by a death, while cats and dogs roam the villages and cows and pigs the farms. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look. A game day lasts 24 minutes under the real sun and moon, and the weather follows Italy’s climate at the map’s latitude and height, drawn day by day from national statistics: rain wets the roads, snow whitens the mountains, and both cost grip.
 
 The game will cover all of Lunigiana, from the beaches at the mouth of the Magra to the Apennine ridge. Today the playable map is one valley of it, the [Valle del Lucido](#the-playable-map-today-the-valle-del-lucido).
 
@@ -22,29 +22,29 @@ It runs from about 7 km of coast, between Punta Bianca and the Torrente Parmigno
 
 ### How the map grows, part by part
 
-The map grows one part at a time, each built from the same survey sources as today’s valley. The parts come in this order, tracked in [#3](https://github.com/mastro993/grand-theft-auto-vdl/issues/3):
+The map grows one part at a time, each built from the same survey sources as today’s valley. The parts come in this order, tracked in [#3](https://github.com/mastro993/gta-lunigiana/issues/3):
 
-1. [Fivizzano, Casola and the upper Aulella](https://github.com/mastro993/grand-theft-auto-vdl/issues/17): the walled town of Fivizzano, the Verrucola fortress and the SS63 hairpins
-2. [Fosdinovo, the Bardine valley and the Apuan foothills](https://github.com/mastro993/grand-theft-auto-vdl/issues/18): the Castello Malaspina on its crag, olive terraces and Colli di Luni vines
-3. [Aulla and the Magra–Aulella–Taverone confluence](https://github.com/mastro993/grand-theft-auto-vdl/issues/19): the Fortezza della Brunella, the first motorway (the A15 della Cisa) and the first wide river
-4. [Sarzana and the lower Val di Magra](https://github.com/mastro993/grand-theft-auto-vdl/issues/20): the first Ligurian part, with the fortresses of Sarzana and the A12–A15 junction
-5. [The coast: Bocca di Magra, Marinella, Luni and Montemarcello](https://github.com/mastro993/grand-theft-auto-vdl/issues/21): the sea, sand beaches, the Magra mouth and ancient Luni
-6. [Bagnone and its valley up to the Sillara–Matto–Marmagna ridge](https://github.com/mastro993/grand-theft-auto-vdl/issues/22): an arcaded borgo, its castles and passes up to 1,794 m
-7. [Comano, the Lagastrello and the Cerreto](https://github.com/mastro993/grand-theft-auto-vdl/issues/23): the Apennine passes above Fivizzano, with the most reliable winter snow in Lunigiana
-8. [The middle Magra: Villafranca, Filattiera, Mulazzo and Pontremoli](https://github.com/mastro993/grand-theft-auto-vdl/issues/24): Pontremoli’s Castello del Piagnaro and the chestnut country
-9. [The Cisa, Brattello and Cirone passes](https://github.com/mastro993/grand-theft-auto-vdl/issues/25): the source of the Magra and the A15’s high viaducts and tunnels
-10. [Zeri, the Gordana and Teglia valleys and the Passo dei Due Santi](https://github.com/mastro993/grand-theft-auto-vdl/issues/26): the Rossano plateau, sheep pastures and the Zum Zeri ski area
+1. [Fivizzano, Casola and the upper Aulella](https://github.com/mastro993/gta-lunigiana/issues/17): the walled town of Fivizzano, the Verrucola fortress and the SS63 hairpins
+2. [Fosdinovo, the Bardine valley and the Apuan foothills](https://github.com/mastro993/gta-lunigiana/issues/18): the Castello Malaspina on its crag, olive terraces and Colli di Luni vines
+3. [Aulla and the Magra–Aulella–Taverone confluence](https://github.com/mastro993/gta-lunigiana/issues/19): the Fortezza della Brunella, the first motorway (the A15 della Cisa) and the first wide river
+4. [Sarzana and the lower Val di Magra](https://github.com/mastro993/gta-lunigiana/issues/20): the first Ligurian part, with the fortresses of Sarzana and the A12–A15 junction
+5. [The coast: Bocca di Magra, Marinella, Luni and Montemarcello](https://github.com/mastro993/gta-lunigiana/issues/21): the sea, sand beaches, the Magra mouth and ancient Luni
+6. [Bagnone and its valley up to the Sillara–Matto–Marmagna ridge](https://github.com/mastro993/gta-lunigiana/issues/22): an arcaded borgo, its castles and passes up to 1,794 m
+7. [Comano, the Lagastrello and the Cerreto](https://github.com/mastro993/gta-lunigiana/issues/23): the Apennine passes above Fivizzano, with the most reliable winter snow in Lunigiana
+8. [The middle Magra: Villafranca, Filattiera, Mulazzo and Pontremoli](https://github.com/mastro993/gta-lunigiana/issues/24): Pontremoli’s Castello del Piagnaro and the chestnut country
+9. [The Cisa, Brattello and Cirone passes](https://github.com/mastro993/gta-lunigiana/issues/25): the source of the Magra and the A15’s high viaducts and tunnels
+10. [Zeri, the Gordana and Teglia valleys and the Passo dei Due Santi](https://github.com/mastro993/gta-lunigiana/issues/26): the Rossano plateau, sheep pastures and the Zum Zeri ski area
 
-Parts 4 and 5 may swap. Before part 1, the engine has to scale: a single map file would exhaust a browser tab’s memory at about 320 km², less than a third of Lunigiana. The map moves into 2 km tiles loaded on demand ([#5](https://github.com/mastro993/grand-theft-auto-vdl/issues/5)). Issues [#4](https://github.com/mastro993/grand-theft-auto-vdl/issues/4) to [#12](https://github.com/mastro993/grand-theft-auto-vdl/issues/12) cover the rest of the groundwork: raw inputs out of git, motorways and other main roads, wide rivers and lakes, terrain where the LiDAR surveys stop, older building maps and the Ligurian sources.
+Parts 4 and 5 may swap. Before part 1, the engine has to scale: a single map file would exhaust a browser tab’s memory at about 320 km², less than a third of Lunigiana. The map moves into 2 km tiles loaded on demand ([#5](https://github.com/mastro993/gta-lunigiana/issues/5)). Issues [#4](https://github.com/mastro993/gta-lunigiana/issues/4) to [#12](https://github.com/mastro993/gta-lunigiana/issues/12) cover the rest of the groundwork: raw inputs out of git, motorways and other main roads, wide rivers and lakes, terrain where the LiDAR surveys stop, older building maps and the Ligurian sources.
 
 ### New landscapes
 
 These landscapes come alongside the parts:
 
-- **Sea, coast and beaches**: the sea at 0 m, sand and pebble beaches, piers and the mouth of the Magra ([#13](https://github.com/mastro993/grand-theft-auto-vdl/issues/13))
-- **Forest types**: chestnut and oak in the valleys, beech above about 1,000 m and pines on the coast ([#14](https://github.com/mastro993/grand-theft-auto-vdl/issues/14))
-- **Olive groves and vineyards**: on the hills, where they render as meadow today ([#15](https://github.com/mastro993/grand-theft-auto-vdl/issues/15))
-- **Snow**: an early-spring snow line on the high Apennines, over bare beech woods ([#16](https://github.com/mastro993/grand-theft-auto-vdl/issues/16))
+- **Sea, coast and beaches**: the sea at 0 m, sand and pebble beaches, piers and the mouth of the Magra ([#13](https://github.com/mastro993/gta-lunigiana/issues/13))
+- **Forest types**: chestnut and oak in the valleys, beech above about 1,000 m and pines on the coast ([#14](https://github.com/mastro993/gta-lunigiana/issues/14))
+- **Olive groves and vineyards**: on the hills, where they render as meadow today ([#15](https://github.com/mastro993/gta-lunigiana/issues/15))
+- **Snow**: an early-spring snow line on the high Apennines, over bare beech woods ([#16](https://github.com/mastro993/gta-lunigiana/issues/16))
 
 ## The playable map today: the Valle del Lucido
 
@@ -104,9 +104,9 @@ pnpm install
 pnpm dev
 ```
 
-Then open `http://localhost:5173`. The server listens on the local network too, so a phone or another computer on the same network can play: open the `Network` address that Vite prints. Anyone on that network can reach it, so stop it on a shared network you don't trust. Every load is a new world. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
+Then open `http://localhost:5173`. The server listens on the local network too, so a phone or another computer on the same network can play: open the `Network` address that Vite prints. Anyone on that network can reach it, so stop it on a shared network you don't trust. Every load is a new world, starting on today’s date at 08:00 Rome time once you dismiss the title card. Add `?seed=N` (for example `http://localhost:5173/?seed=42`) to replay the same world: the seed drives every random choice, so the same seed and the same keys give the same game.
 
-In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu that tunes the vehicle handling (the knobs it changes stay for the next load), and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)).
+In dev mode, the backslash key toggles the Ritmo monitor, P toggles the debug menu, and `http://localhost:5173/lab.html` opens the audio audition page: every sound on a button, its params on sliders, heard from a distance you pick (see [docs/audio.md](docs/audio.md#the-audition-page)). The debug menu sets the time (stop the clock or run it 10 or 60 times faster, pick the time of day and the date, jump to sunrise or sunset), the weather (leave it to the day’s plan or force a regime, settled at once if you like, with this month’s odds and the weather seed read out) and the vehicle handling. The handling knobs it changes stay for the next load; the time and the weather do not (see [docs/weather.md](docs/weather.md#the-hud-and-the-dev-menu)).
 
 ## Controls on foot and driving
 
@@ -122,9 +122,11 @@ The same keys walk and drive; the table shows what each does in both modes:
 | H | | horn while held; in the Carabinieri car, siren on or off |
 | M | full map (pauses the game); M, Esc or a click closes it | same |
 | Esc | settings, which pause the game: the vehicle physics (Simulation, Balanced or Arcade; a new game starts on Balanced); Esc or Resume closes them. With the full map open, Esc closes the map instead | same |
-| P (dev builds only) | debug menu: the vehicle physics presets and the handling knobs, for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
+| P (dev builds only) | debug menu: the time of day, the clock’s speed and the date, the weather, and the vehicle physics presets and handling knobs for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
 
-The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, cars stolen, people hit, the action the key would take, a speedometer while driving, and a minimap. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
+Crashes wear vehicles out, the truck far less than a small car: a damaged engine pulls weaker and misfires, smokes white, then black, and once destroyed it burns and nobody can drive it again. 5–10 s later it explodes: the blast wrecks the cars beside it, which catch fire in turn, and kills the people nearby, you too if you are still inside or standing next to it; you come back on foot at the start 4 s later ([docs/gameplay.md](docs/gameplay.md#damage)).
+
+The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, the time in Rome (HH:MM) with the weather and the temperature where you stand (for example “Rain · 9 °C”), cars stolen, people hit, the action the key would take, a speedometer while driving, a minimap, and “Sei morto” when you are killed. On screens 600 px wide or narrower the clock sits under the score. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
 ### Touch controls on a phone or tablet
 
@@ -146,7 +148,7 @@ The settings have no touch control yet: Esc on a keyboard opens them.
 
 ## How the game sounds
 
-The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, people chatting in Italian-sounding gibberish with a real word now and then (the way The Sims talk) and crying out in real Italian, cows, pigs, cats and dogs, wind, crickets, birds, the village church bells striking the hours, and the Lucido and its streams.
+The browser synthesises every sound with Web Audio, with no sample files: engines voiced from how each is built and revved by the drive simulation (rough, knocking and misfiring once crashes wear them), wrecks burning and then exploding, tyres that squeal when they skid, horns and the Carabinieri siren, crashes, footsteps, people chatting in Italian-sounding gibberish with a real word now and then (the way The Sims talk) and crying out in real Italian, cows, pigs, cats and dogs, wind, rain on the ground and on the car’s roof, thunder, crickets in warm, dry air, birds by day and the owl at night, the village church bells striking the game’s hours, and the Lucido and its streams.
 
 Each sound reaches you through outdoor acoustics. It fades with distance and under the background noise, so you hear only what’s near. Houses and hills muffle it, the air dulls it, its pitch shifts as it passes, far crashes arrive late, and loud ones echo off the slopes.
 
@@ -161,10 +163,12 @@ Every script runs with `pnpm`:
 | `pnpm dev` | Vite dev server on port 5173, open to the local network (`--host`) |
 | `pnpm build` | production build into `dist/` (the Pages workflow adds `--base=./`) |
 | `pnpm preview` | serves `dist/` on port 4173 |
-| `pnpm check` | `typecheck`, then `lint`, then `test` |
+| `pnpm check` | `format:check`, then `typecheck`, then `lint`, then `test` |
+| `pnpm format` | `oxfmt`: formats the code, JSON, YAML, HTML and CSS in place |
+| `pnpm format:check` | `oxfmt --check`: fails on any unformatted file |
 | `pnpm typecheck` | `tsc` (no emit) |
-| `pnpm lint` | `oxlint` with the Ritmo plugin, then `ritmo-devtools lint src/sim/index.ts` |
-| `pnpm test` | `node --test` over `src/**/*.test.ts` |
+| `pnpm lint` | type-aware `oxlint` with the Ritmo plugin and the project's own (`lint/`), warnings failing, then `ritmo-devtools lint src/sim/index.ts` |
+| `pnpm test` | `node --test` over `src/**/*.test.ts` and `lint/**/*.test.ts`, each in a `__tests__` folder beside the module it tests |
 | `pnpm map` | rebuilds `src/sim/map/monzone.bin` from `data/raw` |
 | `pnpm fetch-osm` | downloads the OpenStreetMap extract again into `data/raw/lunigiana.osm.gz` |
 | `pnpm fetch-rt` | downloads the Regione Toscana sources again into `data/raw/rt` |
@@ -175,21 +179,24 @@ The simulation, the browser hosts and the map tools live in separate folders:
 
 | Path | Contents |
 |---|---|
-| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), the handling knobs and presets, the animal species, tuning. Headless and deterministic |
-| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, perception and reactions, animals, physics, contacts, populate, populate animals) |
+| `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), crash damage, the handling knobs and presets, the animal species, tuning. Headless and deterministic |
+| `src/sim/sky/` | the game clock and Rome’s calendar, the map’s place, the sun and the moon, the national climate model and its daily odds, the day plan, the weather regimes and what the weather is at a point (temperature, rain and snow, wet and snowy ground, fog, wind) |
+| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, perception and reactions, animals, physics, contacts, damage, explosions, populate, populate animals, sky) |
 | `src/sim/population/` | who lives where and who goes out: residents from the buildings, people's looks, parties, farms |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
-| `src/render/` | Three.js host code: pixel pipeline, static world meshes, people, animal and vehicle models, blood pools, tyre marks and smoke, the render schedule |
-| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director (vehicles, people, conversations, animals, the valley), the speaker and mixer, the synths, the audition page |
+| `src/render/` | Three.js host code: pixel pipeline, static world meshes, people, animal and vehicle models, blood pools, tyre marks and smoke, damaged engines' smoke and fire, explosions and charred wrecks, the render schedule; `sky/` lights the day and the night and draws the weather (fog, snow, wet ground, cloud shadows, rain and snow, lightning, street lamps, lit windows, headlights) |
+| `src/audio/` | Web Audio host code: the audio schedule, the acoustics director (vehicles, people, conversations, animals, the valley, the time of day, the weather and the thunder), the speaker and mixer, the synths, the audition page |
 | `src/audio/speech/` | the Italian-sounding speech: what people say, and a formant synthesiser that voices it |
-| `src/hud/` | DOM HUD: the title card as loading screen, location names, score, prompt, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the vehicle handling, both setting it through one store |
+| `src/hud/` | DOM HUD: the title card as loading screen, location names, the clock and weather readout, score, prompt, the “Sei morto” card when the player is killed, speedometer, minimap, full map (M), touch controls (mobile mode), settings (Esc) with the vehicle physics, and the dev-only debug menu (P) for the time, the weather and the vehicle handling; the settings and the menu set the handling through one store, the menu the sky through another |
 | `src/tools/` | the map pipeline (`build-map.ts`), the downloaders (`fetch-osm.ts`, `fetch-rt.ts`) and a top-down preview renderer |
 | `src/boot.ts` | browser entry: downloads the map with progress, then imports the game |
 | `src/main.ts` | browser host: builds the scene, makes the runtime, runs the fixed loop |
 | `index.html` | canvas, HUD and touch-control markup, title card (the loading screen), and the switch to mobile mode |
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
-| `docs/` | architecture, map pipeline, gameplay and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `docs/` | architecture, map pipeline, gameplay, weather and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `.oxlintrc.json`, `.oxfmtrc.json`, `lefthook.yml` | lint rules, formatter settings, and the git hooks that format and lint each commit and check each push |
+| `lint/` | the project's own oxlint plugins, one file each named after the plugin (`test-files.ts`: each test in a `__tests__` folder) |
 
 ## Rebuilding the map
 
@@ -213,12 +220,14 @@ Downloading the OSM data again pulls current edits, so the map changes; the file
 
 ## Data attribution and licences
 
-The map uses open data under these licences:
+The map and the climate model use open data under these licences and terms:
 
 - **OpenStreetMap**: map data © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright). `monzone.bin` is a derived database and stays under the ODbL.
 - **Regione Toscana**: buildings, road surfaces, elevation and land cover, “Fonte dei dati: Regione Toscana – Rilievi LIDAR”, the Carta Tecnica Regionale 1:2000 and the Uso e copertura del suolo 2019, under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/), and the DTM 10x10 metri, under [Creative Commons Attribution 3.0 Italia](https://creativecommons.org/licenses/by/3.0/it/), from the [Geoscopio cartoteca](https://www502.regione.toscana.it/geoscopio/cartoteca.html).
+- **ISPRA SCIA**: the 1991–2020 station normals (temperature and rain days) the national climate model is fitted to, from ISPRA’s SCIA [valori climatici normali](http://valori-climatici-normali.isprambiente.it/), and the heavy-rain shares of ISPRA’s report *I normali climatici 1991-2020 di temperatura e precipitazione in Italia*, under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+- **Aeronautica Militare**: the cumulonimbus, fog, cloud-cover and strong-wind normals of its lowland airports from its *Atlante Climatico d’Italia* 1971–2000, used under its [terms](https://www.meteoam.it/it/condizioni-utilizzo), which ask for this credit: “Informazioni elaborate utilizzando, tra l'altro, dati e prodotti del Servizio Meteorologico dell'Aeronautica Militare pubblicati sul sito www.meteoam.it”.
 
-The game shows these credits on the title card and in the HUD.
+The game shows these credits on the title card and in the HUD. The papers and the sources left out of the climate model are recorded in [docs/weather.md](docs/weather.md#the-climate-sources-record).
 
 Sources for the description of Lunigiana and the Valle del Lucido: the Italian Wikipedia pages for [Lunigiana](https://it.wikipedia.org/wiki/Lunigiana), [Monzone](https://it.wikipedia.org/wiki/Monzone), [Equi Terme](https://it.wikipedia.org/wiki/Equi_Terme), [Gragnola](https://it.wikipedia.org/wiki/Gragnola_(Fivizzano)), [the Aulella](https://it.wikipedia.org/wiki/Aulella) and [Monzone station](https://it.wikipedia.org/wiki/Stazione_di_Monzone-Monte_dei_Bianchi-Isolano), [Grotte di Equi, *La Valle del Lucido*](https://grottediequi.it/territorio/la-valle-del-lucido/), [*Il nome Valle del Lucido*](https://aipiedidelleapuane.wordpress.com/2017/02/28/il-nome-valle-del-lucido/), [Visit Tuscany: Equi Terme](https://www.visittuscany.com/en/towns-and-villages/equi-terme/), and the valley study in [*ARQ*](https://arqarqt.revistas.csic.es/index.php/arqarqt/article/download/39/36/37).
 
@@ -230,5 +239,6 @@ The `docs/` folder explains how the game works:
 - [docs/audio.md](docs/audio.md): how the game sounds and why: data flow, the acoustics, every sound, the calibration, the audition page and tests
 - [docs/map.md](docs/map.md): the map pipeline, the file format and the data’s limits
 - [docs/gameplay.md](docs/gameplay.md): on foot, vehicles, traffic, people and their reactions, deaths and score, population, animals and tuning
+- [docs/weather.md](docs/weather.md): the game clock, the sun and the moon, the climate model and its sources, the weather, the grip it costs, and how it looks and sounds
 
 [AGENTS.md](AGENTS.md) routes coding agents to [CODING_STANDARDS.md](CODING_STANDARDS.md), the workflow every change follows, and to the checks for each part of the game in [docs/standards/](docs/standards/).

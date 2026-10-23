@@ -9,6 +9,7 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { overturned } from "./chassis.ts"
 import { moveCircles, segmentDistance } from "./collide.ts"
+import { destroyed } from "./damage.ts"
 import { type Segment, wallsNear } from "./map/index.ts"
 import type { ChassisValue, PoseValue } from "./schema.ts"
 import { ENTER_GAP, PERSON_RADIUS } from "./tuning.ts"
@@ -25,25 +26,60 @@ export const carCircles = (model: VehicleModel, angle: number): ReadonlyArray<Ve
   const { length, width } = VEHICLES[model]
   const k = length / 2 - width / 2
   const n = Math.max(3, Math.ceil((2 * k) / (width / 2)) + 1)
-  const fx = Ops.cos(angle), fy = Ops.sin(angle)
+  const fx = Ops.cos(angle),
+    fy = Ops.sin(angle)
   return Array.from({ length: n }, (_, i) => {
     const along = k * ((2 * i) / (n - 1) - 1)
     return { x: fx * along, y: fy * along }
   })
 }
 
+/** How far (x, y) is from the body of `model` at `pose`, m, 0 inside it: the hull its circles sweep along its axis. */
+export const offBody = (model: VehicleModel, pose: PoseValue, x: number, y: number): number => {
+  const r = carRadius(model),
+    k = VEHICLES[model].length / 2 - r,
+    fx = Ops.cos(pose.angle) * k,
+    fy = Ops.sin(pose.angle) * k
+  const axis = { ax: pose.x - fx, ay: pose.y - fy, bx: pose.x + fx, by: pose.y + fy }
+  return Math.max(0, segmentDistance(axis, x, y) - r)
+}
+
 /** Wall segments that may touch a body of half-extent `pad` moving from (x, y) by (dx, dy). */
-export const wallsAlong = (kind: "walk" | "drive", x: number, y: number, dx: number, dy: number, pad: number): ReadonlyArray<Segment> =>
-  wallsNear(kind, Math.min(x, x + dx) - pad, Math.min(y, y + dy) - pad, Math.max(x, x + dx) + pad, Math.max(y, y + dy) + pad)
+export const wallsAlong = (
+  kind: "walk" | "drive",
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+  pad: number,
+): ReadonlyArray<Segment> =>
+  wallsNear(
+    kind,
+    Math.min(x, x + dx) - pad,
+    Math.min(y, y + dy) - pad,
+    Math.max(x, x + dx) + pad,
+    Math.max(y, y + dy) + pad,
+  )
 
 /** Whether a circle of radius `r` at (x, y) overlaps no segment (by more than `slack`). */
-export const clearOf = (segs: ReadonlyArray<Segment>, x: number, y: number, r: number, slack = 0): boolean =>
-  segs.every((s) => segmentDistance(s, x, y) >= r - slack)
+export const clearOf = (
+  segs: ReadonlyArray<Segment>,
+  x: number,
+  y: number,
+  r: number,
+  slack = 0,
+): boolean => segs.every((s) => segmentDistance(s, x, y) >= r - slack)
 
 /** How deep (m) circles of radius `r` at `at` + each of `offsets` reach into `segs`; 0 when clear. */
-const depthIn = (segs: ReadonlyArray<Segment>, at: Vec2.Vec2, offsets: ReadonlyArray<Vec2.Vec2>, r: number): number => {
+const depthIn = (
+  segs: ReadonlyArray<Segment>,
+  at: Vec2.Vec2,
+  offsets: ReadonlyArray<Vec2.Vec2>,
+  r: number,
+): number => {
   let depth = 0
-  for (const o of offsets) for (const s of segs) depth = Math.max(depth, r - segmentDistance(s, at.x + o.x, at.y + o.y))
+  for (const o of offsets)
+    for (const s of segs) depth = Math.max(depth, r - segmentDistance(s, at.x + o.x, at.y + o.y))
   return depth
 }
 
@@ -58,24 +94,32 @@ export const crossesAny = (segs: ReadonlyArray<Segment>, p: Vec2.Vec2, q: Vec2.V
 /**
  * Of `vehicles`, the one a person at `at` gets into with the action key: the nearest body (the
  * capsule around its circles) within ENTER_GAP, the later one on a tie, with no walk wall between
- * the person and its axis; never one lying on its side or roof. The action (EnterExit) and the HUD
- * prompt (PlayerView) both ask this.
+ * the person and its axis; never one lying on its side or roof, nor a destroyed one. The action
+ * (EnterExit) and the HUD prompt (PlayerView) both ask this.
  */
 export const vehicleInReach = <T>(
   at: Vec2.Vec2,
   vehicles: ReadonlyArray<T>,
-  bodyOf: (vehicle: T) => { readonly model: VehicleModel; readonly pose: PoseValue; readonly chassis: ChassisValue }
+  bodyOf: (vehicle: T) => {
+    readonly model: VehicleModel
+    readonly pose: PoseValue
+    readonly chassis: ChassisValue
+    readonly damage: number
+  },
 ): T | undefined => {
-  let best = ENTER_GAP, found: T | undefined
+  let best = ENTER_GAP,
+    found: T | undefined
   for (const vehicle of vehicles) {
-    const { model, pose, chassis } = bodyOf(vehicle)
-    if (overturned(chassis)) continue
+    const { model, pose, chassis, damage } = bodyOf(vehicle)
+    if (overturned(chassis) || destroyed(damage)) continue
     const { length, width } = VEHICLES[model]
     const k = length / 2 - width / 2
-    const fx = Ops.cos(pose.angle), fy = Ops.sin(pose.angle)
+    const fx = Ops.cos(pose.angle),
+      fy = Ops.sin(pose.angle)
     const along = Math.max(-k, Math.min(k, (at.x - pose.x) * fx + (at.y - pose.y) * fy))
     const axis = { x: pose.x + fx * along, y: pose.y + fy * along }
-    const dx = at.x - axis.x, dy = at.y - axis.y
+    const dx = at.x - axis.x,
+      dy = at.y - axis.y
     const gap = Math.sqrt(dx * dx + dy * dy) - width / 2
     if (gap > best || crossesAny(wallsAlong("walk", at.x, at.y, -dx, -dy, 0.5), at, axis)) continue
     best = gap
@@ -99,14 +143,22 @@ const CAR_PUSH = 0.25
  * `segs` (moveCircles); undefined when that is unsound: deeper in a wall than
  * allowed, pushed out too far (a squeeze), or a body circle through a wall.
  */
-export const moveCar = (model: VehicleModel, pose: PoseValue, heading: number, delta: Vec2.Vec2, segs: ReadonlyArray<Segment>) => {
+export const moveCar = (
+  model: VehicleModel,
+  pose: PoseValue,
+  heading: number,
+  delta: Vec2.Vec2,
+  segs: ReadonlyArray<Segment>,
+) => {
   const r = carRadius(model)
   const from = carCircles(model, pose.angle)
   const circles = carCircles(model, heading)
   const { position, blocked } = moveCircles(pose, circles, delta, r, segs)
   const was = depthIn(segs, pose, from, r)
-  const sound = Vec2.distance(position, pose) <= Vec2.length(delta) + CAR_PUSH &&
-    depthIn(segs, position, circles, r) <= Math.max(CAR_SLACK, Math.min(was + CAR_SCRAPE, CAR_DEEPEST), was) &&
+  const sound =
+    Vec2.distance(position, pose) <= Vec2.length(delta) + CAR_PUSH &&
+    depthIn(segs, position, circles, r) <=
+      Math.max(CAR_SLACK, Math.min(was + CAR_SCRAPE, CAR_DEEPEST), was) &&
     circles.every((o, i) => !crossesAny(segs, Vec2.add(pose, from[i]!), Vec2.add(position, o)))
   return sound ? { position, blocked } : undefined
 }
@@ -124,8 +176,10 @@ export const walkBy = (at: Vec2.Vec2, delta: Vec2.Vec2, r = PERSON_RADIUS) =>
   moveCircles(at, CENTRE, delta, r, wallsAlong("walk", at.x, at.y, delta.x, delta.y, r + 0.5))
 
 /** Speed along the heading `angle` (negative when reversing). */
-export const forwardSpeed = (motion: { readonly vx: number; readonly vy: number }, angle: number): number =>
-  motion.vx * Ops.cos(angle) + motion.vy * Ops.sin(angle)
+export const forwardSpeed = (
+  motion: { readonly vx: number; readonly vy: number },
+  angle: number,
+): number => motion.vx * Ops.cos(angle) + motion.vy * Ops.sin(angle)
 
 /** `angle` wrapped into [−π, π). */
 export const wrapAngle = (angle: number): number => {

@@ -9,7 +9,17 @@ import { edgeIndex, midpointOf } from "../edges.ts"
 import { buildingsIn, graph, MAP } from "../map/index.ts"
 
 /** Building kinds people live in: the CTR's houses and the OSM tags for homes ("yes" is an untagged OSM building, nearly always a house). */
-const HOMES: ReadonlySet<string> = new Set(["house", "residential", "yes", "apartments", "detached", "semidetached_house", "terrace", "farm", "bungalow"])
+const HOMES: ReadonlySet<string> = new Set([
+  "house",
+  "residential",
+  "yes",
+  "apartments",
+  "detached",
+  "semidetached_house",
+  "terrace",
+  "farm",
+  "bungalow",
+])
 /** Storey height, m: the eave height over this is the number of floors (at least 1, at most `MAX_FLOORS`). */
 const STOREY = 3
 const MAX_FLOORS = 5
@@ -28,31 +38,40 @@ const LIVED_IN = 0.3
 const residents = Float32Array.from(MAP.buildings, (b) => {
   if (!HOMES.has(b.kind) || b.ruins === true || b.style === "ruin") return 0
   let twice = 0
-  for (let k = 0, n = b.outer.length; k < n; k += 2) twice += b.outer[k]! * b.outer[(k + 3) % n]! - b.outer[(k + 2) % n]! * b.outer[k + 1]!
+  for (let k = 0, n = b.outer.length; k < n; k += 2)
+    twice += b.outer[k]! * b.outer[(k + 3) % n]! - b.outer[(k + 2) % n]! * b.outer[k + 1]!
   let area = Math.abs(twice) / 2
   for (const hole of b.holes ?? []) {
     let h = 0
-    for (let k = 0, n = hole.length; k < n; k += 2) h += hole[k]! * hole[(k + 3) % n]! - hole[(k + 2) % n]! * hole[k + 1]!
+    for (let k = 0, n = hole.length; k < n; k += 2)
+      h += hole[k]! * hole[(k + 3) % n]! - hole[(k + 2) % n]! * hole[k + 1]!
     area -= Math.abs(h) / 2
   }
   const floors = Math.min(MAX_FLOORS, Math.max(1, Math.round(b.h / STOREY)))
   return (Math.max(0, area) * floors * LIVED_IN) / GROSS_PER_RESIDENT
 })
 /** Each building's centre (the mean of its outer ring's vertices), x then y. */
-const centres = Float64Array.from(MAP.buildings.flatMap((b) => {
-  let x = 0, y = 0
-  const n = b.outer.length / 2
-  for (let k = 0; k < b.outer.length; k += 2) [x, y] = [x + b.outer[k]!, y + b.outer[k + 1]!]
-  return [x / n, y / n]
-}))
+const centres = Float64Array.from(
+  MAP.buildings.flatMap((b) => {
+    let x = 0,
+      y = 0
+    const n = b.outer.length / 2
+    for (let k = 0; k < b.outer.length; k += 2) [x, y] = [x + b.outer[k]!, y + b.outer[k + 1]!]
+    return [x / n, y / n]
+  }),
+)
 /** The centre of building `i`: the mean of its outer ring's vertices. */
-export const buildingCentre = (i: number): { readonly x: number; readonly y: number } => ({ x: centres[2 * i]!, y: centres[2 * i + 1]! })
+export const buildingCentre = (i: number): { readonly x: number; readonly y: number } => ({
+  x: centres[2 * i]!,
+  y: centres[2 * i + 1]!,
+})
 
 /** Residents of the homes whose centre is within `r` m of (x, y). */
 export const residentsNear = (x: number, y: number, r: number): number => {
   let sum = 0
   buildingsIn(x - r, y - r, x + r, y + r, (i) => {
-    const dx = centres[2 * i]! - x, dy = centres[2 * i + 1]! - y
+    const dx = centres[2 * i]! - x,
+      dy = centres[2 * i + 1]! - y
     if (dx * dx + dy * dy <= r * r) sum += residents[i]!
   })
   return sum

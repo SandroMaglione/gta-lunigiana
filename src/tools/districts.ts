@@ -21,7 +21,7 @@ const MONZONE: ReadonlyArray<District> = [
   { name: "Aiola", x: 720, y: 190, r: 240 },
   { name: "Castello di Aiola", x: 420, y: -260, r: 110 },
   { name: "Novicchia", x: -924.1, y: -397.1, r: 220 },
-  { name: "Acquanera", x: 117.2, y: -95.6, r: 120 }
+  { name: "Acquanera", x: 117.2, y: -95.6, r: 120 },
 ]
 
 /**
@@ -65,7 +65,7 @@ const LANDMARKS: ReadonlyArray<District> = [
   { name: "Cava Lorano", x: -640, y: -5760, r: 260 },
   { name: "Cave del Morlungo", x: 270, y: -5203, r: 310 },
   { name: "Il Boscaccio", x: 1140, y: -5900, r: 350 },
-  { name: "Capanne di Navola", x: 3460, y: -5560, r: 350 }
+  { name: "Capanne di Navola", x: 3460, y: -5560, r: 350 },
 ]
 
 /** Populated places only: a `locality` (a named hillside, a field) would claim the village's buildings around it. */
@@ -82,25 +82,41 @@ const RADIUS = { min: 80, max: 400 } // m
  * to RADIUS and rounded to 10 m.
  */
 export const fitDistricts = (osm: Osm, buildings: ReadonlyArray<BuildingF>): Array<District> => {
-  const inMonzone = (x: number, y: number) => MONZONE.some((d) => Math.hypot(x - d.x, y - d.y) <= d.r)
+  const inMonzone = (x: number, y: number) =>
+    MONZONE.some((d) => Math.hypot(x - d.x, y - d.y) <= d.r)
   const places = [...osm.nodes.values()].flatMap((n) => {
     const [x, y] = toLocal(n.lat, n.lon)
     const name = n.tags.name
-    return PLACES.has(n.tags.place ?? "") && name !== undefined && inBounds(x, y) && !inMonzone(x, y) ? [{ name, x, y, near: [] as Array<number> }] : []
+    return PLACES.has(n.tags.place ?? "") &&
+      name !== undefined &&
+      inBounds(x, y) &&
+      !inMonzone(x, y)
+      ? [{ name, x, y, near: [] as Array<number> }]
+      : []
   })
   for (const b of buildings) {
     const [cx, cy] = centroid(b.outer)
     if (inMonzone(cx, cy)) continue
-    let best: (typeof places)[number] | undefined, bestD = REACH
+    let best: (typeof places)[number] | undefined,
+      bestD = REACH
     for (const p of places) {
       const d = Math.hypot(p.x - cx, p.y - cy)
       if (d < bestD) [best, bestD] = [p, d]
     }
     best?.near.push(bestD)
   }
-  return [...MONZONE, ...places.map(({ name, x, y, near }) => {
-    near.sort((a, b) => a - b)
-    const fit = (near[Math.floor(FIT * (near.length - 1))] ?? 0) + 10
-    return { name, x: r1(x), y: r1(y), r: Math.round(Math.min(RADIUS.max, Math.max(RADIUS.min, fit)) / 10) * 10 }
-  }), ...LANDMARKS]
+  return [
+    ...MONZONE,
+    ...places.map(({ name, x, y, near }) => {
+      near.sort((a, b) => a - b)
+      const fit = (near[Math.floor(FIT * (near.length - 1))] ?? 0) + 10
+      return {
+        name,
+        x: r1(x),
+        y: r1(y),
+        r: Math.round(Math.min(RADIUS.max, Math.max(RADIUS.min, fit)) / 10) * 10,
+      }
+    }),
+    ...LANDMARKS,
+  ]
 }

@@ -34,21 +34,27 @@ export const roadOf = (edge: number): Road => MAP.roads[graph.edges[edge]!.road]
 /** Edge `edge` travelled a -> b when `forward`, else b -> a. */
 export const laneOf = (edge: number, forward: boolean): Lane => {
   const e = graph.edges[edge]!
-  const from = graph.nodes[forward ? e.a : e.b]!, to = graph.nodes[forward ? e.b : e.a]!
+  const from = graph.nodes[forward ? e.a : e.b]!,
+    to = graph.nodes[forward ? e.b : e.a]!
   const length = Math.max(e.length, 1e-6)
-  const dx = (to.x - from.x) / length, dy = (to.y - from.y) / length
+  const dx = (to.x - from.x) / length,
+    dy = (to.y - from.y) / length
   return { x: from.x, y: from.y, dx, dy, length, rx: dy, ry: -dx }
 }
 
 /** The point `along` metres down the lane, `side` metres to its right. */
-export const lanePoint = (lane: Lane, along: number, side: number) =>
-  ({ x: lane.x + lane.dx * along + lane.rx * side, y: lane.y + lane.dy * along + lane.ry * side })
+export const lanePoint = (lane: Lane, along: number, side: number) => ({
+  x: lane.x + lane.dx * along + lane.rx * side,
+  y: lane.y + lane.dy * along + lane.ry * side,
+})
 
 /** How far (x, y) has come along the lane (projection, unclamped). */
-export const alongLane = (lane: Lane, x: number, y: number): number => (x - lane.x) * lane.dx + (y - lane.y) * lane.dy
+export const alongLane = (lane: Lane, x: number, y: number): number =>
+  (x - lane.x) * lane.dx + (y - lane.y) * lane.dy
 
 /** The node a lane ends at. */
-export const endNode = (edge: number, forward: boolean): number => (forward ? graph.edges[edge]!.b : graph.edges[edge]!.a)
+export const endNode = (edge: number, forward: boolean): number =>
+  forward ? graph.edges[edge]!.b : graph.edges[edge]!.a
 
 /** Drive on the right: the nominal traffic lane offset for a road. */
 const trafficSide = (road: Road): number => (road.w >= 5 ? road.w / 4 + 0.2 : 0.5)
@@ -86,7 +92,10 @@ export interface Step {
   readonly forward: boolean
 }
 
-const leaving = (node: number, edge: number): Step => ({ edge, forward: graph.edges[edge]!.a === node })
+const leaving = (node: number, edge: number): Step => ({
+  edge,
+  forward: graph.edges[edge]!.a === node,
+})
 const key = (step: Step) => step.edge * 2 + (step.forward ? 1 : 0)
 
 /**
@@ -131,22 +140,40 @@ const PASS_REACH = 3
  * a query per sample and side step, at a fraction of the cost.
  */
 const wallsBeside = (edge: number, ab: Lane, pad: number): ReadonlyArray<Segment> => {
-  const { a, b } = graph.edges[edge]!, p = graph.nodes[a]!, q = graph.nodes[b]!
+  const { a, b } = graph.edges[edge]!,
+    p = graph.nodes[a]!,
+    q = graph.nodes[b]!
   const across = (x: number, y: number) => (x - ab.x) * ab.rx + (y - ab.y) * ab.ry
-  return wallsNear("drive", Math.min(p.x, q.x) - pad, Math.min(p.y, q.y) - pad, Math.max(p.x, q.x) + pad, Math.max(p.y, q.y) + pad)
-    .filter((s) => Math.max(across(s.ax, s.ay), across(s.bx, s.by)) >= -pad && Math.min(across(s.ax, s.ay), across(s.bx, s.by)) <= pad)
+  return wallsNear(
+    "drive",
+    Math.min(p.x, q.x) - pad,
+    Math.min(p.y, q.y) - pad,
+    Math.max(p.x, q.x) + pad,
+    Math.max(p.y, q.y) + pad,
+  )
+    .filter(
+      (s) =>
+        Math.max(across(s.ax, s.ay), across(s.bx, s.by)) >= -pad &&
+        Math.min(across(s.ax, s.ay), across(s.bx, s.by)) <= pad,
+    )
     .map(({ ax, ay, bx, by }) => ({ ax, ay, bx, by }))
 }
 
 /** Free width across `walls` at `along` metres down `lane` (up to 2 × PASS_REACH where a side is open). */
 const freeWidth = (walls: ReadonlyArray<Segment>, lane: Lane, along: number): number => {
   const p = lanePoint(lane, along, 0)
-  let left = PASS_REACH, right = PASS_REACH
+  let left = PASS_REACH,
+    right = PASS_REACH
   for (const s of walls) {
     // Where the line across the lane, p + t·(rx, ry), meets the wall at a + u·(b − a).
-    const ex = s.bx - s.ax, ey = s.by - s.ay, den = lane.rx * ey - lane.ry * ex
+    const ex = s.bx - s.ax,
+      ey = s.by - s.ay,
+      den = lane.rx * ey - lane.ry * ex
     if (den === 0) continue
-    const qx = s.ax - p.x, qy = s.ay - p.y, t = (qx * ey - qy * ex) / den, u = (qx * lane.ry - qy * lane.rx) / den
+    const qx = s.ax - p.x,
+      qy = s.ay - p.y,
+      t = (qx * ey - qy * ex) / den,
+      u = (qx * lane.ry - qy * lane.rx) / den
     if (u < 0 || u > 1) continue
     if (t >= 0) right = Math.min(right, t)
     else left = Math.min(left, -t)
@@ -200,7 +227,8 @@ const largestPart = (sides: Float64Array): Float64Array => {
  */
 const lanesFor = (model: VehicleModel): Float64Array => {
   const sides = new Float64Array(graph.edges.length * 2).fill(-1)
-  const { width, length } = VEHICLES[model], r = carRadius(model)
+  const { width, length } = VEHICLES[model],
+    r = carRadius(model)
   const passing = width + VEHICLES.panda.width + PASS_MARGIN
   for (const edge of graph.trafficEdges) {
     if (!classAllows(edge, model)) continue
@@ -212,7 +240,8 @@ const lanesFor = (model: VehicleModel): Float64Array => {
     // Every wall `freeWidth` can meet within PASS_REACH, and every one a body circle can touch (half the body length out) at any side offset, with 1 m to spare.
     const walls = wallsBeside(edge, ab, Math.max(PASS_REACH, nominal + length / 2) + 1)
     let singleFile = false
-    for (let i = 0; i <= samples && !singleFile; i++) singleFile = freeWidth(walls, ab, at(ab, i)) < passing
+    for (let i = 0; i <= samples && !singleFile; i++)
+      singleFile = freeWidth(walls, ab, at(ab, i)) < passing
     if (singleFile) continue
     for (const forward of [false, true]) {
       const lane = laneOf(edge, forward)
@@ -233,26 +262,32 @@ const lanesFor = (model: VehicleModel): Float64Array => {
   return largestPart(sides)
 }
 const laneSides = {
-  panda: lanesFor("panda"), ape: lanesFor("ape"), truck: loopsOnly(lanesFor("truck")), carabinieri: lanesFor("carabinieri")
+  panda: lanesFor("panda"),
+  ape: lanesFor("ape"),
+  truck: loopsOnly(lanesFor("truck")),
+  carabinieri: lanesFor("carabinieri"),
 } satisfies Record<VehicleModel, Float64Array>
 
 /** Drive on the right: the lane offset of `model` on `step` (nominal, or less where walls crowd the road). */
-export const laneSide = (step: Step, model: VehicleModel): number => Math.max(0, laneSides[model][key(step)]!)
+export const laneSide = (step: Step, model: VehicleModel): number =>
+  Math.max(0, laneSides[model][key(step)]!)
 
 /** Whether AI `model` may drive `edge`: where the body fits between the walls, trucks only on the loops of the wide roads. */
 export const allowsModel = (edge: number, model: VehicleModel): boolean =>
-  laneSides[model][key({ edge, forward: true })]! >= 0 && laneSides[model][key({ edge, forward: false })]! >= 0
+  laneSides[model][key({ edge, forward: true })]! >= 0 &&
+  laneSides[model][key({ edge, forward: false })]! >= 0
 
 /** Per model, the directions of travel that only lead into dead-end spurs (map exits, and roads too narrow for it, included). */
 const deadEnds = {
   panda: peel((e) => allowsModel(e, "panda")).toward,
   ape: peel((e) => allowsModel(e, "ape")).toward,
   truck: peel((e) => allowsModel(e, "truck")).toward,
-  carabinieri: peel((e) => allowsModel(e, "carabinieri")).toward
+  carabinieri: peel((e) => allowsModel(e, "carabinieri")).toward,
 } satisfies Record<VehicleModel, ReadonlySet<number>>
 
 /** Whether travelling `edge` this way only leads `model` into a dead end. */
-export const leadsToDeadEnd = (step: Step, model: VehicleModel): boolean => deadEnds[model].has(key(step))
+export const leadsToDeadEnd = (step: Step, model: VehicleModel): boolean =>
+  deadEnds[model].has(key(step))
 
 /** Turns sharper than this (cosine between the directions in and out) are hairpins a car cannot follow. */
 const HAIRPIN = -0.5
@@ -263,10 +298,18 @@ const HAIRPIN = -0.5
  * dead-end spurs and then hairpins while there is another way on, and a
  * U-turn only at a dead end.
  */
-export const nextTrafficEdge = (node: number, arrived: number, model: VehicleModel, random: Random.Random): Step => {
-  const options = graph.adjacency[node]!
-    .filter((e) => e !== arrived && allowsModel(e, model) && (roadOf(e).oneway !== true || graph.edges[e]!.a === node))
-    .map((e) => leaving(node, e))
+export const nextTrafficEdge = (
+  node: number,
+  arrived: number,
+  model: VehicleModel,
+  random: Random.Random,
+): Step => {
+  const options = graph.adjacency[node]!.filter(
+    (e) =>
+      e !== arrived &&
+      allowsModel(e, model) &&
+      (roadOf(e).oneway !== true || graph.edges[e]!.a === node),
+  ).map((e) => leaving(node, e))
   const into = laneOf(arrived, graph.edges[arrived]!.b === node)
   const gentle = (step: Step) => {
     const out = laneOf(step.edge, step.forward)
@@ -294,11 +337,14 @@ const wayAhead = (step: Step): number => {
   if (ahead[k]! >= 0) return ahead[k]!
   let most = 0
   const seen = new Set([step.edge])
-  const queue: Array<{ readonly step: Step; readonly gone: number }> = [{ step, gone: graph.edges[step.edge]!.length }]
+  const queue: Array<{ readonly step: Step; readonly gone: number }> = [
+    { step, gone: graph.edges[step.edge]!.length },
+  ]
   for (let i = 0; i < queue.length; i++) {
     const { step: s, gone } = queue[i]!
     const node = endNode(s.edge, s.forward)
-    const on = gone < WALK_AHEAD ? graph.adjacency[node]!.filter((e) => walkSet.has(e) && !seen.has(e)) : []
+    const on =
+      gone < WALK_AHEAD ? graph.adjacency[node]!.filter((e) => walkSet.has(e) && !seen.has(e)) : []
     if (on.length === 0) most = Math.max(most, residentsAlong(s.edge))
     for (const e of on) {
       seen.add(e)
@@ -316,7 +362,9 @@ const WALK_FLOOR = 0.5
 
 /** The walk edge to take after arriving at `node` along `arrived`: weighted by the residents the way leads to, turning back only at dead ends. */
 export const nextWalkEdge = (node: number, arrived: number, random: Random.Random): Step => {
-  const options = graph.adjacency[node]!.filter((e) => e !== arrived && walkSet.has(e)).map((e) => leaving(node, e))
+  const options = graph.adjacency[node]!.filter((e) => e !== arrived && walkSet.has(e)).map((e) =>
+    leaving(node, e),
+  )
   return random.weighted(options, (step) => wayAhead(step) + WALK_FLOOR) ?? leaving(node, arrived)
 }
 

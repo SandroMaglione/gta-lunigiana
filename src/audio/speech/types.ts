@@ -34,8 +34,25 @@ export interface Line {
  * `nonno`: a child's call to a parent or grandparent), or a robbed driver.
  */
 export type Situation =
-  | "greet" | "chat" | "reply" | "laugh" | "farewell" | "fright" | "shock" | "pity" | "anger" | "surprise" | "helpMan" | "helpWoman" | "helpKid"
-  | "grieve" | "mum" | "dad" | "nonna" | "nonno" | "thief"
+  | "greet"
+  | "chat"
+  | "reply"
+  | "laugh"
+  | "farewell"
+  | "fright"
+  | "shock"
+  | "pity"
+  | "anger"
+  | "surprise"
+  | "helpMan"
+  | "helpWoman"
+  | "helpKid"
+  | "grieve"
+  | "mum"
+  | "dad"
+  | "nonna"
+  | "nonno"
+  | "thief"
 
 /** A line in a speaker's voice: the params of the `talk` and `yell` one-shots. */
 export interface Speech {

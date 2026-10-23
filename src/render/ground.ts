@@ -20,10 +20,12 @@ export const terrainNodeY = (i: number, j: number): number => yOf(terrainNodeZ(i
 export const terrainY = (x: number, y: number): number => yOf(terrainZ(x, y))
 
 /** Surface y of a road whose profile is `z` (m a.s.l.) at (x, y): at-grade roads never dip under the terrain mesh. */
-export const surfaceY = (z: number, x: number, y: number, lift: number, lifted: boolean): number => yOf(roadZ(z, x, y, lift, lifted))
+export const surfaceY = (z: number, x: number, y: number, lift: number, lifted: boolean): number =>
+  yOf(roadZ(z, x, y, lift, lifted))
 
 /** Where an actor at (x, y) stands in render y, keeping to the level nearest `near` (its previous render height); see `groundZ`. */
-export const groundY = (x: number, y: number, near?: number): number => yOf(groundZ(x, y, near === undefined ? undefined : near + ELEVATION_BASE))
+export const groundY = (x: number, y: number, near?: number): number =>
+  yOf(groundZ(x, y, near === undefined ? undefined : near + ELEVATION_BASE))
 
 /** The ground at (x, y) on the terrain's level, in render y: a road at grade, never a deck above or a tunnel below (`atGrade`). */
 export const atGradeY = (x: number, y: number): number => yOf(atGrade(x, y))
@@ -32,4 +34,8 @@ export const atGradeY = (x: number, y: number): number => yOf(atGrade(x, y))
  * What shows on top at (x, y) on the level nearest `near` (render y), in render y: the ground there, or the higher road ribbon
  * drawn over it at a junction or a hairpin (`drawnZ`). Flat things laid on the ground (a blood pool) lie on it.
  */
-export const drawnY = (x: number, y: number, near: number): number => yOf(drawnZ(x, y, groundZ(x, y, near + ELEVATION_BASE)))
+export const drawnY = (x: number, y: number, near: number): number =>
+  yOf(drawnZ(x, y, groundZ(x, y, near + ELEVATION_BASE)))
+
+/** Faces steeper than this (normal y below it, ≈ 50°) show bare rock, and hold no snow (render/terrain, render/sky/surface). */
+export const ROCK_NORMAL_Y = 0.64

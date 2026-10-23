@@ -32,8 +32,16 @@ export const speechShot = (loud: boolean): Shot<Speech> => {
   return {
     play: (io, speech, when) => {
       let buffer = renders.get(speech)
-      if (buffer === undefined) renders.set(speech, (buffer = bufferOf(io.ctx, renderSpeech(speech, loud, rateOf(io.ctx), Math.random), rateOf(io.ctx))))
+      if (buffer === undefined)
+        renders.set(
+          speech,
+          (buffer = bufferOf(
+            io.ctx,
+            renderSpeech(speech, loud, rateOf(io.ctx), Math.random),
+            rateOf(io.ctx),
+          )),
+        )
       return playBuffer(io, buffer, when)
-    }
+    },
   }
 }
