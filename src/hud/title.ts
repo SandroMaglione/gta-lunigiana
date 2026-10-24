@@ -94,7 +94,7 @@ export const titleReady = (window: Window, dismissed: () => void): void => {
  * Stands the game clock still behind the title card, so a new game starts at its start time (08:00)
  * when the player dismisses the card: `send`s rate 0 now, and returns what sends rate 1 (a game
  * minute a real second), for `titleReady`. Only the clock waits; the traffic and the people move on
- * behind the card. Call it after setup, whose ApplyClock is then already listening.
+ * behind the card. The request waits for ApplyClock's first run in the first update.
  */
 export const holdClock = (send: (request: { readonly rate: number }) => void): (() => void) => {
   send({ rate: 0 })

@@ -46,21 +46,18 @@ calm, dry ground, the season's snow line, and a calm plan the first step draws t
 
 1. `SpawnWorld` (`systems/spawn.ts`): the player and the parked cars on 200 of the map's parked
    spots (`PARKED`), the two Carabinieri cars included.
-2. `ApplyHandling` (`index.ts`)
-3. `ApplyClock` (`index.ts`)
-4. `ApplyWeather` (`index.ts`)
-5. `applyDeferred`
-6. `FillPeople` (`systems/populate.ts`): the first fill, as many people out around the player's
+2. `applyDeferred`
+3. `FillPeople` (`systems/populate.ts`): the first fill, as many people out around the player's
    start as `Populate` keeps, from 4 m to 120 m ([gameplay.md](gameplay.md#the-first-fill)).
-7. `FillAnimals` (`systems/populate-animals.ts`): the animals `PopulateAnimals` keeps there. It
+4. `FillAnimals` (`systems/populate-animals.ts`): the animals `PopulateAnimals` keeps there. It
    asks for the farms first, so the farm list is built here, behind the title card, not in a step
    of play.
-8. `applyDeferred`
+5. `applyDeferred`
 
-The three apply systems run here once, before any request exists, so they are listening when the
-host first sends: a request sent before the first `update` (the host re-sending the player's
-stored handling at load, or holding the clock behind the title card) would otherwise be dropped by
-whichever schedule ticked first.
+The apply systems run in `update` only. A request the host sends before the first `update` (the
+player's stored handling at load, or the clock held behind the title card) waits for their first
+run, however many render frames tick first: Ritmo keeps a sent event for a reader that has not run
+yet (since 0.14).
 
 In Node, setup takes about 12 ms once the land cover is built, as `main.ts` builds it first (the
 farm list about 9 ms of it); a test that has not built the cover pays for it here too, about

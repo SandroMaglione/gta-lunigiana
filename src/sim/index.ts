@@ -159,15 +159,12 @@ const ApplyWeather = Game.System(
 )
 
 /**
- * Ticked once after the runtime is made. The apply systems run here too so they are listening before the host can send: a request
- * sent before the first update would otherwise be dropped by whichever schedule ticks first. The first fill of people and animals
- * runs once the player stands at the start, so the world is peopled from the first frame.
+ * Ticked once after the runtime is made. The first fill of people and animals runs once the player stands at the start, so the
+ * world is peopled from the first frame. The host's requests wait for the apply systems' first run in `update`, however many render
+ * frames come first.
  */
 export const setup = Game.Schedule(
   SpawnWorld,
-  ApplyHandling,
-  ApplyClock,
-  ApplyWeather,
   Game.Schedule.applyDeferred(),
   FillPeople,
   FillAnimals,
