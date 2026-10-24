@@ -6,7 +6,7 @@
     "typecheck": "tsc",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "lint": "oxlint --deny-warnings --report-unused-disable-directives && ritmo-devtools lint src/sim/index.ts",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives && ritmo-devtools lint src/lint.ts",
     "test": "node --test \"src/**/*.test.ts\" \"lint/**/*.test.ts\"",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
     "map": "node src/tools/build-map.ts",

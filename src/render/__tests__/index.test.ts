@@ -4,6 +4,7 @@ import { test } from "node:test"
 import { Keyboard } from "@typeonce/ritmo-browser"
 import { Color, Group, Matrix4, Vector3 } from "three"
 
+import { lintTarget } from "../../lint.ts"
 import { tiltOf, turn } from "../../sim/chassis.ts"
 import { UNDAMAGED } from "../../sim/damage.ts"
 import {
@@ -13,7 +14,6 @@ import {
   Damage,
   Game,
   KeyboardInput,
-  lintTarget,
   makeRuntime,
   Motion,
   Pose,

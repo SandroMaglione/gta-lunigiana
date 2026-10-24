@@ -7,4 +7,4 @@ Checks for a change in `src/sim`, on top of the steps in
   `Schema.requires`. The `determinism` and `saves` tests in `src/sim/__tests__/index.test.ts` reach it:
   extend their scripted joyride when they don't.
 - **Events**: a reader in a host schedule counts for `ritmo-devtools lint` only once `lintTarget`
-  (`src/sim/index.ts`) describes that schedule; add every new host schedule there.
+  (`src/lint.ts`) describes that schedule; add every new host schedule there.

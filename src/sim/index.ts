@@ -1,6 +1,5 @@
-import { Clock, HostClock } from "@typeonce/ritmo"
+import { Clock, type HostClock } from "@typeonce/ritmo"
 import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
-import type * as Lint from "@typeonce/ritmo-devtools/Lint"
 import { InputAxis, Random } from "@typeonce/ritmo-math"
 import type { RuntimeServices } from "@typeonce/ritmo/Runtime"
 
@@ -16,7 +15,6 @@ import {
   Player,
   Pose,
   PrevPose,
-  type Root,
   SetClock,
   SetHandling,
   SetWeather,
@@ -245,30 +243,4 @@ export const makeRuntime = <const Services extends RuntimeServices>(options: {
     },
     debug: options.debug,
   })
-}
-
-/** The runtime and schedules `ritmo-devtools lint` checks; the render and audio schedules are described, not run. */
-export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, typeof Root>> => {
-  const made = makeRuntime({
-    seed: 1,
-    services: Game.Runtime.services(
-      Game.Runtime.service(KeyboardInput, Keyboard.scripted(bindings, [])),
-    ),
-    debug: { hostClock: HostClock.test() },
-  })
-  if (!made.ok) throw new Error(`invalid runtime: ${JSON.stringify(made.error)}`)
-  // Loaded here, not at the top: the render and audio schedules are host code, outside the simulation.
-  // oxlint-disable-next-line no-restricted-imports -- the lint target describes the render schedule
-  const { render } = await import("../render/index.ts")
-  // oxlint-disable-next-line no-restricted-imports -- and the audio schedule, the only reader of Cry
-  const { audio } = await import("../audio/index.ts")
-  // The host's handling store (src/hud/handling.ts, behind the settings and the dev debug menu) sends SetHandling with runtime.send;
-  // the host sends SetClock to hold the clock behind the title card (holdClock, src/hud/title.ts), and the dev debug menu sends
-  // SetClock and SetWeather.
-  return {
-    runtime: made.value,
-    schedules: { setup, update },
-    describe: { render, audio },
-    hostEvents: [SetHandling, SetClock, SetWeather],
-  }
 }

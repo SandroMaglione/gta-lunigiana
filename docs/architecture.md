@@ -1117,7 +1117,7 @@ step, and git hooks run the first three before a commit or push.
     reverse).
 
   A rule broken on purpose takes an `oxlint-disable-next-line <rule> -- <reason>` comment.
-- `ritmo-devtools lint src/sim/index.ts`: loads `lintTarget` and lints the `setup`, `update` and
+- `ritmo-devtools lint src/lint.ts`: loads `lintTarget` and lints the `setup`, `update` and
   (described, not run) `render` and `audio` schedules. Any warning fails: without the audio schedule
   described, `Cry`, which no sim system reads, would be `event-never-read` (`CrashDamage`,
   `Perceive` and `Startle` read `Impact` in `update`, `Perceive` and `Animals` read `Honk`;
