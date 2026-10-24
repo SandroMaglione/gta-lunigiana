@@ -131,7 +131,11 @@ away on dry ground.
   depth × 1.75 / height), at least a quarter (knee-deep water, 0.35 m, slows an adult by about
   two fifths: trials of 188 people in "Impacts of water depth on pedestrian speed, gait, and
   stability", Acta Polytechnica CTU Proceedings, found 39 % for men and 45 % for women), plus the
-  current × (depth × speed / footing)², so the push grows toward the footing's loss.
+  current × (depth × speed / footing)², so the push grows toward the footing's loss. Running is
+  slowed more (`wadingSpeed`): the legs' drag grows with the square of their speed, so whatever a
+  body wants past a walk (1.4 m/s) fades out by the time the water reaches its knees (0.28 of its
+  height; estimates). In 0.15 m of water the player walks at 1.62 m/s (2.2 dry) and sprints at
+  3.5 (5.5 dry); by the knees a sprint is a wade.
 - **Swimming**: the velocity closes on the current plus a stroke along the keys (time constant
   0.5 s): an adult 0.9 m/s, a child 0.6, an elder 0.7, the player sprinting 1.6 times that
   (estimates: an unhurried breaststroke near 2 minutes per 100 m). An animal paddles at its
@@ -161,6 +165,12 @@ quarter of its underbody by the water over that quarter:
   0.7 m. As the water lifts the body the springs unload, and the tyres lose their grip with them.
 - **Drag**: the current against the side and end the submerged body shows it, drag coefficient
   1.1 (a bluff box), and the water damps the body's rise and fall.
+- **Ploughing**: each wheel drags through the water over the ground under it, its tread end-on
+  and the wetted segment of its side sideways (drag coefficient 1, an estimate), so shallow water
+  the body never touches still slows a car hard: tread widths are each model's stock tyre's (a
+  Panda's 175/65 R14, an Ape's 4.00-10, the truck's 315/80 R22.5, a Giulia's 225/55 R17). Coasting
+  in at 10 m/s, a Panda is down to 6.5 m/s after a second in 0.15 m of still water and 3.6 in
+  0.3 m (9.8 dry); the laden truck to 9.5 and 9.2.
 - **Stalling**: water over the engine's air intake cuts its drive (`stalled`): a Panda's at 0.6 m,
   an Ape's at 0.45, a Giulia's at 0.55, the truck's stack at 2.4 (estimates from each model's
   layout). Out of the water the engine runs again.
@@ -193,6 +203,10 @@ graph, the parked spots and the player's spawn are the same.
   speed per unit); the water shader lifts it by `stage` × q^0.547, the uniform `uRiverStage`, so the
   surface stands where the sim's is, and the terrain above it hides it: in a spate the water spreads
   over the gravel.
+- **The colour**: the water's own colour (and the darker channel's) shows from 0.05 m of mean depth
+  and fully from 0.7 m; shallower, it is the limestone pebbles seen through it, tinted 0.6 of the
+  way to the water's green (TUNED by eye), so an ankle-deep torrent reads as wet gravel with the
+  current on it and a spate as a river.
 - **The current**: streaks 1.6 m long and 0.3 m wide carried downstream at the water's speed
   (`uRiverSpeed` = q^0.453), two phases 2 s apart dissolving into each other cell by cell; 2 % of
   them show on still water, up to 30 % at 3 m/s and over (TUNED by eye).
@@ -230,8 +244,8 @@ papers' ([weather.md](weather.md#the-climate-sources-record)); none of their dat
 | File | Covers |
 |---|---|
 | `src/sim/water/__tests__/flow.test.ts` | the calibration against Soliera (mean, months, seasons, duration curve), Thornthwaite's 685 mm, a new game's rivers alike for a start and seed and spread across seeds |
-| `src/sim/water/__tests__/swim.test.ts` | footing (an adult's 1.2 m²/s, a child's 0.4), off the feet and back on, wading's slowing |
-| `src/sim/__tests__/water.test.ts` | the Lucido's depth and current at the mean and in a spate; the player wading across, swept, swimming and out, and dry once he gets into a car in the water; people and animals swimming out and the dead drifting; a calm dog stopping at a spate's edge; a Panda holding in the Lucido and floating off in a spate; buoyancy at 0.3 and 0.7 m; stalling; a bridge keeping a walker dry, on its centreline and on every verge over the water; the rivers rising under rain and falling back; determinism and a save mid-swim |
+| `src/sim/water/__tests__/swim.test.ts` | footing (an adult's 1.2 m²/s, a child's 0.4), off the feet and back on, wading's slowing, a sprint slowed to a wade by knee depth |
+| `src/sim/__tests__/water.test.ts` | the Lucido's depth and current at the mean and in a spate; the player wading across, swept, swimming and out, and dry once he gets into a car in the water; people and animals swimming out and the dead drifting; a calm dog stopping at a spate's edge; a Panda holding in the Lucido and floating off in a spate; buoyancy at 0.3 and 0.7 m; a Panda ploughing to a third slower in a second of ankle-deep water, the truck hardly; stalling; a bridge keeping a walker dry, on its centreline and on every verge over the water; the rivers rising under rain and falling back; determinism and a save mid-swim |
 | `src/sim/map/__tests__/map.test.ts` | catchments growing downstream with no jump at a tributary's mouth, the Lucido's 47 km² and the Aulella's 208; no walk or drive wall in a wide river, shore walls by it |
 | `src/render/__tests__/index.test.ts`, `figures.test.ts` | no x-ray in the water, a swimmer floating at its shoulders and never under the bed; the swim frames |
 

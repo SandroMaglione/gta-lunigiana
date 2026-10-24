@@ -93,6 +93,16 @@ const RIPPLES = { share: 0.02, at: 3, power: 0.6, most: 0.06 } as const
  * is all but clear, a spate's rapids white with them).
  */
 const STREAKS = { length: 1.6, width: 0.3, period: 2, calm: 0.02, most: 0.3, fast: 3 } as const
+/**
+ * Clear water over the river's pebbles: the limestone bed seen through it, tinted with the water's green. The water's own
+ * colour shows from `clear` m of mean depth and fully from `full` (TUNED by eye: an ankle-deep torrent reads as wet gravel, a
+ * spate as a river).
+ */
+const SHALLOWS = {
+  colour: new Color(PALETTE.limestone).lerp(new Color(PALETTE.waterShallow), 0.6),
+  clear: 0.05,
+  full: 0.7,
+} as const
 
 /** A number as a GLSL float literal. */
 const num = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n))
@@ -144,6 +154,7 @@ attribute float stage;
 attribute vec3 flow;
 uniform float uRiverStage;
 varying vec3 vRiverFlow;
+varying float vRiverDepth;
 #endif
 #ifdef WEATHER_TREE
 attribute float canopy;
@@ -164,7 +175,8 @@ uniform vec3 uSwayAxis;
  */
 const VERTEX_SWAY = /* glsl */ `
 #ifdef WEATHER_WATER
-  transformed.y += stage * uRiverStage;
+  vRiverDepth = stage * uRiverStage;
+  transformed.y += vRiverDepth;
   vRiverFlow = flow;
 #endif
 vec3 weatherRest = transformed;
@@ -203,6 +215,7 @@ uniform float uTime;
 uniform float uRipples;
 #ifdef WEATHER_WATER
 varying vec3 vRiverFlow;
+varying float vRiverDepth;
 uniform float uRiverSpeed;
 #endif
 #define WEATHER_FEATHER ${num(FEATHER)}
@@ -249,6 +262,10 @@ vec2 weatherMap = vec2(vWeatherWorld.x, -vWeatherWorld.z);
 }
 #endif
 #ifdef WEATHER_WATER
+{
+  // Shallow water shows the pebbles through it; the water's own colour, and the dark channel's, only where it is deep.
+  diffuseColor.rgb = mix(vec3(${num(SHALLOWS.colour.r)}, ${num(SHALLOWS.colour.g)}, ${num(SHALLOWS.colour.b)}), diffuseColor.rgb, smoothstep(${num(SHALLOWS.clear)}, ${num(SHALLOWS.full)}, vRiverDepth));
+}
 {
   // The current: streaks carried downstream at the water's mean speed there, two phases crossfaded.
   vec2 down = normalize(vRiverFlow.xy + vec2(1e-6, 0.0));

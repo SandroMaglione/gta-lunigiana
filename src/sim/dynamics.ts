@@ -43,6 +43,8 @@ const WATER = 1000
 const SEALED = 0.5
 /** Drag coefficient of a car's body in a current, side-on or end-on (a bluff box). */
 const HULL_DRAG = 1.1
+/** Drag coefficient of a tyre ploughing water, end-on and side-on (estimate: a bluff body's). */
+const TYRE_DRAG = 1
 /** In the air, the air slows the body's tumbling: pitch and roll rates lose this share per second (a game's mercy: most jumps land on the wheels). */
 const AIR_SPIN = 1.5
 /**
@@ -332,7 +334,7 @@ export const integrate = (
     })
 
     // In a river: each quarter of the underbody buoyed by the water over it, dragged toward the current through the side and end it
-    // shows the water, and slowed as it rises or sinks through it.
+    // shows the water, and slowed as it rises or sinks through it; each wheel ploughing the water over its ground.
     const water = controls.water
     if (water !== undefined) {
       const wf = water.vx * c + water.vy * s,
@@ -356,6 +358,24 @@ export const integrate = (
             0.5 * WATER * HULL_DRAG * ((spec.length * spec.width) / 4) * Math.abs(vu) * vu,
         )
       }
+      // Each wheel ploughs the water over the ground under it: its tread end-on, the wetted segment of its side sideways.
+      rig.wheels.forEach((_, i) => {
+        const depth = Math.min(2 * spec.wheelRadius, Math.max(0, water.level - grounds[i]!))
+        if (depth <= 0) return
+        const o = offsets[i]!,
+          v = along(o),
+          rf = wf - v.f,
+          rl = wl - v.l,
+          r = spec.wheelRadius,
+          side = (4 / 3) * Math.sqrt(depth * (2 * r - depth)) * depth,
+          drag = 0.5 * WATER * TYRE_DRAG
+        apply(
+          { ...o, u: o.u + depth / 2 },
+          drag * spec.tyreWidth * depth * Math.abs(rf) * rf,
+          drag * side * Math.abs(rl) * rl,
+          0,
+        )
+      })
     }
 
     // The stability assist (arcade): yaw toward the steered line, the slide damped.

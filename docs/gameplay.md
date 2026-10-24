@@ -63,8 +63,8 @@ back once it rests on a seat.
   (`walkBy` in `src/sim/body.ts`). Velocity is what actually happened, so a wall stops it. Water is
   no wall.
 - Knocked down, the player cannot steer and slides to a stop (10 m/s²).
-- **In a river or stream** the player wades, slower the deeper it is and pushed by the current,
-  until the water reaches his chest or the current takes his feet (an adult's 1.2 m²/s of depth ×
+- **In a river or stream** the player wades, slower the deeper it is (a sprint most of all) and
+  pushed by the current, until the water reaches his chest or the current takes his feet (an adult's 1.2 m²/s of depth ×
   speed); then he swims with the current at 0.9 m/s of his own (sprinting, a hard crawl at 1.4
   m/s), and swims out wherever he heads. He never drowns. Knocked down in the water, the current
   takes him. The rivers' depth and current follow the rain ([water.md](water.md)).
@@ -185,8 +185,9 @@ Simulation preset). A new game starts on the Balanced preset ([Presets](#presets
   asleep there wakes to roll back onto its wheels; a destroyed one stays where it lies
   ([Damage](#damage)). A vehicle standing in a river never sleeps.
 - **Water**: a river buoys each quarter of the underbody by the water over it, so the springs and
-  tyres unload as it rises (a Panda floats in 0.7 m of still water), drags the body toward its
-  current, and stalls the engine once over its air intake (a Panda's at 0.6 m). Drive walls stop no
+  tyres unload as it rises (a Panda floats in 0.7 m of still water), drags the wheels ploughing
+  through it (a Panda coasting in at 10 m/s loses a third of its speed in a second of ankle-deep
+  water) and the body toward its current, and stalls the engine once over its air intake (a Panda's at 0.6 m). Drive walls stop no
   vehicle at the water's edge ([water.md](water.md#vehicles-in-the-water)).
 
 Events: a wall or ground hit is an `Impact` (a ground hit names the face that struck: `under`

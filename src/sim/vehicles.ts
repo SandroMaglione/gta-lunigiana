@@ -67,6 +67,8 @@ export interface VehicleSpec {
   readonly cg: number
   readonly wheels: ReadonlyArray<WheelSpec>
   readonly wheelRadius: number
+  /** A tyre's tread width, m (each model's stock tyre size): how much water it ploughs. */
+  readonly tyreWidth: number
   /** Tyre grip as a share of the surface's (truck and Ape tyres grip less than a car's), and the slip angle of peak cornering force, rad. */
   readonly tyres: { readonly grip: number; readonly slip: number }
   /** Turning radius of the centre of mass at full lock and walking pace, m (sets the steering lock). */
@@ -123,6 +125,7 @@ export const VEHICLES = {
       wheel(-1.3, -0.725, false, false),
     ],
     wheelRadius: 0.3,
+    tyreWidth: 0.175, // 175/65 R14
     tyres: { grip: 1, slip: 0.13 },
     turnRadius: 2.5,
     brakes: { decel: 10, front: 0.7, abs: true },
@@ -166,6 +169,7 @@ export const VEHICLES = {
       wheel(-0.7, -0.6, false, true),
     ],
     wheelRadius: 0.25,
+    tyreWidth: 0.1, // 4.00-10
     tyres: { grip: 0.85, slip: 0.15 },
     turnRadius: 2.15,
     brakes: { decel: 6.5, front: 0.5, abs: false },
@@ -204,6 +208,7 @@ export const VEHICLES = {
       wheel(-1.85, -1.075, false, true),
     ],
     wheelRadius: 0.5,
+    tyreWidth: 0.315, // 315/80 R22.5
     tyres: { grip: 0.8, slip: 0.12 },
     turnRadius: 4.6,
     brakes: { decel: 6.5, front: 0.35, abs: true },
@@ -249,6 +254,7 @@ export const VEHICLES = {
       wheel(-1.41, -0.825, false, true),
     ],
     wheelRadius: 0.33,
+    tyreWidth: 0.225, // 225/55 R17
     tyres: { grip: 1.05, slip: 0.12 },
     turnRadius: 2.75,
     brakes: { decel: 11, front: 0.65, abs: true },

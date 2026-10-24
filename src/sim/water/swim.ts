@@ -68,13 +68,27 @@ export const outOfDepth = (water: WaterHere, build: Build): boolean =>
   water.depth > WARY.depth * build.height ||
   water.depth * Ops.hypot(water.vx, water.vy) > WARY.footing * build.footing
 
+/**
+ * Running in water: the legs' drag grows with the square of their speed, so whatever a body wants
+ * past a walk (`pace`, m/s) fades out by the time the water reaches its knees (`knee`, of its
+ * height): a sprint splashes through the shallows and is a wade by knee depth (estimates).
+ */
+const RUNNING = { pace: 1.4, knee: 0.28 } as const
+
+/** How fast a body of `height` m in `depth` m of water goes when it wants `speed` m/s: what it wants past a walk fades by knee depth, then the wading share. */
+export const wadingSpeed = (speed: number, depth: number, height: number): number => {
+  const walk = Math.min(speed, RUNNING.pace),
+    run = (speed - walk) * Math.max(0, 1 - depth / (RUNNING.knee * height))
+  return (walk + run) * wadeShare(depth, height)
+}
+
 /** The share of its walking speed a body of `height` m keeps wading in `depth` m of water. */
 export const wadeShare = (depth: number, height: number): number =>
   Math.max(WADE.least, 1 - (WADE.perMetre * depth * 1.75) / height)
 
 /**
  * A body's velocity after `dt` s in `water`, from `velocity`: wading toward `wish` (its velocity on
- * land) slowed by the depth, plus the current as far as (depth × speed / footing)², changing by at
+ * land) slowed by the depth (`wadingSpeed`), plus the current as far as (depth × speed / footing)², changing by at
  * most `accel` m/s²; swimming, or down, toward the current plus a `stroke` m/s along `wish`.
  */
 export const waterVelocity = (
@@ -96,9 +110,8 @@ export const waterVelocity = (
     )
   }
   const pull = Math.min(1, (water.depth * Vec2.length(current)) / build.footing) ** 2
-  const target = Vec2.add(
-    Vec2.scale(wish, wadeShare(water.depth, build.height)),
-    Vec2.scale(current, pull),
-  )
+  const speed = Vec2.length(wish),
+    wading = speed > 0 ? wadingSpeed(speed, water.depth, build.height) / speed : 0
+  const target = Vec2.add(Vec2.scale(wish, wading), Vec2.scale(current, pull))
   return Vec2.moveToward(velocity, target, accel * dt)
 }

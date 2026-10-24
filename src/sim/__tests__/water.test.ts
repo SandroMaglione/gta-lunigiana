@@ -254,6 +254,47 @@ test("buoyancy: a Panda in still water keeps its wheels down at 0.3 m and floats
   assert.ok(afloat.lift > 0.05, `lifted ${afloat.lift.toFixed(2)} m`)
 })
 
+test("ploughing: a Panda coasting into ankle-deep still water at 10 m/s loses a third of its speed in a second; the laden truck hardly any", () => {
+  const coast = (model: "panda" | "truck", depth: number) => {
+    const rig = rigFor(model, REAL_HANDLING),
+      spec = VEHICLES[model]
+    const body = {
+      x: 0,
+      y: 0,
+      angle: 0,
+      vx: 10,
+      vy: 0,
+      spin: 0,
+      z: 100 + spec.cg,
+      vz: 0,
+      pitch: 0,
+      pitchRate: 0,
+      roll: 0,
+      rollRate: 0,
+    }
+    for (let k = 0; k < 60; k++)
+      integrate(
+        rig,
+        body,
+        {
+          steer: 0,
+          drive: 0,
+          brake: 0,
+          handbrake: false,
+          surfaces: spec.wheels.map(() => "asphalt" as const),
+          weather: [],
+          ...(depth > 0 ? { water: { level: 100 + depth, vx: 0, vy: 0 } } : {}),
+        },
+        1 / 60,
+        () => 100,
+      )
+    return body.vx
+  }
+  assert.ok(coast("panda", 0) > 9.7, "dry, it rolls on")
+  assert.ok(coast("panda", 0.15) < 7, `${coast("panda", 0.15).toFixed(2)} m/s after 1 s in 0.15 m`)
+  assert.ok(coast("truck", 0.15) > 9.3, "the truck ploughs on")
+})
+
 test("stalling: water over a car's air intake stalls its engine; the truck breathes high", () => {
   const at = (model: keyof typeof VEHICLES) => ({ z: 100 + VEHICLES[model].cg })
   const water = (depth: number) => ({ level: 100 + depth, vx: 0, vy: 0 })

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { personBuild } from "../../systems/water.ts"
-import { footingOf, personMass, swept, wadeShare } from "../swim.ts"
+import { footingOf, personMass, swept, wadeShare, wadingSpeed } from "../swim.ts"
 
 const still = (depth: number, speed = 0) => ({
   depth,
@@ -33,4 +33,14 @@ test("wading: walking pace falls by about two fifths in knee-deep water (0.35 m)
   assert.ok(Math.abs(wadeShare(0.35, 1.75) - 0.6) < 0.01)
   assert.ok(wadeShare(0.35, 1.2) < wadeShare(0.35, 1.75))
   assert.equal(wadeShare(2, 1.75), 0.25, "never below a quarter")
+})
+
+test("running in water: a sprint splashes through the shallows and is a wade by knee depth", () => {
+  const sprint = (depth: number) => wadingSpeed(5.5, depth, 1.75)
+  assert.ok(sprint(0.1) > 3 && sprint(0.1) < 0.9 * 5.5, `${sprint(0.1)} m/s in 0.1 m`)
+  assert.ok(
+    Math.abs(sprint(0.49) - wadingSpeed(1.4, 0.49, 1.75)) < 1e-9,
+    "at the knees no faster than a walk",
+  )
+  assert.equal(wadingSpeed(1.2, 0.3, 1.75), 1.2 * wadeShare(0.3, 1.75), "a walk only wades")
 })
