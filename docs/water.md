@@ -81,7 +81,8 @@ follow from the discharge per km², q.
 - **Catchments** (`src/tools/catchment.ts`): the map build burns the water's profiles 100 m into
   the 4 m terrain grid, fills it (priority-flood with an epsilon, Barnes et al. 2014), routes each
   node to its steepest lower neighbour (D8) and accumulates the 4 m cells downstream. Each piece
-  starts with what the pieces ending where it begins bring (a confluence adds them up), and each
+  starts with what the pieces ending where it begins bring (a confluence adds them up, a fork
+  shares them among its arms, so a braid's rejoin adds back to the whole), and each
   vertex keeps the most its own burned nodes gather within a node of it, never less than upstream
   (`Water.area`, km²). Nodes within two of another water's are left out, and a piece's last vertex
   keeps what came down to it: D8 may route the water it joins through a tail running beside it. The Torrente Lucido drains 47 km² where it meets the Aulella. The bounds
@@ -246,6 +247,7 @@ papers' ([weather.md](weather.md#the-climate-sources-record)); none of their dat
 | `src/sim/water/__tests__/flow.test.ts` | the calibration against Soliera (mean, months, seasons, duration curve), Thornthwaite's 685 mm, a new game's rivers alike for a start and seed and spread across seeds |
 | `src/sim/water/__tests__/swim.test.ts` | footing (an adult's 1.2 m²/s, a child's 0.4), off the feet and back on, wading's slowing, a sprint slowed to a wade by knee depth |
 | `src/sim/__tests__/water.test.ts` | the Lucido's depth and current at the mean and in a spate; the player wading across, swept, swimming and out, and dry once he gets into a car in the water; people and animals swimming out and the dead drifting; a calm dog stopping at a spate's edge; a Panda holding in the Lucido and floating off in a spate; buoyancy at 0.3 and 0.7 m; a Panda ploughing to a third slower in a second of ankle-deep water, the truck hardly; stalling; a bridge keeping a walker dry, on its centreline and on every verge over the water; the rivers rising under rain and falling back; determinism and a save mid-swim |
+| `src/tools/__tests__/catchment.test.ts` | a braid's arms sharing the river's area at the fork and adding back to it at the rejoin |
 | `src/sim/map/__tests__/map.test.ts` | catchments growing downstream with no jump at a tributary's mouth, the Lucido's 47 km² and the Aulella's 208; no walk or drive wall in a wide river, shore walls by it |
 | `src/render/__tests__/index.test.ts`, `figures.test.ts` | no x-ray in the water, a swimmer floating at its shoulders and never under the bed; the swim frames |
 

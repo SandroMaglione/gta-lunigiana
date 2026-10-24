@@ -145,7 +145,8 @@ export const catchments = (
       }
     return true
   }
-  // Each piece starts with what the pieces ending where it begins bring (a confluence adds them up),
+  // Each piece starts with what the pieces ending where it begins bring (a confluence adds them up, a
+  // fork shares them among its arms),
   // then reads the most its own clear burned nodes around each sample gather (D8 may cut a bend's
   // corner past a sample's node), never less than upstream; the last sample keeps what came down to
   // it (a confluence is the receiving water's).
@@ -157,11 +158,14 @@ export const catchments = (
       start = ids[w]![0]
     const result = new Float64Array(p.x.length)
     out[w] = result // a loop of pieces reads zeros rather than recursing for ever
+    // What comes down to its start, shared among the arms that leave it (a braid's rejoin adds them up again).
     let carried = 0
-    if (start !== undefined)
+    if (start !== undefined) {
       ids.forEach((v, u) => {
         if (u !== w && v.at(-1) === start && v[0] !== start) carried += solve(u).at(-1)!
       })
+      carried /= ids.filter((v) => v[0] === start).length
+    }
     for (let k = 0; k < p.x.length; k++) {
       let most = k > 0 ? result[k - 1]! : carried
       if (k === 0 || k < p.x.length - 1) {

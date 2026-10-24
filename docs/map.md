@@ -179,7 +179,8 @@ of a 5 × 5 m square of samples. This grid is carved and flattened by the next s
   the samples are burned 100 m under their own surface into a copy of the grid, which is filled so
   every node drains (priority-flood with an epsilon, Barnes et al. 2014; the grid's edge is the
   outlet), each node routed to its steepest lower neighbour (D8), and the 4 m cells accumulated
-  downstream. Each piece starts with what the pieces ending where it begins bring, and a sample
+  downstream. Each piece starts with what the pieces ending where it begins bring (shared among the arms of a
+  fork), and a sample
   keeps the most its own burned nodes gather within a node of it (D8 cuts a bend's corner past a
   node), never less than upstream; nodes within two of another water's are left out, and a piece's
   last sample keeps what came down to it (D8 may route the water a tail joins through it). The
