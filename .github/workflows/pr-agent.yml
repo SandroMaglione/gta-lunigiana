@@ -36,6 +36,12 @@ jobs:
           ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           config.model: anthropic/claude-opus-5-5
           config.fallback_models: '["anthropic/claude-sonnet-5"]'
+          # The model reads up to 200k tokens of a PR (32k by default left most of a big PR out), and a review or
+          # /improve that still overflows splits the diff into at most 3 calls.
+          config.max_model_tokens: "200000"
+          pr_reviewer.enable_large_pr_chunking: "true"
+          pr_reviewer.max_number_of_calls: "3"
+          pr_code_suggestions.max_number_of_calls: "3"
           github_action_config.auto_review: "true"
           github_action_config.auto_improve: "true"
           # PR bodies follow docs/standards/commits-and-prs.md, so the agent must not rewrite them.
