@@ -149,6 +149,11 @@ export class SeeThrough {
       // The line starts `over − height / 2` m above the middle: along the view, that much times the back axis's rise nearer.
       ground = Math.min(ground, seen.ground + (over - height / 2) * this.back.y)
     }
+    // Sim time went back (a state restored, as the devtools' replay does): the old timings lie ahead of `now`.
+    if (this.last !== undefined && now < this.last) {
+      this.hiddenAt = Number.NEGATIVE_INFINITY
+      this.last = undefined
+    }
     if (hidden) {
       this.hiddenAt = now
       this.ground =

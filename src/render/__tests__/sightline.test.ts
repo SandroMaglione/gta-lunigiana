@@ -144,6 +144,18 @@ test("the cut eases open over 0.2 s while the player is hidden, holds 0.4 s, the
   assert.equal(CUT_UNIFORMS.uCutRadius.value, 0)
 })
 
+// Regression (PR #51 review): sim time going back (a restored state) left the last hidden time ahead of `now`, holding the cut open.
+test("when sim time goes back, the cut forgets when the player was last hidden", () => {
+  const cut = new SeeThrough({ yaw: 0, texelsPerMetre: 8 }, () => false)
+  cut.follow(BEHIND.x, BEHIND.y - 0.4, BEHIND.z, 1.7, 100)
+  cut.follow(BEHIND.x, BEHIND.y - 0.4, BEHIND.z, 1.7, 100.3)
+  assert.equal(cut.open, 1)
+  // Back to 50 s, in the open: shut within 0.2 s, not held until 100.7 s.
+  cut.follow(OPEN.x, OPEN.y - 0.4, OPEN.z, 1.7, 50)
+  cut.follow(OPEN.x, OPEN.y - 0.4, OPEN.z, 1.7, 50.25)
+  assert.equal(cut.open, 0)
+})
+
 test("under reduced motion the cut opens and shuts at once; with no player it shuts", () => {
   const cut = new SeeThrough({ yaw: 0, texelsPerMetre: 6 }, () => true)
   cut.follow(BEHIND.x, BEHIND.y - 0.4, BEHIND.z, 1.7, 5)

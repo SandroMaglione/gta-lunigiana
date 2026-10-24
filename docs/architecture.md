@@ -639,7 +639,9 @@ show behind houses, trees and hills.
   walls, under its ridge: `topOf` in `buildings.ts`) and a tree crown as drawn (`inCrown` in
   `trees.ts`: the broadleaf's ellipsoid, the conifer's cone). Either line blocked holds the cut open; it opens over 0.2 s, stays 0.4 s after the
   player was last hidden (it does not flicker at a wall's edge) and shuts over 0.2 s. Under
-  `prefers-reduced-motion` it opens and shuts at once. A sight line costs 0.004–0.06 ms in Node
+  `prefers-reduced-motion` it opens and shuts at once. When sim time goes back (a state the
+  devtools replay restores), it forgets when the player was last hidden, so the cut is not held
+  open until the clock catches up. A sight line costs 0.004–0.06 ms in Node
   (in a forest, unblocked: the longest march), two a frame. Baldur's Gate 3 traces from its
   characters toward the camera the same way.
 - **What** (`src/render/see-through.ts`): a circle of 54 texels' radius on screen (6.75 m on foot,
@@ -1162,7 +1164,7 @@ step, and git hooks run the first three before a commit or push.
     panes on homes only; `world.test.ts`: the glow and water meshes; `sightline.test.ts`: a person
     behind a house near the spawn, under a tree's crown or under the ground is hidden, the player at
     the spawn is not, a hill hiding a road says where it meets the line, and the cut's easing, hold,
-    radius, ground depth and reduced motion.
+    radius, ground depth, reduced motion and sim time going back.
   - `src/sim/map/__tests__/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 
