@@ -221,8 +221,7 @@ const WEATHER_SEED = 0x9e3779b9
  * A new game from `seed`, starting at `start` (Unix UTC seconds, a whole number: the host's today at 08:00 in Rome;
  * `DEFAULT_START` when omitted). The host passes every service: KeyboardInput plus its own (render registries, clocks).
  */
-// oxlint-disable-next-line typescript/no-explicit-any -- any service set satisfies the bound; `Services` keeps the exact one
-export const makeRuntime = <const Services extends RuntimeServices<any>>(options: {
+export const makeRuntime = <const Services extends RuntimeServices>(options: {
   readonly seed: number
   readonly start?: number
   readonly services: Services
