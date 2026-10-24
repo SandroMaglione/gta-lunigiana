@@ -1,4 +1,4 @@
-import type { Vec2 } from "@typeonce/ritmo-math"
+import { Ops, type Vec2 } from "@typeonce/ritmo-math"
 
 /** A quarter turn to the left (counter-clockwise), exact so the axes never drift. */
 const left = (v: Vec2.Vec2): Vec2.Vec2 => ({ x: -v.y, y: v.x })
@@ -22,6 +22,47 @@ for (let k = 1; k < 4; k++)
  */
 export const screenAxes = (turns: number): { readonly up: Vec2.Vec2; readonly right: Vec2.Vec2 } =>
   AXES[((turns % 4) + 4) % 4]!
+
+/** Radians of view yaw per quarter turn of the `View`; a turn to the left is counter-clockwise. */
+export const QUARTER = Math.PI / 2
+
+/** Heading of screen-up in the home seat, rad counter-clockwise from east: south-east (`AXES[0].up`). */
+const HOME_HEADING = -Math.PI / 4
+
+/**
+ * The yaw (rad to the left of the home seat) of the view whose screen-up points along `heading` (rad
+ * counter-clockwise from east): the driving view, which keeps the road ahead up the screen.
+ */
+export const followYaw = (heading: number): number => heading - HOME_HEADING
+
+/**
+ * Screen-up and screen-right on the ground for a view turned `yaw` rad to the left of its home seat,
+ * any yaw: the home seat's axes turned by it (`screenAxes` holds the quarter turns exactly).
+ */
+export const axesAt = (yaw: number): { readonly up: Vec2.Vec2; readonly right: Vec2.Vec2 } => {
+  const c = Ops.cos(yaw),
+    s = Ops.sin(yaw)
+  const turn = ({ x, y }: Vec2.Vec2) => ({ x: x * c - y * s, y: x * s + y * c })
+  return { up: turn(AXES[0]!.up), right: turn(AXES[0]!.right) }
+}
+
+/**
+ * The screen axes on the ground of the view at rest: the quarter seat `turns`' on foot, the driving
+ * view's for a car heading `heading` (the host eases the view after it).
+ */
+export const restAxes = (
+  turns: number,
+  heading: number | undefined,
+): { readonly up: Vec2.Vec2; readonly right: Vec2.Vec2 } =>
+  heading === undefined ? screenAxes(turns) : axesAt(followYaw(heading))
+
+/**
+ * The quarter seat nearest a view turned `yaw` rad, as the count of quarter turns (see `View`)
+ * nearest `turns` that is that seat, so the count winds on with the view instead of jumping by a
+ * whole turn.
+ */
+export const nearestSeat = (turns: number, yaw: number): number =>
+  turns + ((((Math.round(yaw / QUARTER) - turns) % 4) + 6) % 4) - 2
 
 /** The camera leads the player by this many seconds of their velocity, at most `max` metres. */
 export const LOOK_AHEAD = { seconds: 0.6, max: 14 } as const

@@ -83,8 +83,9 @@ Weather, Input (horn) ─────────────┴─► audio sch
    crash included).
 2. **The audio schedule** (`src/audio/index.ts`): one system, `Lunigiana/Hear`, ticked once per
    animation frame. It reads the world and builds one `Heard` (`src/audio/types.ts`):
-   - `listener`: the player's pose and velocity, the vehicle they sit in, and the view's quarter
-     turns (the `View` resource), which the stereo image turns with;
+   - `listener`: the player's pose and velocity, the vehicle they sit in, and the view's yaw, which
+     the stereo image turns with: the `View` resource's quarter turns on foot, the yaw that puts the
+     car's heading up the screen (`followYaw`) driving;
    - `vehicles`: every vehicle that runs (AI traffic, or the player's car, unless destroyed), moves
      (faster than 0.01 m/s, spinning, or its body rising, falling, pitching or rolling faster than
      0.01 m/s or rad/s, so a car rolling over on the spot is heard) or burns (destroyed, its
@@ -479,10 +480,12 @@ Held voices glide their send as the street eases, so walking into a village fade
 ### Stereo
 
 The pan is the source's direction along the screen's right axis, scaled to ±0.85 so nothing sits
-in one ear only, and fading to the centre within 2 m. The axis is `screenAxes(turns).right` for the
-view's quarter turns, so a car on the right of the screen is heard on the right whichever way the
+in one ear only, and fading to the centre within 2 m. The axis is `axesAt(yaw).right` for the
+listener's yaw, so a car on the right of the screen is heard on the right whichever way the
 camera looks; an echo pans toward its face the same way. A turn moves the pan at once: held voices
 glide to it with a 50 ms time constant, about as fast as the camera eases through the turn (83 ms).
+Driving, the pan turns with the car's heading at once, while the view follows it on its spring,
+half a second behind a steady turn.
 There is no front and back.
 
 ## Day, night and weather
@@ -1468,9 +1471,11 @@ task, no console error, no non-finite placement.
   cab lets the bed outside in louder anyway), and rain on water was tuned by measurement, not by
   ear.
 - **Water** loudness comes from width and grade, not discharge; the Cascata di Equi is hard-coded.
-- **Stereo** is a pan along the screen's right axis, with no front or back; it follows the view's
-  turns, not the camera's eased swing between them, and a one-shot or echo already on its way (a
-  far bell stroke, a bark 200 m off) keeps the pan it was sent with.
+- **Stereo** is a pan along the screen's right axis, with no front or back. On foot it follows the
+  view's quarter turns, not the camera's eased swing between them; driving it follows the car's
+  heading, half a second ahead of the view in a steady turn; getting out, it jumps to the seat
+  while the view settles there within 1.7 s. A one-shot or echo already on its way (a far bell
+  stroke, a bark 200 m off) keeps the pan it was sent with.
 - **The occluder is bounded:** at most 12 paths a frame are re-measured, each at most every
   150 ms, so a source moving fast behind houses can lag a few frames.
 - **A car rubbing along a wall** keeps a faint scrape held while the sim reports the small hits.

@@ -1,6 +1,6 @@
 /**
  * Pixel-art isometric pipeline (three 0.186): an orthographic camera at 30° elevation sitting
- * opposite screen-up (north-west of the focus at the home seat, turnable by quarter turns), the
+ * opposite screen-up (north-west of the focus at the home seat, turned by `render/swing`), the
  * scene rendered into a low-res HalfFloat target (~270 texels tall), then one fullscreen pass that
  * draws depth-edge outlines, lays the sky's fog, haze, exposure and night grade over them
  * (`sky/post.ts`, per target texel), converts linear to sRGB and upscales by an integer factor with
@@ -35,9 +35,6 @@ const MARGIN = 1 // extra low-res texels per side, consumed by the sub-texel off
 const DISTANCE = 500 // metres from focus to camera along the view axis
 const NEAR = 1
 const FAR = 3000 // 2.5 km past the focus: from the Apuan summits the deepest ground in view is ≈ 2.45 km from the camera
-
-/** Radians of view yaw per quarter turn of the sim's `View` (a turn to the left is counter-clockwise). */
-export const QUARTER = Math.PI / 2
 
 const aim = new Matrix4(),
   origin = new Vector3()
@@ -107,17 +104,6 @@ export const zoomFor = (speed: number | undefined, last: number): number => {
   if (speed === undefined) return 8
   const s = Math.abs(speed)
   return s > 16 || (s >= 13 && last === WIDEST_ZOOM) ? WIDEST_ZOOM : 6
-}
-
-/**
- * The view's yaw one frame of `dt` seconds on from `yaw`, swinging toward `target`: it eases out,
- * covering 1 − e^(−12·dt) of the way, but never slower than 1 rad/s, so a quarter turn lands in
- * about a third of a second and stops dead instead of creeping (any sub-texel creep shimmers).
- */
-export const turnToward = (yaw: number, target: number, dt: number): number => {
-  const rest = Math.abs(target - yaw),
-    step = Math.max(rest * (1 - Math.exp(-12 * dt)), dt)
-  return step >= rest ? target : yaw + Math.sign(target - yaw) * step
 }
 
 /** The low-res render target, the camera that fills it and the blit to the canvas. */

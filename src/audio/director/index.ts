@@ -16,7 +16,7 @@
  */
 import { conditionsAt } from "../../sim/sky/local.ts"
 import { VEHICLES } from "../../sim/vehicles.ts"
-import { screenAxes } from "../../sim/view.ts"
+import { axesAt } from "../../sim/view.ts"
 import { EAR_HEIGHT } from "../acoustics.ts"
 import { echoesAt, type Echo } from "../places.ts"
 import type { Heard, Speaker } from "../types.ts"
@@ -80,7 +80,7 @@ export const makeDirector = (
         z: ground + EAR_HEIGHT,
         vx: listener.vx,
         vy: listener.vy,
-        right: screenAxes(listener.turns).right,
+        right: axesAt(listener.yaw).right,
       }
       const inside = seat?.model
       const air = conditionsAt(heard.sky.seconds, heard.weather, ears.x, ears.y, ground)

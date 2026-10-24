@@ -109,9 +109,11 @@ time, in degrees: azimuth clockwise from north, elevation geometric (no refracti
   16:43. The dev menu's sunrise and sunset buttons jump to them.
 - **The view turns the sky with it.** The renderer takes the real direction and turns it about the
   vertical by the view's yaw (`keyDirection`, `src/render/sky/light.ts`): in the home view the sun
-  stands where it really is, and each quarter turn swings it with the camera, so the lit and shaded
-  walls always match the screen, the settled rule of [render.md](standards/render.md). The home view
-  looks south-east, so a morning sun shines toward the camera; the user accepted that backlight.
+  stands where it really is, and each quarter turn, or the view following a car, swings it with the
+  camera, so the lit and shaded walls always match the screen, the settled rule of
+  [render.md](standards/render.md); while the view follows a car round a corner, the shadows sweep
+  over the ground with it (the user's choice). The home view looks south-east, so a morning sun
+  shines toward the camera; the user accepted that backlight.
 
 ## The climate model
 
@@ -671,7 +673,8 @@ storms.
   scatter around the cell (Gaussian, σ 2 km); a bolt drawn off the map is drawn again up to 4 times,
   then dropped, so bolts strike only the map and never its edge. With the cell within 4 km of the
   player, a quarter of the bolts strike in the strip the camera sees, up to 40 m to either side of
-  the player and 60–600 m toward the camera, where a vertical bolt crosses the whole screen.
+  the player and 60–600 m toward the camera (the driving view's, while the player drives:
+  `restAxes` in `src/sim/view.ts`), where a vertical bolt crosses the whole screen.
 - **Measured on the shipped map**, a settled storm, 8 seeds × 3 real minutes at each spot: Gragnola
   321 flashes, 105 of them bolts (33 %); Monzone 343 and 127 (37 %); Equi Terme 345 and 131 (38 %),
   so 0.22–0.24 flashes a real second once the bolts off the map are dropped. Near the map's edge

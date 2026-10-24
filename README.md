@@ -5,7 +5,7 @@
 
 ![Title card](docs/screenshots/title.png)
 
-Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and run people down, on a map built from survey data of the real places. As many people are out as live nearby, so the village centres are busy and the country roads empty: villagers of every age walk alone, in couples, with their kids or a dog, stop to chat, glare at a speeding car, jump out of its way and are shocked by a death, while cats and dogs roam the villages and cows and pigs the farms. The isometric camera turns a quarter at a time and renders at low resolution for a pixel-art look. A game day lasts 24 minutes under the real sun and moon, and the weather follows Italy’s climate at the map’s latitude and height, drawn day by day from national statistics: rain wets the roads, snow whitens the mountains, and both cost grip.
+Grand Theft Auto: Lunigiana is an open-world car-theft game in isometric pixel art, set in Lunigiana, the valley of the Magra between Tuscany and Liguria. You walk village streets, steal parked cars (the Carabinieri’s Alfa Romeo included, from right outside their station), carjack traffic and run people down, on a map built from survey data of the real places. As many people are out as live nearby, so the village centres are busy and the country roads empty: villagers of every age walk alone, in couples, with their kids or a dog, stop to chat, glare at a speeding car, jump out of its way and are shocked by a death, while cats and dogs roam the villages and cows and pigs the farms. The isometric camera turns a quarter at a time on foot, follows the car while you drive so the road ahead is always up the screen, and renders at low resolution for a pixel-art look. A game day lasts 24 minutes under the real sun and moon, and the weather follows Italy’s climate at the map’s latitude and height, drawn day by day from national statistics: rain wets the roads, snow whitens the mountains, and both cost grip.
 
 The game will cover all of Lunigiana, from the beaches at the mouth of the Magra to the Apennine ridge. Today the playable map is one valley of it, the [Valle del Lucido](#the-playable-map-today-the-valle-del-lucido).
 
@@ -117,7 +117,7 @@ The same keys walk and drive; the table shows what each does in both modes:
 | W A S D or arrow keys | walk along the screen directions | up: throttle, down: brake and reverse, left/right: steer |
 | Shift | sprint | |
 | F or Enter | enter the nearest vehicle (steal, enter or carjack) | get out |
-| Q / E | turn the view a quarter left / right | same |
+| Q / E | turn the view a quarter left / right | nothing: the view follows the car |
 | Space | | handbrake |
 | H | | horn while held; in the Carabinieri car, siren on or off |
 | M | full map (pauses the game); M, Esc or a click closes it | same |
@@ -139,7 +139,7 @@ Where a touch screen is the main pointer, the game runs in mobile mode: the cont
 | Gas / Brake on the right | | throttle / brake, then reverse |
 | Run | sprint | |
 | Steal, Enter, Carjack or Exit (shown only when it would act) | enter the nearest vehicle | get out |
-| ↺ / ↻ | turn the view a quarter left / right | same |
+| ↺ / ↻ | turn the view a quarter left / right | hidden: the view follows the car |
 | Hand brake | | handbrake |
 | Horn | | horn while held; in the Carabinieri car, siren on or off |
 | A tap on the minimap | full map (pauses the game); a tap closes it | same |

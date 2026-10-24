@@ -1,6 +1,7 @@
 import { Random } from "@typeonce/ritmo-math"
 
 import {
+  Driving,
   Game,
   GameClock,
   Lightning,
@@ -12,7 +13,7 @@ import {
   WeatherRng,
 } from "../schema.ts"
 import { advanceWeather, stormStep } from "../sky/weather.ts"
-import { screenAxes } from "../view.ts"
+import { restAxes } from "../view.ts"
 
 /** Each step the game clock moves on by its rate (a game second at rate 1); at rate 0 it stands still and is not written. */
 export const AdvanceClock = Game.System(
@@ -36,7 +37,12 @@ export const AdvanceClock = Game.System(
 export const AdvanceWeather = Game.System(
   "Lunigiana/AdvanceWeather",
   {
-    queries: { player: Game.Query({ selection: { pose: Game.Query.read(Pose) }, with: [Player] }) },
+    queries: {
+      player: Game.Query({
+        selection: { pose: Game.Query.read(Pose), driving: Game.Query.optional(Driving) },
+        with: [Player],
+      }),
+    },
     resources: {
       clock: Game.System.thisTick(Game.System.readResource(GameClock)),
       time: Game.System.thisTick(Game.System.readResource(Time)),
@@ -54,10 +60,11 @@ export const AdvanceWeather = Game.System(
     let next = advanceWeather(weather, seconds, rate)
     const found = queries.player.singleOptional()
     if (found.ok && found.value !== undefined) {
-      const at = found.value.data.pose.get()
+      const at = found.value.data.pose.get(),
+        heading = found.value.data.driving.present ? at.angle : undefined
       const storm = stormStep(
         next,
-        { x: at.x, y: at.y, ...screenAxes(resources.view.get().turns) },
+        { x: at.x, y: at.y, ...restAxes(resources.view.get().turns, heading) },
         dt,
         step,
         random,

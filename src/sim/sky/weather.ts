@@ -265,7 +265,7 @@ const groundAfter = (
 export interface Witness {
   readonly x: number
   readonly y: number
-  /** The screen's up and right on the ground (`screenAxes(View.turns)`). */
+  /** The screen's up and right on the ground (`restAxes`: the quarter seat's on foot, the driving view's at the wheel). */
   readonly up: { readonly x: number; readonly y: number }
   readonly right: { readonly x: number; readonly y: number }
 }

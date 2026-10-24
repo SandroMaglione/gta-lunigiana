@@ -21,15 +21,34 @@ and the weather are in [weather.md](weather.md).
 
 ## The view
 
-`TurnView` (`src/sim/index.ts`) turns the camera a quarter left (Q, counter-clockwise seen from
-above) or right (E), once per press, on foot or driving. The `View` resource counts the net
-quarter turns. It is saved state, because the on-foot keys follow it. In the home view (0), the
-camera sits north-west of the player and looks south-east: the mountains rise to the south and
-east, so this side sees every street. Driving keys steer the car and do not depend on the view.
+The camera turns a quarter at a time on foot and follows the car while the player drives.
 
-The host swings the camera through each turn in about a third of a second, or turns it at once
-under `prefers-reduced-motion`. The sun and the minimap turn with it, so the lit and shaded walls
-and the minimap's top always match the screen.
+`TurnView` (`src/sim/index.ts`) turns the camera a quarter left (Q, counter-clockwise seen from
+above) or right (E), once per press, on foot. The `View` resource counts the net quarter turns. It
+is saved state, because the on-foot keys follow it. In the home view (0), the camera sits
+north-west of the player and looks south-east: the mountains rise to the south and east, so this
+side sees every street.
+
+Driving, the view follows the car instead: it turns with it, so the road ahead is always up the
+screen, and Q and E do nothing (mobile mode hides ↺ and ↻). `TurnView` keeps `View` on the
+quarter seat nearest the car's heading (`nearestSeat` in `src/sim/view.ts`, counted on from the
+last seat so it winds with the car). Getting out, or killed at the wheel, the player is left in the
+seat nearest where the car faced, at most 45° from its heading, and the view settles on it. Driving
+keys steer the car and do not depend on the view.
+
+The host (`src/render/swing.ts`) swings the camera through each quarter turn in about a third of a
+second. Following the car it eases on a critically damped spring (`followToward`), so it never
+jumps or overshoots: from rest it covers 95% of a half turn in 1.2 s, and it trails a car turning
+steadily by half a second of its turn. At rest it holds still until the car's heading is 1.1°
+(0.02 rad) off, so it does not creep after every wobble. Got out, the same spring settles the view
+on the seat the short way round (`settleOn`), closing at least 0.1 rad/s at the end. The view
+trails a turning car, so out of a car turning at 0.5–1.5 rad/s it can be 58–87° off the seat, and
+it lands there within 1.7 s; until then the walking keys follow the seat, not the screen. Under
+`prefers-reduced-motion` the view turns at once, except while it follows the car: it jumps onto it
+on getting in, then follows on the spring, which turns it less than the car's own wobbles would.
+The sun and the minimap turn with it, so the lit and shaded walls and the minimap's top always
+match the screen. While it follows the car the walls lose their exact 2:1 pixel lines, which come
+back once it rests on a seat.
 
 ## On foot
 
@@ -965,7 +984,8 @@ pigs come out only where the player is out in the country, with fewer than 60 re
 | `src/sim/systems/*.ts` | each system's own constants at the top of its file (physics: steering rates and the speed-sensitive lock; traffic: comfort, leaning, turning room, the cone's `CONE_CLEARANCE`, backing's `BACK_GAP` and `ALONGSIDE`; foot, enter/exit) |
 | `src/sim/sky/` | the clock, the map's place, the climate, the odds, the day plan, the regimes and the ground's weather (see [weather.md](weather.md#tuning)) |
 | `src/sim/map/kinds.ts` | road widths and which classes carry traffic, the player's car, or only people |
-| `src/render/pipeline.ts` | `zoomFor` zoom levels, `turnToward` view turn speed |
+| `src/render/pipeline.ts` | `zoomFor` zoom levels |
+| `src/render/swing.ts` | `turnToward` view turn speed; the follow spring's `FOLLOW`, `HOLD`, `SETTLE` and `LAND` |
 | `src/render/people.ts`, `src/render/animals.ts`, `src/render/blood.ts` | the figures' proportions and `STOOP`, the frame choice (`STILL_SPEED`, `RUN_GAIT`, `WALK_STEP`, `RUN_STEP`, `TALK_BEAT`), the animals' builds, the blood pools' sizes and `SPREAD` |
 | `src/audio/director/levels.ts` | how loud each sound is and how far it carries (see [audio.md](audio.md#known-limits-and-tuning)) |
 

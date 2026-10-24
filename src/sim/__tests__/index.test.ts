@@ -7,7 +7,7 @@ import { Determinism } from "@typeonce/ritmo-devtools"
 import { Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { segDist2 } from "../../tools/geometry.ts"
-import { carClear } from "../body.ts"
+import { carClear, wrapAngle } from "../body.ts"
 import { settle, uprightness } from "../chassis.ts"
 import { STAGE_FROM, UNDAMAGED } from "../damage.ts"
 import {
@@ -63,7 +63,7 @@ import {
   World,
 } from "../testing.ts"
 import { VEHICLES } from "../vehicles.ts"
-import { screenAxes } from "../view.ts"
+import { followYaw, QUARTER, screenAxes } from "../view.ts"
 
 test("setup: the player at the map spawn, 200 parked cars on random spots, Carabinieri in front of the station", () => {
   const { run, view, world } = start()
@@ -334,6 +334,51 @@ test("view: Q turns the view a quarter left, E a quarter right, and the up key w
   }
 })
 
+test("view: driving, the view keeps the quarter seat nearest the car's heading, winding with it, and the turn keys do nothing; got out, the keys walk along that seat", () => {
+  const { run, view } = start(
+    [
+      ...press(0, "action"),
+      ...press(4, "turnLeft"),
+      { frame: 6, press: ["up", "left"] },
+      ...press(10, "turnRight"),
+      { frame: 186, release: ["up", "left"] },
+      ...press(240, "action"),
+      { frame: 242, press: ["up"] },
+    ],
+    [door(ON_BATTISTI), { cars: [parkedCar("panda", 0x3d6155, ON_BATTISTI)] }],
+  )
+  run(1)
+  assert.equal(view()?.mode, "driving")
+  // Each step's seat follows the heading the step began with; `unwound` is its yaw, wound on.
+  let last = view()!.pose.angle,
+    unwound = wrapAngle(followYaw(last))
+  const seats = new Set<number>()
+  run(239, () => {
+    const { pose, turns } = view()!
+    seats.add(turns)
+    const { up } = screenAxes(turns)
+    assert.ok(
+      up.x * Ops.cos(last) + up.y * Ops.sin(last) >= Math.SQRT1_2 - 1e-9,
+      `seat ${turns} within 45° of the heading ${last}`,
+    )
+    assert.equal(turns, Math.round(unwound / QUARTER), "the count winds on with the car")
+    unwound += wrapAngle(pose.angle - last)
+    last = pose.angle
+  })
+  assert.ok(seats.size >= 3, `the car turned through the seats ${[...seats].join(", ")}`)
+  const seat = view()!.turns
+  run(2)
+  assert.equal(view()?.mode, "foot")
+  assert.equal(view()!.turns, seat, "got out, the view keeps the seat")
+  const from = view()!.pose
+  run(20)
+  const to = view()!.pose,
+    { up } = screenAxes(seat)
+  const along = (to.x - from.x) * up.x + (to.y - from.y) * up.y,
+    across = (to.x - from.x) * up.y - (to.y - from.y) * up.x
+  assert.ok(along > 0.3 && Math.abs(across) < 1e-9, `${along} along, ${across} across`)
+})
+
 // Regression: the camera led by the pose change, so the hop in or out of a car jolted it.
 test("view: getting in and out hops the pose to the seat and the door, at zero velocity", () => {
   const { run, view } = start(
@@ -453,7 +498,7 @@ test("traffic: a person who never moves holds a car ~12 s in its lane, and besid
 })
 
 /**
- * Walk to a car, drive it hard around Via Cesare Battisti, turn the view, get out, while another car crashes into a house wall and
+ * Walk to a car, drive it hard around Via Cesare Battisti, the view following it, get out and turn the view, while another car crashes into a house wall and
  * goes on pushing at it on its worn, misfiring engine, and a wreck across the road blows up, killing a bystander and setting
  * the car beside it on fire: every system has work to do.
  */
@@ -465,10 +510,10 @@ const joyride: Timeline = [
   { frame: 100, press: ["left"] },
   { frame: 130, release: ["left"], press: ["handbrake", "right"] },
   { frame: 170, release: ["handbrake", "right"] },
-  ...press(200, "turnLeft"),
   { frame: 240, release: ["up"], press: ["down"] },
   { frame: 300, release: ["down"] },
   ...press(330, "action"),
+  ...press(334, "turnLeft"),
   { frame: 340, press: ["up", "sprint"] },
   { frame: 400, release: ["up", "sprint"] },
 ]
@@ -587,13 +632,16 @@ test("saves: a snapshot taken mid-joyride, in a thunderstorm, restores through J
   // The clock fast and a storm over the map: the weather, its random stream and the storm cell are saved state too.
   a.runtime.send(SetClock, { rate: 600 })
   a.runtime.send(SetWeather, { regime: "storm", settle: true })
-  const modes: Array<string> = []
+  const modes: Array<string> = [],
+    seats: Array<number> = []
   a.run(420, () => {
-    const mode = a.view()!.mode
+    const { mode, turns } = a.view()!
     if (modes.at(-1) !== mode) modes.push(mode)
+    if (seats.at(-1) !== turns) seats.push(turns)
   })
   assert.deepEqual(modes, ["foot", "driving", "foot"], "the joyride gets in, drives and gets out")
-  assert.equal(a.view()!.turns, 1, "and turns the view")
+  assert.ok(seats.length > 2, `the view follows the car through the seats ${seats.join(", ")}`)
+  assert.equal(seats.at(-1), seats.at(-2)! + 1, "and is turned once out")
   assert.ok(
     a.heard.cries.some((c) => c.feeling === "shock"),
     "the family came on the body",

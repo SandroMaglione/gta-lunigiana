@@ -73,7 +73,7 @@ farm list about 9 ms of it); a test that has not built the cover pays for it her
 | 1 | `AdvanceTime` | `index.ts` | advances `Time` (Ritmo `Clock.system`) |
 | 2 | `CaptureInput` | `index.ts` | copies the `KeyboardInput` snapshot into `Input` |
 | 3 | `StorePrevious` | `index.ts` | copies every `Pose` into `PrevPose` (for interpolation) |
-| 4 | `TurnView` | `index.ts` | turn keys: the view's quarter turns (`View`) |
+| 4 | `TurnView` | `index.ts` | turn keys: the view's quarter turns (`View`); driving, the seat nearest the car's heading |
 | 5 | `ApplyHandling` | `index.ts` | each `SetHandling` request sets its knob in `Handling`, kept in the knob's range |
 | 6 | `ApplyClock` | `index.ts` | each `SetClock` request sets the game time and/or its rate in `GameClock`, kept in range (2000-01-01 to 2100-01-01, rate a whole 0–3600) |
 | 7 | `ApplyWeather` | `index.ts` | each `SetWeather` request forces a regime or hands the weather back to the day's plan, settled at once when asked, under the plan of the day the clock is on |
@@ -157,7 +157,7 @@ Saved resources:
 | `Rng` | the world's random stream: traffic, people and animals, parking |
 | `WeatherRng` | the weather's own random stream: the storm cell and lightning (its first state is the weather seed) |
 | `Score` | `stolen`, and `knocked`: people the player's car knocked down or killed |
-| `View` | `turns`, the net quarter turns of the camera |
+| `View` | `turns`, the net quarter turns of the camera; driving, the seat nearest the car's heading |
 | `Handling` | the 16 handling knobs ([gameplay.md](gameplay.md#handling)) |
 | `GameClock` | `seconds`, the game time in whole Unix UTC seconds, and `rate`, the game seconds each step adds: 1 in play (a game minute per real second, a 24-minute day), 0 standing still, up to 3600 from the dev debug menu |
 | `Weather` | the weather `seed` (never changed); the `regime` it moves toward and whether it is `forced`; the eased `cloud`, `precip` (mm/h at sea level), `storm`, `wind` (on the map's low ground) and `windAngle`, `gust`, `fog` and temperature `anomaly`; the ground's `wet` and `snowLine` (m a.s.l.); the storm cell's centre (`cellX`, `cellY`); and the day's `plan` (its Rome `day`, whether `drawn`, `from` when it holds, `wet`, a wet day's `event`, `intensity`, `start`, `end` and `precip`, the `sky`, a dry day's `fog` until `lift` and strong wind from `windyFrom` to `windyTo`, and the `airMass`; times in seconds since the Rome day's midnight) |
@@ -579,7 +579,7 @@ Streaming:
   the camera's right and up axes, terrain relief included. A valley far below a ridge counts as
   near when the camera shows it beside the focus. The boxes are measured once (`chunkBoxes`);
   their screen rectangles are projected again whenever the view's yaw changes, which is every
-  frame of a turn (≈ 1,600 boxes of 8 corners each).
+  frame of a turn and every frame the view follows a turning car (5,248 boxes of 8 corners each).
 - `world.update(focus, yaw, reach, budgetMs)` runs every frame. `reach` is the half-diagonal of the
   view at the widest zoom (`WIDEST_ZOOM`, 5 texels/m), so zooming out never shows a missing chunk.
   Chunks within reach + 64 m are built, nearest first, until 4 ms of the frame are spent (at least
@@ -597,13 +597,20 @@ The pixel pipeline (`src/render/pipeline.ts`):
 - An orthographic camera at 30° elevation. At that angle the ground axes project to exact 2:1
   pixel lines.
 - In its home view the camera sits north-west of the focus and looks south-east: the mountains
-  rise to the south and east, so this side sees every street. Q and E turn it a quarter at a time
-  (the sim's `View`). `screenAxes(turns)` in `src/sim/view.ts` gives the screen axes on the
-  ground for each turn. The sim maps on-foot keys through them, and the camera and minimap are
-  built from them.
-- The host eases the camera's yaw toward `turns × π/2` (`turnToward`). A quarter turn takes
-  about a third of a second and stops exactly on the heading, so at rest the 2:1 lines and the
-  texel snapping are exact again. Under `prefers-reduced-motion` the view turns at once.
+  rise to the south and east, so this side sees every street. On foot Q and E turn it a quarter
+  at a time (the sim's `View`); driving it follows the car. `screenAxes(turns)` in
+  `src/sim/view.ts` gives the screen axes on the ground for each turn, and `axesAt(yaw)` for any
+  yaw. The sim maps on-foot keys through them, and the camera and minimap are built from them.
+- The host turns the camera's yaw with `swingView` (`src/render/swing.ts`). On foot it eases
+  toward `turns × π/2` (`turnToward`): a quarter turn takes about a third of a second and stops
+  exactly on the heading, so at rest the 2:1 lines and the texel snapping are exact again.
+  Driving, it follows the yaw that puts the car's heading up the screen (`followYaw`) on a
+  critically damped spring (`followToward`), the short way round; getting out, the spring settles
+  it exactly on the seat the sim picked (`settleOn`). Under `prefers-reduced-motion` the view turns
+  at once, but in a car it only jumps onto it and then keeps the spring, which moves it less than
+  the car's heading does. Measured in headless Chrome (1280×720, dev server, seed 7), driving the
+  Carabinieri car round a corner with the view following: 60 fps, no frame over 16.8 ms, at most
+  0.017 rad of turn in a frame; out of the car the view landed exactly on its seat.
 - The scene renders into a low-resolution HalfFloat target about 270 texels tall. One fullscreen
   pass then darkens depth edges (outlines), lays the sky's atmosphere over each texel (fog, haze,
   exposure and grades: [Post pass](#post-pass)), converts to sRGB, and upscales by an integer
@@ -1038,9 +1045,9 @@ sky store `SkyView`:
   Run shows on the right. In a car the stick goes, and buttons hold the arrow keys like the
   keyboard: ◀ and ▶ on the left steer, Gas and Brake take the bottom right, and Hand brake, the
   action button and Horn a row above them. The action button shows only when it would act; ↺ and
-  ↻ always. The zones are read from the drawn buttons on every new touch, so they follow
-  hud.css and the mode, and a control the mode hides lets go of its key. `withTouch` turns them
-  into keys ([Input](#input)).
+  ↻ only out of a car (driving, the view follows it). The zones are read from the drawn buttons on
+  every new touch, so they follow hud.css and the mode, and a control the mode hides lets go of
+  its key. `withTouch` turns them into keys ([Input](#input)).
 - Landscape only: a phone held upright lays the page out sideways (`width: 100dvh`, the height
   Safari's toolbars leave) and turns it a quarter clockwise, to be held sideways (hud.css). The
   renderer and the full map size to the page's box, not the window, and each touch is turned back

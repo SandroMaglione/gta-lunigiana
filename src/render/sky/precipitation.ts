@@ -163,6 +163,10 @@ export class Precipitation {
   }
   private readonly velocity = new Vector2()
   private readonly layer = new Vector2()
+  private readonly turn = new Vector2()
+  /** The camera plane's axes last frame (zero before the first). */
+  private readonly lastRight = new Vector3()
+  private readonly lastUp = new Vector3()
   private last = Number.NaN
 
   /** `seed` lays the drops (the same every load). */
@@ -263,6 +267,18 @@ export class Precipitation {
     wrapBox(viewMetres.width, viewMetres.height, this.box)
     const u = this.shared,
       texel = 1 / texelsPerMetre
+    // A turn of the view moves the focus's own plane coordinates by |focus| × the angle: the scrolls take
+    // that share too, so the drops hold still on the screen while the view turns (following a car).
+    if (this.lastRight.lengthSq() > 0) {
+      this.turn.set(
+        focus.dot(axes.right) - focus.dot(this.lastRight),
+        focus.dot(axes.up) - focus.dot(this.lastUp),
+      )
+      for (const kind of ["rain", "snow"] as const)
+        for (const scroll of this.scroll[kind]) advanceScroll(scroll, this.turn, 1, this.box)
+    }
+    this.lastRight.copy(axes.right)
+    this.lastUp.copy(axes.up)
     u.uFocus.value.set(focus.dot(axes.right), focus.dot(axes.up))
     u.uCentre.value.copy(focus)
     u.uRight.value.copy(axes.right)

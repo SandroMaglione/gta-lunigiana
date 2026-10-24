@@ -7,11 +7,13 @@ import type { RuntimeServices } from "@typeonce/ritmo/Runtime"
 import { clampKnob, DEFAULT_HANDLING } from "./handling.ts"
 import {
   bindings,
+  Driving,
   Game,
   GameClock,
   Handling,
   Input,
   KeyboardInput,
+  Player,
   Pose,
   PrevPose,
   type Root,
@@ -40,6 +42,7 @@ import { FillPeople, Populate } from "./systems/populate.ts"
 import { AdvanceClock, AdvanceWeather } from "./systems/sky.ts"
 import { SpawnWorld } from "./systems/spawn.ts"
 import { TrafficAI } from "./systems/traffic.ts"
+import { followYaw, nearestSeat } from "./view.ts"
 
 export * from "./schema.ts"
 export {
@@ -72,16 +75,35 @@ const StorePrevious = Game.System(
   },
 )
 
-/** The turn keys swing the view a quarter left or right; on foot, the movement keys follow it. */
+/**
+ * The turn keys swing the view a quarter left or right; on foot, the movement keys follow it.
+ * Driving, the host's view follows the car, so the keys do nothing and the view keeps the quarter
+ * seat nearest the car's heading: the player gets out to that seat, and the host settles the view on
+ * it.
+ */
 const TurnView = Game.System(
   "Lunigiana/TurnView",
   {
+    queries: {
+      player: Game.Query({
+        selection: { pose: Game.Query.read(Pose), driving: Game.Query.optional(Driving) },
+        with: [Player],
+      }),
+    },
     resources: { input: Game.System.readResource(Input), view: Game.System.writeResource(View) },
   },
-  ({ resources }) => {
+  ({ queries, resources }) => {
+    const { turns } = resources.view.get()
+    const found = queries.player.singleOptional()
+    if (found.ok && found.value?.data.driving.present === true) {
+      // The player's pose is the car's (RideAlong).
+      const seat = nearestSeat(turns, followYaw(found.value.data.pose.get().angle))
+      if (seat !== turns) resources.view.set({ turns: seat })
+      return
+    }
     const keys = resources.input.get()
     const turn = InputAxis.axis(keys.turnRight.pressed, keys.turnLeft.pressed)
-    if (turn !== 0) resources.view.update(({ turns }) => ({ turns: turns + turn }))
+    if (turn !== 0) resources.view.set({ turns: turns + turn })
   },
 )
 

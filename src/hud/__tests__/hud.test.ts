@@ -3,9 +3,8 @@ import { test } from "node:test"
 
 import { Keyboard } from "@typeonce/ritmo-browser"
 
-import { QUARTER } from "../../render/pipeline.ts"
 import { bindings, type PlayerViewModel } from "../../sim/index.ts"
-import { screenAxes } from "../../sim/view.ts"
+import { QUARTER, screenAxes } from "../../sim/view.ts"
 import { kmh, overlayKey, type Overlays, pausable, promptText, routeOverlayKeys } from "../hud.ts"
 import { minimapRotation } from "../minimap.ts"
 

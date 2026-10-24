@@ -52,6 +52,7 @@ import { groundZ } from "../sim/map/ground.ts"
 import { daysFromCivil, romeTime } from "../sim/sky/calendar.ts"
 import { sunOver } from "../sim/sky/day.ts"
 import { VEHICLES, type VehicleModel } from "../sim/vehicles.ts"
+import { followYaw, QUARTER } from "../sim/view.ts"
 import type {
   Body,
   Happening,
@@ -349,7 +350,7 @@ const Hear = Game.System(
         vx: motion.vx,
         vy: motion.vy,
         car,
-        turns: resources.view.get().turns,
+        yaw: car === undefined ? resources.view.get().turns * QUARTER : followYaw(pose.angle),
       },
       vehicles,
       people,

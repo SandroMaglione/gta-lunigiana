@@ -188,8 +188,11 @@ interface HeardListener {
   readonly vy: number
   /** The vehicle the player sits in. */
   readonly car: number | undefined
-  /** Net quarter turns of the view to the left of its home seat (the sim's `View`): the screen, and the stereo image, turn with it. */
-  readonly turns: number
+  /**
+   * The view's yaw, rad to the left of its home seat: the sim's `View` quarter turns on foot, the
+   * car's heading (`followYaw`) driving. The screen, and the stereo image, turn with it.
+   */
+  readonly yaw: number
 }
 
 /** The game's clock and sun this frame (the sim's `GameClock`). */

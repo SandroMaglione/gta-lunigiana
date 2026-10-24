@@ -6,7 +6,9 @@ Checks for a change in `src/render`, the camera, the view or the keys, on top of
 - **Settled design**: the user chose the look and the controls, so keep them unless the user asks
   for a change: real low-poly 3D rendered at low resolution and upscaled nearest-neighbour, with
   no sprites; an orthographic camera at 30°, for exact 2:1 pixel lines; the home view north-west of
-  the player; quarter turns on Q/E, eased over about 1/3 s; the sun on its real arc for the game
+  the player; quarter turns on Q/E, eased over about 1/3 s; driving, a view that follows the car on
+  a spring, the road ahead up the screen, and settles on the nearest quarter turn when the player
+  gets out; the sun on its real arc for the game
   time, turning with the view (in the home view it stands where it really is); F or Enter as the
   action key; on a touch screen, every control on the screen (a stick to walk; in a vehicle ◀ ▶
   buttons on the left and Gas and Brake on the right, pressing the keys as the keyboard does) and

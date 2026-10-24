@@ -53,6 +53,7 @@ import {
   wear,
 } from "../../sim/testing.ts"
 import { VEHICLES, type VehicleModel } from "../../sim/vehicles.ts"
+import { followYaw, QUARTER } from "../../sim/view.ts"
 import { Audio, audio, skyAt } from "../index.ts"
 import type { Heard } from "../types.ts"
 
@@ -206,16 +207,25 @@ test("hear: who each person is and what they do, who walks with whom, the animal
   )
 })
 
-test("hear: the listener carries the view's quarter turns, which the stereo image turns with", () => {
+test("hear: the listener carries the view's yaw, which the stereo image turns with: the quarter turns on foot, the car's heading driving", () => {
   const { run, frames } = listen(
-    [...press(1, "turnLeft"), ...press(3, "turnLeft"), ...press(5, "turnRight")],
+    [
+      ...press(1, "turnLeft"),
+      ...press(3, "turnLeft"),
+      ...press(5, "turnRight"),
+      ...press(7, "action"),
+    ],
     door(ON_BATTISTI),
+    { cars: [parkedCar("panda", 0xb8312b, ON_BATTISTI)] },
   )
-  run(7)
+  run(9)
   assert.deepEqual(
-    frames.map((f) => f.listener.turns),
-    [0, 1, 1, 2, 2, 1, 1],
+    frames.slice(0, 7).map((f) => f.listener.yaw),
+    [0, 1, 1, 2, 2, 1, 1].map((turns) => turns * QUARTER),
   )
+  const driving = frames.at(-1)!
+  assert.ok(driving.listener.car !== undefined)
+  assert.equal(driving.listener.yaw, followYaw(driving.vehicles[0]!.angle))
 })
 
 test("hear: AI traffic runs even standing; a car nobody drives is heard only while it moves", () => {

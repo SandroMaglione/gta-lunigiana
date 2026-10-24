@@ -42,10 +42,11 @@ import {
   Sky,
   Vehicles,
 } from "./render/index.ts"
-import { PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
+import { PixelView, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
 import { SeeThrough } from "./render/sightline.ts"
 import { SkyHost } from "./render/sky/host.ts"
 import { standIns } from "./render/stand-ins.ts"
+import { type Swing, swingView } from "./render/swing.ts"
 import { World } from "./render/world.ts"
 import {
   bindings,
@@ -65,7 +66,7 @@ import {
 import { mapCover } from "./sim/map/cover.ts"
 import { heightAt } from "./sim/map/index.ts"
 import { DAY, daysFromCivil, utcFromRome } from "./sim/sky/calendar.ts"
-import { LOOK_AHEAD } from "./sim/view.ts"
+import { LOOK_AHEAD, QUARTER } from "./sim/view.ts"
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")
 if (canvas === null) throw new Error("index.html lacks canvas#game")
@@ -197,7 +198,8 @@ if (spawn !== undefined)
   )
 
 const camera = { x: 0, y: 0, elevation: 0, placed: false, zoom: 8 }
-// The view swings through each quarter turn, or jumps when the player asks for less motion.
+let swing: Swing = { yaw: view.yaw, rate: 0, by: "keys", seat: 0 }
+// The view swings through each quarter turn and follows the car, or jumps when the player asks for less motion.
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)")
 
 const draw = (frame: FixedLoop.Frame): void => {
@@ -217,8 +219,15 @@ const draw = (frame: FixedLoop.Frame): void => {
   camera.elevation +=
     (groundY(x, y, camera.placed ? camera.elevation : undefined) - camera.elevation) * ease
   view.focus.set(camera.x, camera.elevation, -camera.y)
-  const yaw = player.turns * QUARTER
-  view.yaw = camera.placed && !reduceMotion.matches ? turnToward(view.yaw, yaw, dt) : yaw
+  swing = swingView(
+    swing,
+    player.turns,
+    // The step the player gets in, PrevPose is still where they stood: land on the car's own heading.
+    player.mode === "driving" ? (swing.by === "car" ? angle : player.pose.angle) : undefined,
+    dt,
+    !camera.placed || reduceMotion.matches,
+  )
+  view.yaw = swing.yaw
   camera.placed = true
   const zoom = (camera.zoom = zoomFor(player.vehicle?.speed, camera.zoom))
   view.texelsPerMetre +=

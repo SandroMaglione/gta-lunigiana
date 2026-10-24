@@ -229,7 +229,7 @@ test("thunder is placed when it arrives: get into the Panda meanwhile and it com
       const moved = away(MEADOW, speed * i * FRAME, SOUTH)
       director.hear(
         world(moved, {
-          listener: { x: moved.x, y: moved.y, vx: 0, vy: -speed, car: undefined, turns: 0 },
+          listener: { x: moved.x, y: moved.y, vx: 0, vy: -speed, car: undefined, yaw: 0 },
         }),
       )
     }

@@ -209,7 +209,7 @@ export const world = (
   more: Partial<Heard> = {},
   car?: number,
 ): Heard => ({
-  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, turns: 0 },
+  listener: { x: at.x, y: at.y, vx: 0, vy: 0, car, yaw: 0 },
   vehicles: [],
   people: [],
   animals: [],

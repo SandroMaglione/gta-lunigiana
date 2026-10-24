@@ -240,7 +240,8 @@ export const Score = Descriptor.ConstructedResource(
 )("Lunigiana/Score")
 /**
  * Net quarter turns of the camera to the left of its home seat (any integer, mod 4 is the heading;
- * see `screenAxes`). Saved: the on-foot keys depend on it.
+ * see `screenAxes`); driving, while the camera follows the car, the seat nearest the car's heading,
+ * which the player gets out to. Saved: the on-foot keys depend on it.
  */
 export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))(
   "Lunigiana/View",

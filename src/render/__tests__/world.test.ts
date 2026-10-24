@@ -4,6 +4,7 @@ import { test } from "node:test"
 import { Group, InstancedMesh, Vector3, type Mesh } from "three"
 
 import { MAP } from "../../sim/map/index.ts"
+import { QUARTER } from "../../sim/view.ts"
 import { chunkBoxes, CHUNKS, radiiFor, screenDistances, screenRects } from "../chunks.ts"
 import {
   decalMaterial,
@@ -15,7 +16,7 @@ import {
 } from "../geometry.ts"
 import { terrainY } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
-import { QUARTER, viewAxes } from "../pipeline.ts"
+import { viewAxes } from "../pipeline.ts"
 import { glowMaterial } from "../sky/glow.ts"
 import { lampsIn } from "../sky/lamps.ts"
 import { World } from "../world.ts"

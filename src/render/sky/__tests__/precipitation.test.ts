@@ -159,3 +159,40 @@ test("Precipitation: draw ranges follow the rates, the colour the ambient light,
   )
   assert.ok(streak.y < 0, "the streak trails up the screen behind the falling head")
 })
+
+// Regression: the drops sat at the focus's own coordinates on the camera plane, so turning the
+// view far from the map's origin slid the whole pattern across the screen (|focus| × the turn).
+test("Precipitation: turning the view with the clock stopped leaves every drop where it was on the screen", () => {
+  const p = new Precipitation(),
+    focus = new Vector3(-400, 120, -430),
+    view = { width: 86, height: 48 },
+    storm = { ...NOON, now: 10, rain: 20, snow: 0, wind: { x: 0, y: 0 } }
+  const seeds = p.rain.geometry.getAttribute("position").array
+  const u = p.rain.material.uniforms
+  /** Each drop's offset from the focus on the camera plane, as the vertex shader wraps it. */
+  const offsets = () => {
+    const box = u["uBox"]!.value as Vector2,
+      scroll = u["uScroll"]!.value as Array<Vector2>,
+      at = u["uFocus"]!.value as Vector2
+    const wrap = (v: number, size: number) =>
+      ((((v + 0.5 * size) % size) + size) % size) - 0.5 * size
+    return Array.from({ length: 50 }, (_, i) => {
+      const layer = Math.min(Math.floor(seeds[i * 3 + 2]! * 3), 2)
+      return [
+        wrap(seeds[i * 3]! * box.x + scroll[layer]!.x - at.x, box.x),
+        wrap(seeds[i * 3 + 1]! * box.y + scroll[layer]!.y - at.y, box.y),
+      ]
+    })
+  }
+  p.update(storm, focus, viewAxes(0), 8, view)
+  const before = offsets()
+  for (const yaw of [0.01, 0.03, 0.2, 1.5]) {
+    p.update(storm, focus, viewAxes(yaw), 8, view)
+    offsets().forEach(([x, y], i) =>
+      assert.ok(
+        Math.abs(x! - before[i]![0]!) < 1e-6 && Math.abs(y! - before[i]![1]!) < 1e-6,
+        `drop ${i} at yaw ${yaw}: (${x}, ${y}) was (${before[i]})`,
+      ),
+    )
+  }
+})

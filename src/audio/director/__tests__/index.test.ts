@@ -5,7 +5,7 @@ import { groundZ, terrainZ } from "../../../sim/map/ground.ts"
 import { MAP } from "../../../sim/map/index.ts"
 import { surfaceAt } from "../../../sim/map/surface.ts"
 import { VEHICLES, type VehicleModel } from "../../../sim/vehicles.ts"
-import { screenAxes } from "../../../sim/view.ts"
+import { followYaw, QUARTER, screenAxes } from "../../../sim/view.ts"
 import { hash01 } from "../../../tools/geometry.ts"
 import { AMBIENT_DB, CABIN, dbToGain, gainToDb, SPEED_OF_SOUND } from "../../acoustics.ts"
 import { skyAt } from "../../index.ts"
@@ -53,17 +53,20 @@ test("a running car 30 m away on screen-right is heard there; 2 km away it is no
   assert.equal(far.held().has("engine:1"), false)
 })
 
-test("the stereo image turns with the view: a car ahead of the home seat's screen is heard on the right after a quarter turn left", () => {
-  const pan = (turns: number) => {
+test("the stereo image turns with the view: a car ahead of the home seat's screen is heard on the right after a quarter turn left, and dead ahead of the driving view in the middle", () => {
+  const pan = (yaw: number, ahead = screenAxes(0).up) => {
     const director = rig(),
-      heard = world(MEADOW, { vehicles: [car(1, "panda", away(MEADOW, 30, screenAxes(0).up))] })
-    director.hear({ ...heard, listener: { ...heard.listener, turns } })
+      heard = world(MEADOW, { vehicles: [car(1, "panda", away(MEADOW, 30, ahead))] })
+    director.hear({ ...heard, listener: { ...heard.listener, yaw } })
     return director.held().get("engine:1")!.at.pan
   }
   assert.ok(
-    Math.abs(pan(0)) < 1e-9 && pan(1) > 0.8 && pan(-1) < -0.8,
-    `${pan(0)} ${pan(1)} ${pan(-1)}`,
+    Math.abs(pan(0)) < 1e-9 && pan(QUARTER) > 0.8 && pan(-QUARTER) < -0.8,
+    `${pan(0)} ${pan(QUARTER)} ${pan(-QUARTER)}`,
   )
+  const heading = 0.3
+  const centred = pan(followYaw(heading), { x: Math.cos(heading), y: Math.sin(heading) })
+  assert.ok(Math.abs(centred) < 1e-9, `${centred}`)
 })
 
 test("a car at full load 300 m across the open meadow is heard; 400 m away behind Monte San Giorgio it is not", () => {

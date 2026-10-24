@@ -592,13 +592,14 @@ html.touch .map-title {
 
 /* The touch controls (touch.ts). On foot, a finger on the left half brings the stick under it;
    driving, ◀ ▶ take its place and Gas and Brake the action button's and Run's, the action button
-   moving up. The buttons show only in the mode they work in, the action button only when there is
-   something to do. */
+   moving up, and ↺ ↻ go: the view follows the car. The buttons show only in the mode they work in,
+   the action button only when there is something to do. */
 #hud-touch {
   position: absolute;
   inset: 0;
 }
 #hud-touch[data-mode="driving"] .on-foot,
+#hud-touch[data-mode="driving"] .turn,
 #hud-touch:not([data-mode="driving"]) .driving,
 #hud-touch-action:empty {
   display: none;
