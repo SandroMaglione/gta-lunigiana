@@ -26,7 +26,7 @@ import { MAP } from "../map/index.ts"
 import { walkIndex } from "../route.ts"
 import { animal, parkedCar, pedestrian } from "../spawning.ts"
 import { stalled } from "../systems/physics.ts"
-import { flood, LOOK, press, stage, start, type Timeline } from "../testing.ts"
+import { flood, jsonSave, LOOK, press, stage, start, type Timeline } from "../testing.ts"
 import { WALK_SPEED } from "../tuning.ts"
 import { VEHICLES } from "../vehicles.ts"
 import { screenAxes } from "../view.ts"
@@ -432,7 +432,7 @@ test("saves: a snapshot taken mid-swim restores through JSON and plays on identi
     "a walker in the water",
   )
   const b = start()
-  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(b.runtime.restore(jsonSave(a.runtime)).ok)
   assert.deepEqual(b.world(), a.world())
   assert.deepEqual(b.view(), a.view())
   a.run(300)

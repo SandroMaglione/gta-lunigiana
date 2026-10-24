@@ -17,16 +17,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@typeonce/ritmo": "^0.10.0",
-    "@typeonce/ritmo-browser": "^0.10.0",
-    "@typeonce/ritmo-math": "^0.10.0",
-    "@typeonce/ritmo-render": "^0.10.0",
-    "three": "0.186.1"
+    "@typeonce/ritmo": "^0.14.0",
+    "@typeonce/ritmo-browser": "^0.14.0",
+    "@typeonce/ritmo-math": "^0.14.0",
+    "@typeonce/ritmo-render": "^0.14.0",
+    "three": "0.186.1",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.89.0",
-    "@typeonce/oxlint-plugin-ritmo": "^0.10.0",
-    "@typeonce/ritmo-devtools": "^0.10.0",
+    "@typeonce/oxlint-plugin-ritmo": "^0.14.0",
+    "@typeonce/ritmo-devtools": "^0.14.0",
     "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
     "lefthook": "^2.2.2",

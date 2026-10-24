@@ -130,7 +130,7 @@ export const EnterExit = Game.System(
     ),
   },
   ({ queries, resources, commands }) => {
-    if (!resources.input.get().action.pressed) return
+    if (!resources.input.get().actions.action.pressed) return
     for (const { entity, data } of queries.player.each()) {
       if (data.down.present) continue
       const driving = data.driving.value()

@@ -88,6 +88,17 @@ import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
 import { FLOW } from "./water/flow.ts"
 
+/** The runtime's save as a host stores it, through JSON; fails the test when a schema cannot encode a value. */
+export const jsonSave = <Saved>(runtime: {
+  snapshot():
+    | { readonly ok: true; readonly value: Saved }
+    | { readonly ok: false; readonly error: unknown }
+}): Saved => {
+  const saved = runtime.snapshot()
+  assert.ok(saved.ok, saved.ok ? "" : `the world does not save: ${JSON.stringify(saved.error)}`)
+  return JSON.parse(JSON.stringify(saved.value)) as Saved
+}
+
 /** A grown man's look, for the people tests stage: what he looks like does not matter to them. */
 export const LOOK: Look = {
   skin: 0xc68e6a,

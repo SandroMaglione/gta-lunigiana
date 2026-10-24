@@ -23,7 +23,7 @@ import {
 } from "../index.ts"
 import { MAP } from "../map/index.ts"
 import { REGIME_SPECS } from "../sky/regimes.ts"
-import { ON_BATTISTI, rolling, start } from "../testing.ts"
+import { jsonSave, ON_BATTISTI, rolling, start } from "../testing.ts"
 
 /** The player out of the way, in the map's empty south-west corner: Populate brings nobody near. */
 const FAR_AWAY = { x: -2800, y: -6000, angle: 0 }
@@ -49,7 +49,7 @@ test("game clock: a new game starts at 08:00 in Rome on its start day; each step
   assert.deepEqual(world().clock, { seconds: DEFAULT_START + 600 * 60, rate: 600 })
   assert.equal(runtime.inspect(SkyView).local.hour, 18, "ten game hours later")
   const restored = start()
-  assert.ok(restored.runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot()))).ok)
+  assert.ok(restored.runtime.restore(jsonSave(runtime)).ok)
   assert.deepEqual<GameClockValue>(restored.world().clock, world().clock)
 })
 
@@ -107,7 +107,7 @@ test("the weather seed: a new game keeps WeatherRng's first state as the weather
     assert.ok(made.ok)
     const runtime = made.value
     assert.ok(runtime.tick(setup).ok)
-    const first = runtime.snapshot().resources["Lunigiana/WeatherRng"],
+    const first = jsonSave(runtime).resources["Lunigiana/WeatherRng"],
       weatherSeed = runtime.inspect(SkyView).weather.seed
     runtime.send(SetClock, { rate: 3600 })
     const days: Array<PlanValue> = []
@@ -128,7 +128,7 @@ test("the weather seed: a new game keeps WeatherRng's first state as the weather
   assert.deepEqual(b.days, a.days)
   assert.notDeepEqual(c.days, a.days)
   const restored = start()
-  assert.ok(restored.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(restored.runtime.restore(jsonSave(a.runtime)).ok)
   assert.deepEqual(restored.world().weather, a.runtime.inspect(SkyView).weather)
 })
 
@@ -150,7 +150,7 @@ test("the weather seed alone plans the days: two games from one seed plan the sa
     return {
       days,
       lightning: played.heard.lightning,
-      rng: played.runtime.snapshot().resources["Lunigiana/WeatherRng"],
+      rng: jsonSave(played.runtime).resources["Lunigiana/WeatherRng"],
     }
   }
   const a = game(FAR_AWAY),
@@ -169,7 +169,7 @@ test("the weather's own random stream never reaches traffic or pedestrians: othe
   const a = start([], [gragnola])
   a.runtime.send(SetWeather, { regime: "storm", settle: true })
   a.run(1)
-  const saved = JSON.parse(JSON.stringify(a.runtime.snapshot())) as {
+  const saved = jsonSave(a.runtime) as {
     readonly resources: Record<string, number>
   }
   saved.resources["Lunigiana/WeatherRng"] = (saved.resources["Lunigiana/WeatherRng"]! + 12345) >>> 0

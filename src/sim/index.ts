@@ -104,7 +104,7 @@ const TurnView = Game.System(
       return
     }
     const keys = resources.input.get()
-    const turn = InputAxis.axis(keys.turnRight.pressed, keys.turnLeft.pressed)
+    const turn = InputAxis.axis(keys.actions.turnRight.pressed, keys.actions.turnLeft.pressed)
     if (turn !== 0) resources.view.set({ turns: turns + turn })
   },
 )

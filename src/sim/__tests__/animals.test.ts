@@ -35,7 +35,7 @@ import { farmsNear, grazing, indoors, pasture, RURAL, RURAL_REACH } from "../pop
 import { laneOf, lanePoint, laneSide, roadOf, walkIndex, walkSide } from "../route.ts"
 import { animal, pedestrian } from "../spawning.ts"
 import { ANIMALS } from "../systems/populate-animals.ts"
-import { BATTISTI, LOOK, rolling, stage, start, type Timeline } from "../testing.ts"
+import { BATTISTI, jsonSave, LOOK, rolling, stage, start, type Timeline } from "../testing.ts"
 
 /** Gragnola's centre, Fivizzano's busiest village street (the density calibration's spot). */
 const GRAGNOLA = { x: -1751, y: 3360, angle: 0 }
@@ -387,7 +387,7 @@ test("saves: animals mid-roam restore through JSON and roam on identically", () 
   a.run(450)
   assert.ok(a.world().animals.length >= 3, `${a.world().animals.length} animals`)
   const b = start()
-  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(b.runtime.restore(jsonSave(a.runtime)).ok)
   assert.deepEqual(b.world().animals, a.world().animals)
   a.run(300)
   b.run(300)
@@ -426,7 +426,7 @@ test("saves: a save taken the step a car strikes a dog, the cat by it scared in 
     "the cat ran from the struck dog in that step",
   )
   const b = start()
-  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(b.runtime.restore(jsonSave(a.runtime)).ok)
   for (let frame = 0; frame < 120; frame++) {
     a.run(1)
     b.run(1)

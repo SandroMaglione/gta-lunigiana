@@ -50,15 +50,16 @@ import {
   door,
   facing,
   FAR,
+  jsonSave,
+  teleport,
   LOOK,
   ON_BATTISTI,
   press,
   rolling,
   stage,
   start,
-  teleport,
-  TOWARD,
   type Timeline,
+  TOWARD,
   walkClear,
   World,
 } from "../testing.ts"
@@ -669,7 +670,7 @@ test("saves: a snapshot taken mid-joyride, in a thunderstorm, restores through J
     "and setting the car beside it burning",
   )
   const b = start()
-  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(b.runtime.restore(jsonSave(a.runtime)).ok)
   assert.deepEqual(b.view(), a.view())
   assert.deepEqual(b.world(), a.world())
   const from = a.heard.lightning.length
@@ -716,7 +717,7 @@ test("saves: a snapshot taken while a walker stands shocked by a body restores t
     "a witness stands shocked",
   )
   const b = start()
-  assert.ok(b.runtime.restore(JSON.parse(JSON.stringify(a.runtime.snapshot()))).ok)
+  assert.ok(b.runtime.restore(jsonSave(a.runtime)).ok)
   assert.deepEqual(b.world(), a.world())
   const moods = new Set<string>()
   for (let frame = 0; frame < 900; frame++) {

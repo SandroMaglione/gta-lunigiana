@@ -1,6 +1,7 @@
-import { Clock, Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Entity, Schema } from "@typeonce/ritmo"
 import { type InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
+import * as v from "valibot"
 
 import type { HandlingKey } from "./handling.ts"
 import type { Surface } from "./map/surface.ts"
@@ -13,10 +14,17 @@ import { VEHICLE_MODELS, type VehicleModel } from "./vehicles.ts"
  */
 export const Root = Schema.defineRoot("Lunigiana")
 
+/** A finite number: a save is JSON, which cannot carry `NaN` or `Infinity`. */
+const finite = v.pipe(v.number(), v.finite())
+/** A safe integer: step counts, colours, indices. */
+const integer = v.pipe(v.number(), v.safeInteger())
+/** A stored entity handle, checked by Ritmo's guard (`Entity.isHandle`); it never proves the entity is alive. */
+const handle = <H>(isHandle: (raw: unknown) => raw is H) => v.pipe(v.unknown(), v.guard(isHandle))
+
 /** The one fixed step: Clock resource, FixedLoop and replays all use it. */
 export const STEP = Clock.hz(60)
 
-const PoseCodec = Decode.struct({ x: Decode.number, y: Decode.number, angle: Decode.number })
+const PoseCodec = v.object({ x: finite, y: finite, angle: finite })
 
 /** Where a body is and which way it faces. */
 export const Pose = Descriptor.ConstructedComponent(PoseCodec)("Lunigiana/Pose")
@@ -26,7 +34,7 @@ export const PrevPose = Descriptor.ConstructedComponent(PoseCodec)("Lunigiana/Pr
 export type PoseValue = Descriptor.Descriptor.Value<typeof Pose>
 /** World-frame velocity (m/s) and yaw rate (rad/s). */
 export const Motion = Descriptor.ConstructedComponent(
-  Decode.struct({ vx: Decode.number, vy: Decode.number, spin: Decode.number }),
+  v.object({ vx: finite, vy: finite, spin: finite }),
 )("Lunigiana/Motion")
 
 /** The one human-controlled person. */
@@ -48,16 +56,16 @@ export type Hairdo = (typeof HAIRDOS)[number]
  * (it sets the voice), outfit, hairdo, and standing height in metres.
  */
 export const Person = Descriptor.ConstructedComponent(
-  Decode.struct({
-    skin: Decode.integer,
-    hair: Decode.integer,
-    shirt: Decode.integer,
-    pants: Decode.integer,
-    age: Decode.literal(...AGES),
-    female: Decode.boolean,
-    outfit: Decode.literal(...OUTFITS),
-    hairdo: Decode.literal(...HAIRDOS),
-    height: Decode.number,
+  v.object({
+    skin: integer,
+    hair: integer,
+    shirt: integer,
+    pants: integer,
+    age: v.picklist(AGES),
+    female: v.boolean(),
+    outfit: v.picklist(OUTFITS),
+    hairdo: v.picklist(HAIRDOS),
+    height: finite,
   }),
 )("Lunigiana/Person", { immutable: true })
 /** A Person value. */
@@ -78,12 +86,12 @@ export type Mood = (typeof MOODS)[number]
  * `blocked` counts the steps it has been getting nowhere.
  */
 export const Pedestrian = Descriptor.ConstructedComponent(
-  Decode.struct({
-    mood: Decode.literal(...MOODS),
-    until: Decode.integer,
-    blocked: Decode.integer,
-    fx: Decode.number,
-    fy: Decode.number,
+  v.object({
+    mood: v.picklist(MOODS),
+    until: integer,
+    blocked: integer,
+    fx: finite,
+    fy: finite,
   }),
 )("Lunigiana/Pedestrian")
 /** A Pedestrian value. */
@@ -93,10 +101,10 @@ export type PedestrianValue = Descriptor.Descriptor.Value<typeof Pedestrian>
  * lead. Its own route or roaming takes over when the leader is gone, down or dead.
  */
 export const Follows = Descriptor.ConstructedComponent(
-  Decode.struct({
-    leader: Decode.handle(Root, Pedestrian),
-    side: Decode.number,
-    back: Decode.number,
+  v.object({
+    leader: handle(Entity.isHandle(Root, Pedestrian)),
+    side: finite,
+    back: finite,
   }),
 )("Lunigiana/Follows")
 /**
@@ -106,23 +114,19 @@ export const Follows = Descriptor.ConstructedComponent(
  */
 export const Witness = Descriptor.Tag("Lunigiana/Witness")
 /** Knocked to the ground until step `until` (the player, a pedestrian or an animal). */
-export const Down = Descriptor.ConstructedComponent(Decode.struct({ until: Decode.integer }))(
-  "Lunigiana/Down",
-)
+export const Down = Descriptor.ConstructedComponent(v.object({ until: integer }))("Lunigiana/Down")
 /**
  * Killed at step `since`: a pedestrian or an animal by a vehicle; anyone on foot near a blast, or the player in the wreck, by an
  * explosion. It lies where it fell, always `Down`, and never gets up; the player is brought back to the start (`Respawn`).
  */
-export const Dead = Descriptor.ConstructedComponent(Decode.struct({ since: Decode.integer }))(
-  "Lunigiana/Dead",
-)
+export const Dead = Descriptor.ConstructedComponent(v.object({ since: integer }))("Lunigiana/Dead")
 
 /**
  * Standing or swimming in a river or stream (the player on foot, a pedestrian or an animal): `swimming` once the water lifts it
  * off its feet or the current takes them from under it, else wading. While it has this it is in the water under a bridge, not on
  * its deck. Saved; `Wade` sets it.
  */
-export const InWater = Descriptor.ConstructedComponent(Decode.struct({ swimming: Decode.boolean }))(
+export const InWater = Descriptor.ConstructedComponent(v.object({ swimming: v.boolean() }))(
   "Lunigiana/InWater",
 )
 
@@ -132,11 +136,11 @@ export const SPECIES = ["dog", "cat", "cow", "pig"] as const
 export type Species = (typeof SPECIES)[number]
 /** An animal: its species, coat and patch colours (sRGB hex; the patch is the coat on a plain coat), and size (× its species' usual). */
 export const Animal = Descriptor.ConstructedComponent(
-  Decode.struct({
-    species: Decode.literal(...SPECIES),
-    coat: Decode.integer,
-    patch: Decode.integer,
-    size: Decode.number,
+  v.object({
+    species: v.picklist(SPECIES),
+    coat: integer,
+    patch: integer,
+    size: finite,
   }),
 )("Lunigiana/Animal", { immutable: true })
 /** An Animal value. */
@@ -146,13 +150,13 @@ export type AnimalValue = Descriptor.Descriptor.Value<typeof Animal>
  * from (tx, ty); it keeps near its home (hx, hy).
  */
 export const Roam = Descriptor.ConstructedComponent(
-  Decode.struct({
-    mood: Decode.literal("idle", "walk", "flee"),
-    until: Decode.integer,
-    hx: Decode.number,
-    hy: Decode.number,
-    tx: Decode.number,
-    ty: Decode.number,
+  v.object({
+    mood: v.picklist(["idle", "walk", "flee"]),
+    until: integer,
+    hx: finite,
+    hy: finite,
+    tx: finite,
+    ty: finite,
   }),
 )("Lunigiana/Roam")
 /** A Roam value. */
@@ -160,11 +164,11 @@ export type RoamValue = Descriptor.Descriptor.Value<typeof Roam>
 
 /** A car, van or truck of one model and paint colour. */
 export const Vehicle = Descriptor.ConstructedComponent(
-  Decode.struct({ model: Decode.literal(...VEHICLE_MODELS), color: Decode.integer }),
+  v.object({ model: v.picklist(VEHICLE_MODELS), color: integer }),
 )("Lunigiana/Vehicle", { immutable: true })
 /** What the vehicle's driver is doing this step: throttle and steer in [-1, 1]. */
 export const CarInput = Descriptor.ConstructedComponent(
-  Decode.struct({ throttle: Decode.number, steer: Decode.number, handbrake: Decode.boolean }),
+  v.object({ throttle: finite, steer: finite, handbrake: v.boolean() }),
 )("Lunigiana/CarInput")
 /**
  * A vehicle's body beyond its planar Pose and Motion: the elevation of its centre of mass (m a.s.l.)
@@ -173,16 +177,16 @@ export const CarInput = Descriptor.ConstructedComponent(
  * (index into the gearbox's ratios; −1 reverse) and the step at which the current shift ends.
  */
 export const Chassis = Descriptor.ConstructedComponent(
-  Decode.struct({
-    z: Decode.number,
-    vz: Decode.number,
-    pitch: Decode.number,
-    pitchRate: Decode.number,
-    roll: Decode.number,
-    rollRate: Decode.number,
-    steer: Decode.number,
-    gear: Decode.integer,
-    shiftUntil: Decode.integer,
+  v.object({
+    z: finite,
+    vz: finite,
+    pitch: finite,
+    pitchRate: finite,
+    roll: finite,
+    rollRate: finite,
+    steer: finite,
+    gear: integer,
+    shiftUntil: integer,
   }),
 )("Lunigiana/Chassis")
 /** A Chassis value. */
@@ -195,13 +199,13 @@ export type ChassisValue = Descriptor.Descriptor.Value<typeof Chassis>
  * charred shell). Stages, durability and what damage costs the engine are in damage.ts.
  */
 export const Damage = Descriptor.ConstructedComponent(
-  Decode.struct({
-    amount: Decode.number,
-    crash: Decode.number,
-    since: Decode.integer,
-    struck: Decode.integer,
-    fuse: Decode.integer,
-    exploded: Decode.boolean,
+  v.object({
+    amount: finite,
+    crash: finite,
+    since: integer,
+    struck: integer,
+    fuse: integer,
+    exploded: v.boolean(),
   }),
 )("Lunigiana/Damage")
 /** A Damage value. */
@@ -214,7 +218,7 @@ export const Traffic = Descriptor.Tag("Lunigiana/Traffic")
  * centreline in metres (positive = right of travel).
  */
 export const Route = Descriptor.ConstructedComponent(
-  Decode.struct({ edge: Decode.integer, forward: Decode.boolean, side: Decode.number }),
+  v.object({ edge: integer, forward: v.boolean(), side: finite }),
 )("Lunigiana/Route")
 /** A Route value. */
 export type RouteValue = Descriptor.Descriptor.Value<typeof Route>
@@ -224,61 +228,59 @@ export type RouteValue = Descriptor.Descriptor.Value<typeof Route>
  * until which it reverses to get unstuck, and how many times it has had to.
  */
 export const Autopilot = Descriptor.ConstructedComponent(
-  Decode.struct({
-    next: Decode.integer,
-    nextForward: Decode.boolean,
-    stuck: Decode.integer,
-    reverseUntil: Decode.integer,
-    tries: Decode.integer,
+  v.object({
+    next: integer,
+    nextForward: v.boolean(),
+    stuck: integer,
+    reverseUntil: integer,
+    tries: integer,
   }),
 )("Lunigiana/Autopilot")
 /** A vehicle the player has already entered once (it scored a theft). */
 export const Stolen = Descriptor.Tag("Lunigiana/Stolen")
 /** The player is in this vehicle. */
 export const Driving = Descriptor.ConstructedComponent(
-  Decode.struct({ vehicle: Decode.handle(Root, Vehicle) }),
+  v.object({ vehicle: handle(Entity.isHandle(Root, Vehicle)) }),
 )("Lunigiana/Driving")
 
 /** Simulation time. */
 export const Time = Clock.resource("Lunigiana/Time", STEP)
 /** The world's random stream (saved, so runs replay). */
-export const Rng = Descriptor.ConstructedResource(Random)("Lunigiana/Rng")
+export const Rng = Descriptor.ConstructedResource(Random.codec)("Lunigiana/Rng")
 /** Counters shown on the HUD. */
 export const Score = Descriptor.ConstructedResource(
-  Decode.struct({ stolen: Decode.integer, knocked: Decode.integer }),
+  v.object({ stolen: integer, knocked: integer }),
 )("Lunigiana/Score")
 /**
  * Net quarter turns of the camera to the left of its home seat (any integer, mod 4 is the heading;
  * see `screenAxes`); driving, while the camera follows the car, the seat nearest the car's heading,
  * which the player gets out to. Saved: the on-foot keys depend on it.
  */
-export const View = Descriptor.ConstructedResource(Decode.struct({ turns: Decode.integer }))(
-  "Lunigiana/View",
-)
+export const View = Descriptor.ConstructedResource(v.object({ turns: integer }))("Lunigiana/View")
 /**
  * Every vehicle's handling knobs (`HANDLING` in handling.ts): multipliers, shares and switches over the
  * vehicles' real data, at `DEFAULT_HANDLING` in a new game. Saved, so a run replays with the handling
  * it was played with; set only through `SetHandling`.
  */
 export const Handling = Descriptor.ConstructedResource(
-  Decode.struct({
-    grip: Decode.number,
-    looseGround: Decode.number,
-    weatherGrip: Decode.number,
-    power: Decode.number,
-    brakes: Decode.number,
-    drag: Decode.number,
-    abs: Decode.number,
-    stability: Decode.number,
-    selfRighting: Decode.number,
-    traction: Decode.number,
-    steering: Decode.number,
-    steeringRate: Decode.number,
-    weightTransfer: Decode.number,
-    antiRoll: Decode.number,
-    stiffness: Decode.number,
-    damping: Decode.number,
-  } satisfies Record<HandlingKey, typeof Decode.number>),
+  v.object({
+    grip: finite,
+    looseGround: finite,
+    weatherGrip: finite,
+    power: finite,
+    brakes: finite,
+    drag: finite,
+    abs: finite,
+    stability: finite,
+    selfRighting: finite,
+    traction: finite,
+    steering: finite,
+    steeringRate: finite,
+    weightTransfer: finite,
+    antiRoll: finite,
+    stiffness: finite,
+    damping: finite,
+  } satisfies Record<HandlingKey, typeof finite>),
 )("Lunigiana/Handling")
 /** A request to set one handling knob, sent by the host's handling store (the settings, the dev debug menu); `ApplyHandling` keeps it in range. Not saved. */
 export const SetHandling = Descriptor.Event<{
@@ -292,12 +294,12 @@ export const SetHandling = Descriptor.Event<{
  * an hour a step). Saved; set only through `SetClock`.
  */
 export const GameClock = Descriptor.ConstructedResource(
-  Decode.struct({ seconds: Decode.integer, rate: Decode.integer }),
+  v.object({ seconds: integer, rate: integer }),
 )("Lunigiana/GameClock")
 /** A GameClock value. */
 export type GameClockValue = Descriptor.Descriptor.Value<typeof GameClock>
 /** The weather's own random stream (saved), apart from `Rng` so the weather never changes traffic, pedestrians or parking. */
-export const WeatherRng = Descriptor.ConstructedResource(Random)("Lunigiana/WeatherRng")
+export const WeatherRng = Descriptor.ConstructedResource(Random.codec)("Lunigiana/WeatherRng")
 /**
  * A day of weather as the weather plans it at Rome's midnight (sky/plan.ts), times as seconds since that
  * Rome day's midnight (a day the clocks change lasts 23 or 25 hours): the `day` (Rome's calendar day, days
@@ -308,22 +310,22 @@ export const WeatherRng = Descriptor.ConstructedResource(Random)("Lunigiana/Weat
  * day's around its rain); a dry day's `fog` until `lift`, and its strong wind from `windyFrom` to
  * `windyTo`; and the day's `airMass`, its departure from the normal temperature (°C).
  */
-const Plan = Decode.struct({
-  day: Decode.integer,
-  drawn: Decode.boolean,
-  from: Decode.integer,
-  wet: Decode.boolean,
-  event: Decode.literal(...EVENTS),
-  intensity: Decode.literal(...INTENSITIES),
-  start: Decode.integer,
-  end: Decode.integer,
-  precip: Decode.number,
-  sky: Decode.literal(...SKIES),
-  fog: Decode.literal(...FOGS),
-  lift: Decode.integer,
-  windyFrom: Decode.integer,
-  windyTo: Decode.integer,
-  airMass: Decode.number,
+const Plan = v.object({
+  day: integer,
+  drawn: v.boolean(),
+  from: integer,
+  wet: v.boolean(),
+  event: v.picklist(EVENTS),
+  intensity: v.picklist(INTENSITIES),
+  start: integer,
+  end: integer,
+  precip: finite,
+  sky: v.picklist(SKIES),
+  fog: v.picklist(FOGS),
+  lift: integer,
+  windyFrom: integer,
+  windyTo: integer,
+  airMass: finite,
 })
 /**
  * The weather (sky/weather.ts): the weather `seed` the game drew it from (`WeatherRng`'s first state,
@@ -339,22 +341,22 @@ const Plan = Decode.struct({
  * through `SetWeather`.
  */
 export const Weather = Descriptor.ConstructedResource(
-  Decode.struct({
-    seed: Decode.integer,
-    regime: Decode.literal(...REGIMES),
-    forced: Decode.boolean,
-    cloud: Decode.number,
-    precip: Decode.number,
-    storm: Decode.number,
-    wind: Decode.number,
-    windAngle: Decode.number,
-    gust: Decode.number,
-    fog: Decode.number,
-    anomaly: Decode.number,
-    wet: Decode.number,
-    snowLine: Decode.number,
-    cellX: Decode.number,
-    cellY: Decode.number,
+  v.object({
+    seed: integer,
+    regime: v.picklist(REGIMES),
+    forced: v.boolean(),
+    cloud: finite,
+    precip: finite,
+    storm: finite,
+    wind: finite,
+    windAngle: finite,
+    gust: finite,
+    fog: finite,
+    anomaly: finite,
+    wet: finite,
+    snowLine: finite,
+    cellX: finite,
+    cellY: finite,
     plan: Plan,
   }),
 )("Lunigiana/Weather")
@@ -365,11 +367,11 @@ export type WeatherValue = Descriptor.Descriptor.Value<typeof Weather>
  * the ground. Every river and stream runs at the discharge per km² it gives (`specificDischarge`) times its own catchment. Saved.
  */
 export const Rivers = Descriptor.ConstructedResource(
-  Decode.struct({
-    snow: Decode.number,
-    soil: Decode.number,
-    quick: Decode.number,
-    slow: Decode.number,
+  v.object({
+    snow: finite,
+    soil: finite,
+    quick: finite,
+    slow: finite,
   }),
 )("Lunigiana/Rivers")
 /** A Rivers value. */

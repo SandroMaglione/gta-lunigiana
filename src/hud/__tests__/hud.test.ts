@@ -176,6 +176,10 @@ test("pausing for the map or the settings drops taps made on it, keeps held keys
   open = false
   assert.equal(update(), 1)
   const now = keyboard.snapshot()
-  assert.equal(now.action.pressed, false, "the F tapped on the map does not steal a car on resume")
-  assert.equal(now.up.held, true, "W held through the pause is still held")
+  assert.equal(
+    now.actions.action.pressed,
+    false,
+    "the F tapped on the map does not steal a car on resume",
+  )
+  assert.equal(now.actions.up.held, true, "W held through the pause is still held")
 })

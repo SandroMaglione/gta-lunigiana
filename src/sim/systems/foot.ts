@@ -68,8 +68,8 @@ export const PlayerFoot = Game.System(
       const pose = data.pose.get()
       const motion = data.motion.get()
       const current = { x: motion.vx, y: motion.vy }
-      const ix = InputAxis.axis(keys.left.held, keys.right.held)
-      const iy = InputAxis.axis(keys.down.held, keys.up.held)
+      const ix = InputAxis.axis(keys.actions.left.held, keys.actions.right.held)
+      const iy = InputAxis.axis(keys.actions.down.held, keys.actions.up.held)
       const wish = data.down.present
         ? Vec2.zero
         : Vec2.normalizeOr({ x: right.x * ix + up.x * iy, y: right.y * ix + up.y * iy }, Vec2.zero)
@@ -78,7 +78,7 @@ export const PlayerFoot = Game.System(
           wet === undefined
             ? undefined
             : waterUnder(pose.x, pose.y, true, specificDischarge(resources.rivers.get(), FLOW))
-      const wanted = Vec2.scale(wish, keys.sprint.held ? SPRINT_SPEED : WALK_SPEED)
+      const wanted = Vec2.scale(wish, keys.actions.sprint.held ? SPRINT_SPEED : WALK_SPEED)
       let velocity: Vec2.Vec2
       if (wet !== undefined && water !== undefined) {
         const look = data.look.get(),
@@ -89,7 +89,7 @@ export const PlayerFoot = Game.System(
           water,
           personBuild(look.height),
           wet.swimming || down,
-          down ? 0 : STROKE[look.age] * (keys.sprint.held ? HARD_STROKE : 1),
+          down ? 0 : STROKE[look.age] * (keys.actions.sprint.held ? HARD_STROKE : 1),
           FOOT_ACCEL,
           dt,
         )

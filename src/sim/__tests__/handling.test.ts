@@ -31,7 +31,7 @@ import {
   Vehicle,
 } from "../schema.ts"
 import type { GroundWeather } from "../sky/local.ts"
-import { drive, forward, ON_BATTISTI, rolling, start } from "../testing.ts"
+import { drive, forward, jsonSave, ON_BATTISTI, rolling, start } from "../testing.ts"
 import { VEHICLES, type VehicleModel } from "../vehicles.ts"
 
 /** `REAL_HANDLING` with `knobs` changed. */
@@ -450,7 +450,7 @@ test("SetHandling: the request sets its knob in range for every vehicle the phys
     abs: 1,
   })
   const restored = start()
-  assert.ok(restored.runtime.restore(JSON.parse(JSON.stringify(clamped.runtime.snapshot()))).ok)
+  assert.ok(restored.runtime.restore(jsonSave(clamped.runtime)).ok)
   assert.deepEqual(restored.world().handling, clamped.world().handling)
 })
 

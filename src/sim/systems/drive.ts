@@ -20,9 +20,9 @@ export const PlayerDrive = Game.System(
       const car = queries.vehicles.getHandle(data.driving.get().vehicle)
       if (!car.ok) continue
       car.value.data.input.set({
-        throttle: InputAxis.axis(keys.down.held, keys.up.held),
-        steer: InputAxis.axis(keys.right.held, keys.left.held),
-        handbrake: keys.handbrake.held,
+        throttle: InputAxis.axis(keys.actions.down.held, keys.actions.up.held),
+        steer: InputAxis.axis(keys.actions.right.held, keys.actions.left.held),
+        handbrake: keys.actions.handbrake.held,
       })
     }
   },

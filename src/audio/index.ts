@@ -356,7 +356,7 @@ const Hear = Game.System(
       people,
       animals,
       happenings,
-      horn: resources.input.get().horn.held,
+      horn: resources.input.get().actions.horn.held,
       sky: skyAt(resources.clock.get().seconds),
       weather: { ...resources.weather.get() },
     })
