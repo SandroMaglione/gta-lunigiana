@@ -520,6 +520,54 @@ test("water: the Lucido is 8 m on the valley floor and 4 m above Vinca", () => {
   assert.deepEqual([w(254825035), w(140780317), w(696231807), w(687230881)], [8, 4, 8, 14])
 })
 
+test("water: catchments grow downstream; the Lucido drains 47 km² where it meets the Aulella, which leaves the map with Soliera's 208", () => {
+  for (const w of MAP.water)
+    w.area.forEach((a, k) =>
+      assert.ok(k === 0 || a >= w.area[k - 1]!, `water ${w.id} shrinks at ${k}`),
+    )
+  // Regression: a tributary's mouth read the receiving river's node, so a trickle's last vertex took the river's 45 km².
+  for (const w of MAP.water) {
+    const [before, mouth] = w.area.slice(-2)
+    if (before !== undefined)
+      assert.ok(
+        mouth! <= 1.5 * before + 1,
+        `water ${w.id}: ${before} km² jumps to ${mouth} at its mouth`,
+      )
+  }
+  const lucido = MAP.water.filter((w) => w.name === "Torrente Lucido" && w.kind === "river")
+  const mouth = Math.max(...lucido.map((w) => w.area.at(-1)!))
+  assert.ok(Math.abs(mouth - 47) < 2, `the Lucido drains ${mouth} km²`)
+  const aulella = Math.max(
+    ...MAP.water.filter((w) => w.name === "Torrente Aulella").map((w) => w.area.at(-1)!),
+  )
+  assert.ok(Math.abs(aulella - 208) < 3, `the Aulella leaves with ${aulella} km²`)
+})
+
+test("walls: water stops neither feet nor wheels; the shore walls ring it, and people and animals keep to them", () => {
+  // The middle of every wide river's reach away from the roads and the map's edge: no walk or drive wall within 2 m, a shore wall
+  // within its bed.
+  const { minX, minY, maxX, maxY } = MAP.bounds
+  let checked = 0
+  for (const w of MAP.water.filter((o) => o.w >= 12))
+    for (let k = 0; k < w.pts.length / 2; k += 5) {
+      const x = w.pts[2 * k]!,
+        y = w.pts[2 * k + 1]!
+      if (
+        Math.min(x - minX, maxX - x, y - minY, maxY - y) < 30 ||
+        MAP.roads.some((r) =>
+          r.pts.some((v, i) => i % 2 === 0 && Ops.hypot(v - x, r.pts[i + 1]! - y) < 30),
+        )
+      )
+        continue
+      checked++
+      const near = (kind: "walk" | "land" | "drive", r: number) =>
+        wallsNear(kind, x - r, y - r, x + r, y + r).some((s) => segmentDistance(s, x, y) < r)
+      assert.ok(!near("walk", 2) && !near("drive", 2), `a wall in the water at ${x}, ${y}`)
+      assert.ok(near("land", w.bed + 5), `no shore wall by the water at ${x}, ${y}`)
+    }
+  assert.ok(checked > 20, `${checked} river points checked`)
+})
+
 // Regression: OSM centrelines ran up to 3.5 m inside CTR houses; the walls opened a corridor the house drawn did not show.
 test("drivable roads never run inside a footprint: where OSM and the CTR disagree, the house gives way", () => {
   const buildings = bucketed(MAP.buildings, (b) => b.outer, 0)

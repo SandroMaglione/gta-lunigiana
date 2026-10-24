@@ -39,10 +39,12 @@ import { Perceive } from "./systems/perceive.ts"
 import { VehiclePhysics } from "./systems/physics.ts"
 import { FillAnimals, PopulateAnimals } from "./systems/populate-animals.ts"
 import { FillPeople, Populate } from "./systems/populate.ts"
-import { AdvanceClock, AdvanceWeather } from "./systems/sky.ts"
+import { AdvanceClock, AdvanceRivers, AdvanceWeather } from "./systems/sky.ts"
 import { SpawnWorld } from "./systems/spawn.ts"
 import { TrafficAI } from "./systems/traffic.ts"
+import { Wade } from "./systems/water.ts"
 import { followYaw, nearestSeat } from "./view.ts"
+import { initialRivers } from "./water/flow.ts"
 
 export * from "./schema.ts"
 export {
@@ -182,9 +184,11 @@ export const update = Game.Schedule(
   ApplyWeather,
   AdvanceClock,
   AdvanceWeather,
+  AdvanceRivers,
   EnterExit,
   Game.Schedule.applyDeferred(),
   Explode,
+  Wade,
   Game.Schedule.applyDeferred(),
   PlayerFoot,
   PlayerDrive,
@@ -240,6 +244,7 @@ export const makeRuntime = <const Services extends RuntimeServices<any>>(options
       Handling: DEFAULT_HANDLING,
       GameClock: { seconds: start, rate: 1 },
       Weather: initialWeather(start, weatherSeed),
+      Rivers: initialRivers(start, weatherSeed),
       Input: Keyboard.idle(bindings),
     },
     debug: options.debug,

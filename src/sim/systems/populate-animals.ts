@@ -109,7 +109,7 @@ const fits = (
     !within(at, p, near) &&
     within(at, p, far) &&
     !indoors(p.x, p.y) &&
-    clearOf(wallsAlong("walk", p.x, p.y, 0, 0, r + 0.5), p.x, p.y, r)
+    clearOf(wallsAlong("land", p.x, p.y, 0, 0, r + 0.5), p.x, p.y, r)
   )
 }
 

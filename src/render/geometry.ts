@@ -127,14 +127,52 @@ export class Triangles {
 /** A three-world point. */
 type Point3 = readonly [number, number, number]
 
+/** A river vertex's own: its rise per unit stage (m: the depth at q^STAGE = 1), and its flow, map x east and y north (a unit vector) and its mean speed per unit (m/s). */
+export type Flowing = readonly [stage: number, x: number, y: number, speed: number]
+
+/**
+ * Water's triangles: each vertex lies on the river's bed and carries how far its surface rises
+ * (`stage`) and the way and speed it flows (`flow`), which the water shader turns into the level
+ * and current the rivers run at (`render/sky/surface`).
+ */
+export class WaterTriangles extends Triangles {
+  readonly stage: Array<number> = []
+  readonly flow: Array<number> = []
+
+  /** A quad a-b-c-d of water (counter-clockwise seen from above), each corner with its own `Flowing`. */
+  waterQuad(
+    a: Point3,
+    b: Point3,
+    c: Point3,
+    d: Point3,
+    hex: number,
+    flowing: readonly [Flowing, Flowing, Flowing, Flowing],
+  ): void {
+    this.quad(a, b, c, d, hex)
+    for (const k of [0, 1, 2, 0, 2, 3] as const) {
+      const [stage, x, y, speed] = flowing[k]
+      this.stage.push(stage)
+      this.flow.push(x, y, speed)
+    }
+  }
+
+  /** The triangles as a non-indexed BufferGeometry, with `stage` and `flow`. */
+  override geometry(): BufferGeometry {
+    const g = super.geometry()
+    g.setAttribute("stage", new Float32BufferAttribute(this.stage, 1))
+    g.setAttribute("flow", new Float32BufferAttribute(this.flow, 3))
+    return g
+  }
+}
+
 /** The per-chunk buckets static builders write into: merged into one mesh per material per chunk. */
 export interface Sink {
   /** Opaque world geometry (terrain-like depth). */
   readonly solid: Triangles
   /** Ground decals (roads, rail) drawn with a polygon offset over what they cover. */
   readonly decal: Triangles
-  /** Rivers and streams: decals with their own material (`waterMaterial`), so no snow lies on them. */
-  readonly water: Triangles
+  /** Rivers and streams: decals with their own material (`waterMaterial`), so no snow lies on them; their level and current are the shader's. */
+  readonly water: WaterTriangles
   /** Things that shine at night (window panes, lantern glass): dark glass by day, their vertex colour lit at night (`glowMaterial`). */
   readonly glow: Triangles
   /** Ready-made solid pieces (extrusions) merged with `solid`. */

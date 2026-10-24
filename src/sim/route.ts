@@ -145,7 +145,7 @@ const wallsBeside = (edge: number, ab: Lane, pad: number): ReadonlyArray<Segment
     q = graph.nodes[b]!
   const across = (x: number, y: number) => (x - ab.x) * ab.rx + (y - ab.y) * ab.ry
   return wallsNear(
-    "drive",
+    "traffic",
     Math.min(p.x, q.x) - pad,
     Math.min(p.y, q.y) - pad,
     Math.max(p.x, q.x) + pad,

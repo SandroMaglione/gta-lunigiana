@@ -44,8 +44,26 @@ test("wide water gets a pebble bed, narrow streams none", () => {
     heightmap,
     areas: [],
     water: [
-      { id: 1, kind: "river", w: 14, pts: [0, 30, 40, 30], z: [200, 200] },
-      { id: 2, kind: "stream", w: 2, pts: [0, 6, 40, 6], z: [200, 200] },
+      {
+        id: 1,
+        kind: "river",
+        w: 14,
+        bed: 11,
+        depth: 2.5,
+        pts: [0, 30, 40, 30],
+        z: [200, 200],
+        area: [40, 40],
+      },
+      {
+        id: 2,
+        kind: "stream",
+        w: 2,
+        bed: 3,
+        depth: 1,
+        pts: [0, 6, 40, 6],
+        z: [200, 200],
+        area: [1, 1],
+      },
     ],
   })
   assert.equal(at(raster, 10, 30), "pebble")

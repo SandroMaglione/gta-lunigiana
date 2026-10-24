@@ -18,6 +18,7 @@ import {
   Down,
   Follows,
   Game,
+  InWater,
   type Look,
   Motion,
   Pedestrian,
@@ -25,13 +26,19 @@ import {
   Person,
   Pose,
   type PoseValue,
+  Rivers,
   Rng,
   Route,
   type RouteValue,
   STEP,
   Time,
 } from "../schema.ts"
+import { PERSON_RADIUS } from "../tuning.ts"
+import { FLOW, specificDischarge } from "../water/flow.ts"
+import { waterUnder, walkDry } from "../water/rivers.ts"
+import { outOfDepth, STROKE, waterVelocity } from "../water/swim.ts"
 import { slide } from "./foot.ts"
+import { personBuild } from "./water.ts"
 
 /**
  * Comfortable walking pace by age group, men then women, m/s: Bohannon & Andrews 2011 ("Normal walking speed: a descriptive
@@ -130,7 +137,7 @@ export const followVelocity = (
 ): Vec2.Vec2 => {
   const goal = Vec2.distanceSquared(at, place) > CATCH_UP ** 2 ? leader : place
   const way = Vec2.subtract(goal, at)
-  if (crossesAny(wallsAlong("walk", at.x, at.y, way.x, way.y, 0), at, goal)) {
+  if (crossesAny(wallsAlong("land", at.x, at.y, way.x, way.y, 0), at, goal)) {
     const lane = laneOf(route.edge, route.forward),
       side = (leader.x - lane.x) * lane.rx + (leader.y - lane.y) * lane.ry
     const target = vergeAhead(
@@ -202,6 +209,8 @@ export const sameRoute = (a: RouteValue, b: RouteValue) =>
  * nowhere (walls, parked cars, other people) they try the other verge, then turn back. Chatting, watching or in shock they slow
  * to a stop facing what they attend to; gathering, they walk to a spot near the victim and stand facing them. A follower keeps
  * its place beside its leader and takes the leader's route, or stays by a leader on the ground. Knocked down or dead, they slide.
+ * They keep out of the water unless fleeing; in it they wade on as they were, slower, or once off their feet swim for the nearer
+ * bank, and the current takes the down and the dead.
  */
 export const Pedestrians = Game.System(
   "Lunigiana/Pedestrians",
@@ -217,6 +226,7 @@ export const Pedestrians = Game.System(
           follows: Game.Query.optional(Follows),
           down: Game.Query.optional(Down),
           dead: Game.Query.optional(Dead),
+          wet: Game.Query.optional(InWater),
         },
       }),
       leaders: Game.Query({
@@ -233,11 +243,13 @@ export const Pedestrians = Game.System(
     resources: {
       rng: Game.System.writeResource(Rng),
       time: Game.System.thisTick(Game.System.readResource(Time)),
+      rivers: Game.System.readResource(Rivers),
     },
   },
   ({ queries, resources }) => {
     const { dt } = resources.time.get()
     if (dt <= 0) return
+    const q = specificDischarge(resources.rivers.get(), FLOW)
     const random = Random.draw(resources.rng)
     // Each leader's slowest follower on its feet, by its running pace: a leader fleeing runs no faster, so no kid is left behind.
     const slowest = new Map<number, number>()
@@ -251,6 +263,38 @@ export const Pedestrians = Game.System(
     for (const { entity, data } of queries.peds.each()) {
       const pose = data.pose.get()
       const motion = data.motion.get()
+      const wet = data.wet.value(),
+        water = wet === undefined ? undefined : waterUnder(pose.x, pose.y, true, q)
+      const lying = data.down.present || data.dead.present,
+        build = personBuild(data.look.get().height)
+      if (
+        wet !== undefined &&
+        water !== undefined &&
+        (wet.swimming || lying || outOfDepth(water, build))
+      ) {
+        // Out of their depth: wading or swimming for the nearer bank; the down and the dead go where the current takes them.
+        const look = data.look.get(),
+          bank = { x: water.bankX, y: water.bankY }
+        const velocity = waterVelocity(
+          { x: motion.vx, y: motion.vy },
+          lying ? Vec2.zero : Vec2.scale(bank, paceOf(look).walk),
+          water,
+          build,
+          wet.swimming || lying,
+          lying ? 0 : STROKE[look.age],
+          ACCEL,
+          dt,
+        )
+        const moved = walkBy(pose, Vec2.scale(velocity, dt))
+        const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
+        const angle =
+          lying || Vec2.lengthSquared(real) <= STILL * STILL
+            ? pose.angle
+            : Ops.atan2(real.y, real.x)
+        data.pose.set({ x: moved.position.x, y: moved.position.y, angle })
+        data.motion.set({ vx: real.x, vy: real.y, spin: 0 })
+        continue
+      }
       if (data.down.present || data.dead.present) {
         const velocity = slide({ x: motion.vx, y: motion.vy }, dt)
         const moved = walkBy(pose, Vec2.scale(velocity, dt))
@@ -330,8 +374,28 @@ export const Pedestrians = Game.System(
         mood = { ...mood, blocked: 0 }
       }
 
-      velocity = Vec2.moveToward({ x: motion.vx, y: motion.vy }, velocity, ACCEL * dt)
-      const moved = walkBy(pose, Vec2.scale(velocity, dt))
+      // Wading, it keeps to what it was doing, slower and pushed by the current.
+      velocity =
+        water === undefined
+          ? Vec2.moveToward({ x: motion.vx, y: motion.vy }, velocity, ACCEL * dt)
+          : waterVelocity(
+              { x: motion.vx, y: motion.vy },
+              velocity,
+              water,
+              build,
+              false,
+              0,
+              ACCEL,
+              dt,
+            )
+      const moved = walkDry(
+        pose,
+        Vec2.scale(velocity, dt),
+        PERSON_RADIUS,
+        mood.mood !== "flee",
+        wet !== undefined,
+        q,
+      )
       const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
       const still = Vec2.lengthSquared(real) <= (face === undefined ? 0.01 : STILL * STILL)
       const angle = still

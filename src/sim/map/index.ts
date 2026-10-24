@@ -95,17 +95,22 @@ export interface Building {
 }
 
 /**
- * A river or stream centreline; `kind` is "river" | "stream". `z` = water surface per vertex:
- * monotone downstream except where it dips under an at-grade road (implied culvert); at least
- * 2.5 m under every bridge deck. `pts` adds points on the OSM segments where the surface bends.
+ * A river or stream centreline; `kind` is "river" | "stream". `w` is the water's width and `bed`
+ * the gravel bed's half-width (m); the bed is carved `depth`/2 under `z` across `w`. `z` = the
+ * built water surface per vertex: monotone downstream except where it dips under an at-grade road
+ * (implied culvert); at least 2.5 m under every bridge deck. `area` = the catchment upstream of each
+ * vertex, km². `pts` adds points on the OSM segments where the surface bends.
  */
 export interface Water {
   readonly id: number
   readonly kind: string
   readonly name?: string
   readonly w: number
+  readonly bed: number
+  readonly depth: number
   readonly pts: ReadonlyArray<number>
   readonly z: ReadonlyArray<number>
+  readonly area: ReadonlyArray<number>
 }
 
 /** A railway piece (Lucca-Aulla line); `z` = rail top per vertex, bridges and tunnels interpolated between their ends. */
@@ -177,7 +182,11 @@ export interface MonzoneMap {
     readonly walk: ReadonlyArray<number>
   }
   /** Flat wall segments (ax, ay, bx, by). Tree trunks are not stored here; `wallsNear` adds them. */
-  readonly walls: { readonly walk: ArrayLike<number>; readonly drive: ArrayLike<number> }
+  readonly walls: {
+    readonly walk: ArrayLike<number>
+    readonly shore: ArrayLike<number>
+    readonly drive: ArrayLike<number>
+  }
   /** Flat (x, y, scale) triples. Every trunk is a `TRUNK` m square wall in `wallsNear`. */
   readonly trees: ArrayLike<number>
   readonly spawns: { readonly player: Spawn; readonly parked: ReadonlyArray<Spawn> }
@@ -190,7 +199,7 @@ export interface MonzoneMap {
  */
 export interface MonzoneMapJson extends Omit<MonzoneMap, "heightmap" | "walls" | "trees"> {
   readonly heightmap: Omit<Heightmap, "data">
-  readonly walls: { readonly walk: number; readonly drive: number }
+  readonly walls: { readonly walk: number; readonly shore: number; readonly drive: number }
   readonly trees: number
 }
 
@@ -326,24 +335,38 @@ const indexWalls = (flat: ArrayLike<number>) => {
     return found
   }
 }
-const walkWalls = indexWalls(MAP.walls.walk)
-const driveWalls = indexWalls(MAP.walls.drive)
+/** The kinds of wall `wallsNear` answers. */
+export type WallKind = "walk" | "land" | "drive" | "traffic"
+/** `a`'s segments then `b`'s, flat. */
+const joined = (a: ArrayLike<number>, b: ArrayLike<number>): Float64Array =>
+  Float64Array.from({ length: a.length + b.length }, (_, k) =>
+    k < a.length ? a[k]! : b[k - a.length]!,
+  )
+const WALLS = {
+  walk: indexWalls(MAP.walls.walk),
+  land: indexWalls(joined(MAP.walls.walk, MAP.walls.shore)),
+  drive: indexWalls(MAP.walls.drive),
+  traffic: indexWalls(joined(MAP.walls.drive, MAP.walls.shore)),
+} as const satisfies Record<WallKind, unknown>
 
 /**
  * Wall segments that may touch the box (a broad-phase superset: run the exact
- * test, e.g. `moveCircles`). "walk" blocks pedestrians (buildings, water,
- * slopes > 35°, cliffs, walls, bounds, trunks); "drive" blocks cars (adds
- * slopes > 25° off-road, guard rails and road-exit caps). Every tree trunk is a
- * square of `pushTrunk` edges. The array and the segments in it are reused by
- * the next call of the same kind: copy the coordinates to keep them.
+ * test, e.g. `moveCircles`). "walk" stops anyone on foot (buildings, slopes >
+ * 35°, cliffs, walls, bounds, trunks); "land" adds the water's edge, which
+ * people and animals appear clear of (none where a road crosses); "drive"
+ * stops vehicles (`walk`'s plus slopes > 25° off-road, guard rails, parapets
+ * and road-exit caps); "traffic" adds the water's edge to it, for what AI
+ * drivers keep to and where vehicles spawn. Water stops neither feet nor wheels. Every tree trunk
+ * is a square of `pushTrunk` edges. The array and the segments in it are
+ * reused by the next call of the same kind: copy the coordinates to keep them.
  */
 export const wallsNear = (
-  kind: "walk" | "drive",
+  kind: WallKind,
   minX: number,
   minY: number,
   maxX: number,
   maxY: number,
-): ReadonlyArray<Segment> => (kind === "walk" ? walkWalls : driveWalls)(minX, minY, maxX, maxY)
+): ReadonlyArray<Segment> => WALLS[kind](minX, minY, maxX, maxY)
 
 /**
  * A straight graph edge. a -> b follows the vertex order of `MAP.roads[road].pts` (the OSM way

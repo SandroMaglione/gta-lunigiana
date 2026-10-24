@@ -117,6 +117,15 @@ export const Dead = Descriptor.ConstructedComponent(Decode.struct({ since: Decod
   "Lunigiana/Dead",
 )
 
+/**
+ * Standing or swimming in a river or stream (the player on foot, a pedestrian or an animal): `swimming` once the water lifts it
+ * off its feet or the current takes them from under it, else wading. While it has this it is in the water under a bridge, not on
+ * its deck. Saved; `Wade` sets it.
+ */
+export const InWater = Descriptor.ConstructedComponent(Decode.struct({ swimming: Decode.boolean }))(
+  "Lunigiana/InWater",
+)
+
 /** Animal species: dogs and cats in the villages, cows and pigs on the farms. */
 export const SPECIES = ["dog", "cat", "cow", "pig"] as const
 /** A species. */
@@ -351,6 +360,20 @@ export const Weather = Descriptor.ConstructedResource(
 )("Lunigiana/Weather")
 /** A Weather value. */
 export type WeatherValue = Descriptor.Descriptor.Value<typeof Weather>
+/**
+ * What the rivers carry (water/flow.ts): the catchments' water, mm over them, as snow lying, in the soil, running off quickly and in
+ * the ground. Every river and stream runs at the discharge per km² it gives (`specificDischarge`) times its own catchment. Saved.
+ */
+export const Rivers = Descriptor.ConstructedResource(
+  Decode.struct({
+    snow: Decode.number,
+    soil: Decode.number,
+    quick: Decode.number,
+    slow: Decode.number,
+  }),
+)("Lunigiana/Rivers")
+/** A Rivers value. */
+export type RiversValue = Descriptor.Descriptor.Value<typeof Rivers>
 /** A day's plan (`WeatherValue["plan"]`). */
 export type PlanValue = WeatherValue["plan"]
 /**
@@ -501,8 +524,20 @@ export const Game = Schema.bind(
       Driving,
       Autopilot,
       Stolen,
+      InWater,
     },
-    resources: { Time, Rng, WeatherRng, Score, View, Handling, GameClock, Weather, Input },
+    resources: {
+      Time,
+      Rng,
+      WeatherRng,
+      Score,
+      View,
+      Handling,
+      GameClock,
+      Weather,
+      Rivers,
+      Input,
+    },
     events: {
       Impact,
       Honk,
@@ -523,6 +558,7 @@ export const Game = Schema.bind(
       Schema.requires(Vehicle, Pose, PrevPose, Motion, CarInput, Chassis, Damage),
       Schema.requires(Traffic, Vehicle, Route, Autopilot),
       Schema.requires(Dead, Down),
+      Schema.requires(InWater, Pose, Motion),
     ],
   }),
   Root,

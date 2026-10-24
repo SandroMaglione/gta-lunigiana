@@ -77,7 +77,11 @@ export const packMap = (
   const json: MonzoneMapJson = {
     ...map,
     heightmap,
-    walls: { walk: walls.walk.length / 4, drive: walls.drive.length / 4 },
+    walls: {
+      walk: walls.walk.length / 4,
+      shore: walls.shore.length / 4,
+      drive: walls.drive.length / 4,
+    },
     trees: trees.length / 3,
   }
   const parts = {
@@ -85,6 +89,7 @@ export const packMap = (
     json: Buffer.from(`${JSON.stringify(json)}\n`),
     heightmap: packRows(data, heightmap.cols),
     walk: packWalls(walls.walk, bounds, "walk walls"),
+    shore: packWalls(walls.shore, bounds, "shore walls"),
     drive: packWalls(walls.drive, bounds, "drive walls"),
     trees: packTrees(trees, bounds),
   }

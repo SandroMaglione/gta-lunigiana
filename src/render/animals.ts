@@ -282,10 +282,18 @@ export const frameAnimal = (
 ): AnimalFrame =>
   lying || speed < STILL_SPEED ? "stand" : GAIT[Math.floor(walked / ((STEP * legs) / 2)) % 4]!
 
-/** An animal node: its frames, the one for how it moves now, lying on its side when down or dead. */
+/** Seconds a paddling animal's legs take over a stroke (estimate). */
+const PADDLE = 0.5
+
+/** An animal node: its frames, the one for how it moves now, lying on its side when down or dead, paddling in a river. */
 export class AnimalNode extends FigureNode<AnimalFrame> {
   /** Its legs' height, m. */
   readonly legs: number
+  /** How far under the surface its feet float swimming (the water at its trunk's middle) and lying in it (half its flank), m. */
+  private readonly sinks: { readonly swimming: number; readonly lying: number }
+  /** Off its feet in a river, and the sim time (s). */
+  swimming = false
+  clock = 0
   /** How fast it went at the last step, m/s. */
   speed = 0
 
@@ -309,10 +317,25 @@ export class AnimalNode extends FigureNode<AnimalFrame> {
       },
     )
     this.legs = b.legs * a.size
+    this.sinks = { swimming: ((b.y0 + b.y1) / 2) * a.size, lying: right / 2 }
   }
 
-  /** Shows the frame for how it moves now. */
+  /** In the water (`_wet`), floating in it when its surface is at render y `surface` (undefined: standing on the bed), paddling or lying. */
+  floating(_wet: boolean, surface: number | undefined, swimming: boolean): void {
+    this.afloat = surface
+    this.swimming = surface !== undefined && swimming && !this.lying
+    this.sink = this.lying ? this.sinks.lying : this.sinks.swimming
+  }
+
+  /** Shows the frame for how it moves now: paddling stroke by stroke while it swims. */
   pose(): void {
-    this.body.geometry = this.frames[frameAnimal(this.lying, this.speed, this.walked, this.legs)]
+    this.body.geometry =
+      this.frames[
+        this.swimming
+          ? Math.floor(this.clock / PADDLE) % 2 === 0
+            ? "step1"
+            : "step2"
+          : frameAnimal(this.lying, this.speed, this.walked, this.legs)
+      ]
   }
 }

@@ -21,6 +21,10 @@ interface Fauna {
   readonly home: number
   /** Impact speed (m/s) at which a vehicle kills it half the time. */
   readonly lethal: number
+  /** Height at the shoulder, m: the water lifts it off its feet at 0.7 of it. */
+  readonly height: number
+  /** Swimming speed, m/s. */
+  readonly swim: number
 }
 
 /**
@@ -28,13 +32,14 @@ interface Fauna {
  * medium mixed-breed dog; a domestic cat (3.5–4.5 kg); a Bruna Alpina cow (600–650 kg; the local Pontremolese is
  * 450 kg, ARAER breed sheet); a free-range pig at Italian heavy-pig weight (estimate). Walks: a cow led between pasture
  * and milking parlour 0.92 m/s (55 m/min, Massey University grazing studies; 0–0.63 m/s while foraging); the others
- * estimates. Runs, home ranges and the lethal speeds are TUNED.
+ * estimates. Runs, home ranges and the lethal speeds are TUNED. Shoulder heights fit the drawn bodies; swimming speeds are
+ * estimates (a dog paddles about as fast as a person swims, a cow and a pig slower, a cat least).
  */
 export const FAUNA = {
-  dog: { radius: 0.3, mass: 25, walk: 1.2, run: 7, home: 20, lethal: 9 },
-  cat: { radius: 0.15, mass: 4.5, walk: 0.7, run: 7, home: 12, lethal: 7 },
-  cow: { radius: 0.75, mass: 600, walk: 0.9, run: 4, home: 35, lethal: 22 },
-  pig: { radius: 0.4, mass: 120, walk: 0.6, run: 4.5, home: 8, lethal: 13 },
+  dog: { radius: 0.3, mass: 25, walk: 1.2, run: 7, home: 20, lethal: 9, height: 0.55, swim: 0.9 },
+  cat: { radius: 0.15, mass: 4.5, walk: 0.7, run: 7, home: 12, lethal: 7, height: 0.25, swim: 0.4 },
+  cow: { radius: 0.75, mass: 600, walk: 0.9, run: 4, home: 35, lethal: 22, height: 1.4, swim: 0.6 },
+  pig: { radius: 0.4, mass: 120, walk: 0.6, run: 4.5, home: 8, lethal: 13, height: 0.7, swim: 0.5 },
 } as const satisfies Record<Species, Fauna>
 
 /** A coat: its main colour, its markings' colour (the coat again on a plain coat), and how often it is seen. */

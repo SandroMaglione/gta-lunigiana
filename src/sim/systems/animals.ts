@@ -15,6 +15,7 @@ import {
   Game,
   Honk,
   Impact,
+  InWater,
   Motion,
   Pedestrian,
   Person,
@@ -22,6 +23,7 @@ import {
   Pose,
   type PoseValue,
   PrevPose,
+  Rivers,
   Rng,
   Roam,
   type RoamValue,
@@ -31,8 +33,15 @@ import {
   Time,
   Vehicle,
 } from "../schema.ts"
+import { FLOW, specificDischarge } from "../water/flow.ts"
+import { waterUnder, walkDry } from "../water/rivers.ts"
+import { outOfDepth, waterVelocity } from "../water/swim.ts"
 import { slide } from "./foot.ts"
 import { followVelocity, placeBeside } from "./pedestrians.ts"
+import { animalBuild } from "./water.ts"
+
+/** How fast an animal wading changes its velocity, m/s² (its legs on the bed: as quick as on land). */
+const WADE_ACCEL = 30
 
 /** How long each species stands between walks, s (TUNED): a cat sits, a dog sniffs about, a cow grazes, a pig roots. */
 const IDLE = { cat: [4, 20], dog: [3, 12], cow: [8, 40], pig: [4, 15] } as const satisfies Record<
@@ -159,6 +168,7 @@ export const Animals = Game.System(
           follows: Game.Query.optional(Follows),
           down: Game.Query.optional(Down),
           dead: Game.Query.optional(Dead),
+          wet: Game.Query.optional(InWater),
         },
       }),
       leaders: Game.Query({
@@ -191,6 +201,7 @@ export const Animals = Game.System(
     resources: {
       rng: Game.System.writeResource(Rng),
       time: Game.System.thisTick(Game.System.readResource(Time)),
+      rivers: Game.System.readResource(Rivers),
     },
     events: { honks: Game.System.readEvent(Honk), cries: Game.System.writeEvent(Cry) },
     commands: Game.System.commands(Game.System.removes(Follows)),
@@ -198,7 +209,8 @@ export const Animals = Game.System(
   ({ queries, resources, events, commands }) => {
     const { step, dt } = resources.time.get()
     if (dt <= 0) return
-    const random = Random.draw(resources.rng)
+    const random = Random.draw(resources.rng),
+      q = specificDischarge(resources.rivers.get(), FLOW)
     // Vehicles are where last step's physics left them; parked ones scare nobody.
     const cars: ReadonlyArray<Car> = queries.vehicles.each().flatMap(({ data }) => {
       const { x, y } = data.pose.get(),
@@ -231,8 +243,26 @@ export const Animals = Game.System(
         { species, size } = data.animal.get(),
         fauna = FAUNA[species],
         r = fauna.radius * size
-      const place = (velocity: Vec2.Vec2, facing?: Vec2.Vec2) => {
-        const moved = walkBy(pose, Vec2.scale(velocity, dt), r)
+      const careful = data.roam.get().mood !== "flee"
+      const wet = data.wet.value(),
+        water = wet === undefined ? undefined : waterUnder(pose.x, pose.y, true, q),
+        build = animalBuild(data.animal.get())
+      const place = (wanted: Vec2.Vec2, facing?: Vec2.Vec2) => {
+        // Wading, it keeps to what it was doing, slower and pushed by the current.
+        const velocity =
+          water === undefined
+            ? wanted
+            : waterVelocity(
+                { x: motion.vx, y: motion.vy },
+                wanted,
+                water,
+                build,
+                false,
+                0,
+                WADE_ACCEL,
+                dt,
+              )
+        const moved = walkDry(pose, Vec2.scale(velocity, dt), r, careful, wet !== undefined, q)
         const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
         const look = facing ?? (Vec2.lengthSquared(real) > 0.01 ? real : undefined)
         data.pose.set({
@@ -242,6 +272,34 @@ export const Animals = Game.System(
         })
         data.motion.set({ vx: real.x, vy: real.y, spin: 0 })
         return real
+      }
+      const lying = data.down.present || data.dead.present
+      if (
+        wet !== undefined &&
+        water !== undefined &&
+        (wet.swimming || lying || outOfDepth(water, build))
+      ) {
+        // Out of its depth: wading or paddling for the nearer bank; the down and the dead go where the current takes them.
+        const bank = { x: water.bankX, y: water.bankY }
+        const velocity = waterVelocity(
+          { x: motion.vx, y: motion.vy },
+          lying ? Vec2.zero : Vec2.scale(bank, fauna.walk),
+          water,
+          build,
+          wet.swimming || lying,
+          lying ? 0 : fauna.swim,
+          WADE_ACCEL,
+          dt,
+        )
+        const moved = walkBy(pose, Vec2.scale(velocity, dt), r)
+        const real = Vec2.scale(Vec2.subtract(moved.position, pose), 1 / dt)
+        data.pose.set({
+          x: moved.position.x,
+          y: moved.position.y,
+          angle: lying || Vec2.lengthSquared(real) <= 0.01 ? pose.angle : Ops.atan2(real.y, real.x),
+        })
+        data.motion.set({ vx: real.x, vy: real.y, spin: 0 })
+        continue
       }
       if (data.down.present || data.dead.present) {
         const velocity = slide({ x: motion.vx, y: motion.vy }, dt)

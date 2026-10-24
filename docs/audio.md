@@ -273,6 +273,8 @@ Each class of sound behaves differently:
   and the Cascata di Equi (hard-coded at (1835, 530): only the raw OSM has it) one of 80. Bodies
   within 400 m are looked up; those under 13 dB(A) at the ears, even in the clear, are left out:
   the cull at the still night's floor (`NIGHT_DB` − 15), so a stream does not vanish at night.
+  The loudness does not follow what the rivers carry ([water.md](water.md)): a spate sounds as the
+  river does at its usual flow, and the water's voice stands at the built surface `Water.z`.
 
 ### Air absorption
 
@@ -633,7 +635,7 @@ trunk (`tree`); a building's walls by kind and style (a greenhouse `glass`, the 
 which takes in substations and silos, `sheet`, the stone, church, tower and ruin styles `stone`,
 the rest `masonry`); a barrier (a guard rail `rail`, a wall `stone`, a cliff `rock`); else the
 bank itself: `rock` in the bare-stone covers (a quarry's cut face, a crag, scree), and anything
-else, a steep bank, a stream's edge or the end of the map, is `earth`, though trees stand a metre
+else, a steep bank or the end of the map, is `earth`, though trees stand a metre
 or two off it (35 % of the probes 0.15 m off the map's banks read `tree` before that rule, 3.6 %
 after).
 

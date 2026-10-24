@@ -9,8 +9,9 @@ import { ExtrudeGeometry, Shape, Vector2 } from "three"
 
 import { ROAD_LIFT } from "../sim/map/ground.ts"
 import { MAP, roadClassOf, type Road } from "../sim/map/index.ts"
+import { channelOf } from "../sim/water/channel.ts"
 import { APRON } from "./chunks.ts"
-import { paint, type Piece, type SinkAt, type Triangles } from "./geometry.ts"
+import { type Flowing, paint, type Piece, type SinkAt, type Triangles } from "./geometry.ts"
 import { surfaceY, terrainY, yOf } from "./ground.ts"
 import { PALETTE } from "./palette.ts"
 
@@ -26,8 +27,8 @@ interface RibbonSpec {
   readonly offset?: number
   /** Dash length (m): draw every other `dash` metres. */
   readonly dash?: number
-  /** The sink layer it goes in: `decal` (roads, rail) unless `water`. */
-  readonly layer?: "decal" | "water"
+  /** Water's: each vertex's rise and flow (`Flowing`), in step with `pts`; a ribbon with them goes in the water layer, else in the decal one. */
+  readonly flowing?: ReadonlyArray<Flowing>
 }
 
 const { minX, minY, maxX, maxY } = MAP.bounds
@@ -48,16 +49,22 @@ const outward = (x: number, y: number): readonly [number, number] | undefined =>
  * A line that leaves the map continues straight across the apron at its edge elevation, like the
  * apron terrain (edge heights extruded outwards), so roads and rivers do not stop at the bounds.
  */
-const throughApron = (
+const throughApron = <T = never>(
   pts: ReadonlyArray<number>,
   z: ReadonlyArray<number>,
-): { pts: Array<number>; z: Array<number> } => {
+  along: ReadonlyArray<T> = [],
+): { pts: Array<number>; z: Array<number>; along: Array<T> } => {
   const head = outward(pts[0]!, pts[1]!),
     tail = outward(pts.at(-2)!, pts.at(-1)!)
-  return {
-    pts: [...(head ?? []), ...pts, ...(tail ?? [])],
-    z: [...(head === undefined ? [] : [z[0]!]), ...z, ...(tail === undefined ? [] : [z.at(-1)!])],
-  }
+  const ends = <V>(values: ReadonlyArray<V>): Array<V> =>
+    values.length === 0
+      ? []
+      : [
+          ...(head === undefined ? [] : [values[0]!]),
+          ...values,
+          ...(tail === undefined ? [] : [values.at(-1)!]),
+        ]
+  return { pts: [...(head ?? []), ...pts, ...(tail ?? [])], z: ends(z), along: ends(along) }
 }
 
 /**
@@ -70,7 +77,20 @@ const ribbon = (at: SinkAt, spec: RibbonSpec, k0: number, k1: number): void => {
   const xs: Array<number> = [],
     ys: Array<number> = [],
     zs: Array<number> = [],
-    ss: Array<number> = []
+    ss: Array<number> = [],
+    fs: Array<Flowing> = []
+  const flowing = spec.flowing
+  /** `flows` at vertex k and `t` of the way to the next. */
+  const flowAt = (flows: ReadonlyArray<Flowing>, k: number, t: number): Flowing => {
+    const a = flows[k]!,
+      b = flows[Math.min(flows.length - 1, k + 1)]!
+    return [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+      a[2] + (b[2] - a[2]) * t,
+      a[3] + (b[3] - a[3]) * t,
+    ]
+  }
   const first = Math.max(0, k0 - 1),
     last = Math.min(spec.z.length - 2, k1 + 1)
   let s = 0
@@ -91,6 +111,7 @@ const ribbon = (at: SinkAt, spec: RibbonSpec, k0: number, k1: number): void => {
       ys.push(ay + ((by - ay) * j) / n)
       zs.push(spec.z[k]! + ((spec.z[k + 1]! - spec.z[k]!) * j) / n)
       ss.push(s + (len * j) / n)
+      if (flowing !== undefined) fs.push(flowAt(flowing, k, j / n))
     }
     s += len
   }
@@ -98,6 +119,7 @@ const ribbon = (at: SinkAt, spec: RibbonSpec, k0: number, k1: number): void => {
   ys.push(spec.pts[2 * last + 3]!)
   zs.push(spec.z[last + 1]!)
   ss.push(s)
+  if (flowing !== undefined) fs.push(flowAt(flowing, last + 1, 0))
   const count = xs.length
   if (count < 2) return
   // Left normal of segment i, then mitred edge points per vertex (clamped at sharp corners).
@@ -131,13 +153,24 @@ const ribbon = (at: SinkAt, spec: RibbonSpec, k0: number, k1: number): void => {
     const [lx0, ly0, lh0, rx0, ry0, rh0] = edges[i]!,
       [lx1, ly1, lh1, rx1, ry1, rh1] = edges[i + 1]!
     // Right edge forward, then left edge back: counter-clockwise seen from above.
-    at((xs[i]! + xs[i + 1]!) / 2, (ys[i]! + ys[i + 1]!) / 2)[spec.layer ?? "decal"].quad(
-      [rx0, rh0, -ry0],
-      [rx1, rh1, -ry1],
-      [lx1, lh1, -ly1],
-      [lx0, lh0, -ly0],
-      spec.hex,
-    )
+    const sink = at((xs[i]! + xs[i + 1]!) / 2, (ys[i]! + ys[i + 1]!) / 2)
+    if (flowing === undefined)
+      sink.decal.quad(
+        [rx0, rh0, -ry0],
+        [rx1, rh1, -ry1],
+        [lx1, lh1, -ly1],
+        [lx0, lh0, -ly0],
+        spec.hex,
+      )
+    else
+      sink.water.waterQuad(
+        [rx0, rh0, -ry0],
+        [rx1, rh1, -ry1],
+        [lx1, lh1, -ly1],
+        [lx0, lh0, -ly0],
+        spec.hex,
+        [fs[i]!, fs[i + 1]!, fs[i + 1]!, fs[i]!],
+      )
   }
 }
 
@@ -279,25 +312,38 @@ const roads = (): Array<Piece> =>
     ]
   })
 
-/** Rivers and streams: a shallow ribbon with a deeper channel down the middle of the wide ones. */
+/**
+ * Rivers and streams: a shallow ribbon over the whole bed, with a deeper channel down the middle of
+ * the wide ones, laid flat on the bed (`channelOf`) for the shader to lift to the level the rivers
+ * run at; the terrain above that level hides it, so in a spate the water spreads over the gravel.
+ */
 const water = (): Array<Piece> =>
   MAP.water.map((w) => {
-    const line = throughApron(w.pts, w.z)
-    return strips(line, [
+    const ch = channelOf(w),
+      n = w.pts.length / 2
+    const flowing = Array.from({ length: n }, (_, i): Flowing => {
+      const a = Math.max(0, i - 1),
+        b = Math.min(n - 1, i + 1),
+        dx = w.pts[2 * b]! - w.pts[2 * a]!,
+        dy = w.pts[2 * b + 1]! - w.pts[2 * a + 1]!,
+        l = Math.hypot(dx, dy) || 1
+      return [ch.stage[i]!, dx / l, dy / l, ch.speed[i]!]
+    })
+    const line = throughApron(w.pts, Array.from(ch.bed), flowing)
+    const spec = { pts: line.pts, z: line.z, flowing: line.along }
+    return strips(spec, [
       {
-        ...line,
-        width: w.w,
+        ...spec,
+        width: 2 * Math.max(w.bed, w.w / 2),
         hex: PALETTE.waterShallow,
-        layer: "water",
         y: (_x, _y, z) => yOf(z) + 0.02,
       },
       ...(w.w >= 8
         ? [
             {
-              ...line,
+              ...spec,
               width: w.w * 0.45,
               hex: PALETTE.waterDeep,
-              layer: "water" as const,
               y: (_x: number, _y: number, z: number) => yOf(z) + 0.04,
             },
           ]

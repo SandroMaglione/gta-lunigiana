@@ -35,6 +35,7 @@ import {
   Handling,
   Honk,
   Impact,
+  InWater,
   KeyboardInput,
   Lightning,
   type Look,
@@ -47,6 +48,8 @@ import {
   Pose,
   type PoseValue,
   PrevPose,
+  Rivers,
+  type RiversValue,
   Rng,
   Roam,
   Route,
@@ -83,6 +86,7 @@ import {
 import { advance } from "./systems/physics.ts"
 import { PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
+import { FLOW } from "./water/flow.ts"
 
 /** A grown man's look, for the people tests stage: what he looks like does not matter to them. */
 export const LOOK: Look = {
@@ -130,7 +134,12 @@ export const World = Game.Inspector(
           down: Game.Query.optional(Down),
           dead: Game.Query.optional(Dead),
           witness: Game.Query.optional(Witness),
+          wet: Game.Query.optional(InWater),
         },
+      }),
+      player: Game.Query({
+        selection: { wet: Game.Query.optional(InWater) },
+        with: [Player],
       }),
       animals: Game.Query({
         selection: {
@@ -141,6 +150,7 @@ export const World = Game.Inspector(
           follows: Game.Query.optional(Follows),
           down: Game.Query.optional(Down),
           dead: Game.Query.optional(Dead),
+          wet: Game.Query.optional(InWater),
         },
       }),
     },
@@ -149,6 +159,7 @@ export const World = Game.Inspector(
       handling: Game.System.readResource(Handling),
       clock: Game.System.readResource(GameClock),
       weather: Game.System.readResource(Weather),
+      rivers: Game.System.readResource(Rivers),
       rng: Game.System.readResource(Rng),
     },
   },
@@ -179,6 +190,7 @@ export const World = Game.Inspector(
         down: data.down.present,
         dead: data.dead.value()?.since,
         witness: data.witness.present,
+        wet: data.wet.value(),
       }
     }),
     animals: queries.animals.each().map(({ entity, data }) => ({
@@ -193,11 +205,18 @@ export const World = Game.Inspector(
           : Game.Entity.id(data.follows.value()!.leader),
       down: data.down.present,
       dead: data.dead.value()?.since,
+      wet: data.wet.value(),
     })),
+    /** The player in the water: `wading`, `swimming`, or undefined out of it. */
+    water: queries.player.each().map(({ data }) => {
+      const wet = data.wet.value()
+      return wet === undefined ? undefined : wet.swimming ? "swimming" : "wading"
+    })[0],
     score: resources.score.get(),
     handling: resources.handling.get(),
     clock: resources.clock.get(),
     weather: resources.weather.get(),
+    rivers: resources.rivers.get(),
     /** The world's random stream's state: what traffic, pedestrians and parking have drawn. */
     rng: resources.rng.get(),
   }),
@@ -247,6 +266,24 @@ export const teleport = (at: PoseValue) =>
         data.prev.set(at)
       }
     },
+  )
+
+/** The rivers carrying `q` m³/s per km² of catchment, all of it groundwater (it drains over weeks: steady through a test). */
+const riversAt = (q: number): RiversValue => ({
+  snow: 0,
+  soil: FLOW.capacity / 2,
+  quick: 0,
+  slow: (q * FLOW.slowTau) / 1000,
+})
+
+/** Sets the rivers to carry `q` m³/s per km² (`runtime.tick` it). */
+export const flood = (q: number) =>
+  Game.Schedule(
+    Game.System(
+      "Test/Flood",
+      { resources: { rivers: Game.System.writeResource(Rivers) } },
+      ({ resources }) => resources.rivers.set(riversAt(q)),
+    ),
   )
 
 /** Sets every vehicle's damage to `amount`, as if its crashes had used up that share of its durability (`runtime.tick` it). */
@@ -500,7 +537,7 @@ export const press = (frame: number, ...keys: Array<keyof typeof bindings>): Tim
 
 /** Whether a person at `p` is clear of walk walls (2 cm of slack). */
 export const walkClear = (p: { readonly x: number; readonly y: number }) =>
-  clearOf(wallsAlong("walk", p.x, p.y, 0, 0, 1), p.x, p.y, PERSON_RADIUS, 0.02)
+  clearOf(wallsAlong("land", p.x, p.y, 0, 0, 1), p.x, p.y, PERSON_RADIUS, 0.02)
 
 /** An unmanned vehicle at `pose` already rolling at `speed` along its heading, its controls held at `throttle` and `steer`. */
 export const rolling = (

@@ -140,6 +140,27 @@ export const groundZ = (x: number, y: number, near?: number): number => {
   return best
 }
 
+/**
+ * The highest bridge deck within `pad` m past its edge at (x, y), m a.s.l., or undefined: someone on a bridge's verge (half a
+ * metre past its carriageway, as the walkers keep to it) is on the bridge, not on the bank or in the river under it.
+ */
+export const deckNear = (x: number, y: number, pad: number): number | undefined => {
+  let top: number | undefined
+  const terrain = terrainZ(x, y)
+  // Buckets hold segments by their carriageway's box: look in every bucket the pad reaches.
+  for (let bx = Math.floor((x - pad) / BUCKET); bx <= Math.floor((x + pad) / BUCKET); bx++)
+    for (let by = Math.floor((y - pad) / BUCKET); by <= Math.floor((y + pad) / BUCKET); by++)
+      for (const s of buckets.get(keyOf(bx + 2048, by + 2048)) ?? []) {
+        if (!s.lifted) continue
+        const { d2, t } = segDist2(x, y, s.ax, s.ay, s.bx, s.by)
+        if (d2 > (s.half + pad) * (s.half + pad)) continue
+        const h = roadZ(s.za + (s.zb - s.za) * t, x, y, s.lift, true)
+        // A tunnel's floor under the hill is no deck.
+        if (h >= terrain && (top === undefined || h > top)) top = h
+      }
+  return top
+}
+
 /** The surface elevation of `road` at the point of it nearest (x, y), m a.s.l.: where a vehicle on that road stands, whatever is above or below. */
 export const roadLevel = (road: Road, x: number, y: number): number => {
   let best = Number.MAX_VALUE,

@@ -1,4 +1,4 @@
-// Collision walls: outlines of the blocked 4 m cells (water, steep ground; marching squares,
+// Collision walls: outlines of the blocked 4 m cells (steep ground, and apart the water's edge; marching squares,
 // simplified, <= 16 m pieces) plus building edges, barriers, map bounds and road-exit caps.
 // Flat (ax, ay, bx, by) arrays.
 import { staticGrid } from "../sim/collide.ts"
@@ -365,9 +365,16 @@ const pushBuilding = (outs: ReadonlyArray<Array<number>>, b: BuildingF, arches: 
 }
 
 interface Walls {
+  /** What stops anyone on foot: buildings, steep ground, barriers, the bounds. */
   readonly walk: Array<number>
+  /** The water's edge, which people and animals keep to by choice (none where a road crosses). */
+  readonly shore: Array<number>
+  /** What stops a vehicle: `walk`'s plus slopes over 25°, guard rails, parapets and road-exit caps; water is no wall. */
   readonly drive: Array<number>
+  /** The water's edge for `drive` (open where a drivable road crosses): kept clear by traffic's dead ends and the spawns, never stored. */
+  readonly driveShore: Array<number>
   readonly walkCells: number
+  readonly shoreCells: number
   readonly driveCells: number
 }
 
@@ -382,7 +389,7 @@ export const buildWalls = (
     banks = segIndex<null>()
   for (const w of water) {
     wet.addLine(w.pts, Math.max(w.w / 2, 2), null)
-    // Carved banks of the larger streams are steep by construction; the water walls already stop movement there.
+    // Carved banks of the larger streams are steep by construction and stay open: the way out of the water.
     if (w.w >= 4) banks.addLine(w.pts, w.bed + 2 * g.cell, null)
   }
   // Road buffers are measured from cell centres; walls sit midway between centres (half a cell) and may
@@ -419,7 +426,9 @@ export const buildWalls = (
   const steepWalk = steep(WALK_SLOPE),
     steepDrive = steep(DRIVE_SLOPE)
   const walkBlocked = new Uint8Array(cw * ch),
-    driveBlocked = new Uint8Array(cw * ch)
+    shoreBlocked = new Uint8Array(cw * ch),
+    driveBlocked = new Uint8Array(cw * ch),
+    driveShoreBlocked = new Uint8Array(cw * ch)
   for (let j = 0; j < ch; j++)
     for (let i = 0; i < cw; i++) {
       const k = j * cw + i,
@@ -439,13 +448,19 @@ export const buildWalls = (
           if (d < r.w / 2 + pad) driveCrossing = true // bridge deck or ford
         }
       })
-      walkBlocked[k] = !walkRoad && (water || steepWalk[k] === 1) ? 1 : 0
-      driveBlocked[k] = (water && !driveCrossing) || (steepDrive[k] === 1 && !driveRoad) ? 1 : 0
+      walkBlocked[k] = !walkRoad && steepWalk[k] === 1 ? 1 : 0
+      shoreBlocked[k] = !walkRoad && water && walkBlocked[k] === 0 ? 1 : 0
+      driveBlocked[k] = steepDrive[k] === 1 && !driveRoad ? 1 : 0
+      driveShoreBlocked[k] = water && !driveCrossing && driveBlocked[k] === 0 ? 1 : 0
     }
   const walk: Array<number> = [],
-    drive: Array<number> = []
+    shore: Array<number> = [],
+    drive: Array<number> = [],
+    driveShore: Array<number> = []
   boundary(g, walkBlocked, [walk])
+  boundary(g, shoreBlocked, [shore])
   boundary(g, driveBlocked, [drive])
+  boundary(g, driveShoreBlocked, [driveShore])
   const arches = corridors(roads.filter((r) => !clips(r)))
   for (const b of buildings) pushBuilding([walk, drive], b, arches)
   for (const b of barriers) {
@@ -481,8 +496,11 @@ export const buildWalls = (
   }
   return {
     walk,
+    shore,
     drive,
+    driveShore,
     walkCells: walkBlocked.reduce((s, v) => s + v, 0),
+    shoreCells: shoreBlocked.reduce((s, v) => s + v, 0),
     driveCells: driveBlocked.reduce((s, v) => s + v, 0),
   }
 }

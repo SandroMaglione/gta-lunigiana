@@ -4,7 +4,7 @@ import { forwardSpeed, moveCar, wallsAlong } from "../body.ts"
 import { overturned, type Rig, rigFor, RIGS } from "../chassis.ts"
 import { destroyed, NEW_ENGINE, type Wear } from "../damage.ts"
 import { BRAKING, driveForce, shiftGear } from "../drivetrain.ts"
-import { type BodyState, type Ground, integrate } from "../dynamics.ts"
+import { type BodyState, type Controls, type Ground, integrate } from "../dynamics.ts"
 import { type HandlingValue, REAL_HANDLING } from "../handling.ts"
 import { groundZ } from "../map/ground.ts"
 import { type Surface, surfaceAt } from "../map/surface.ts"
@@ -20,6 +20,7 @@ import {
   Motion,
   Pose,
   type PoseValue,
+  Rivers,
   Skid,
   Time,
   Vehicle,
@@ -29,6 +30,8 @@ import { airAt } from "../sky/climate.ts"
 import { DRY, groundAt, type GroundWeather } from "../sky/local.ts"
 import { weathered } from "../tyres.ts"
 import type { VehicleModel, VehicleSpec } from "../vehicles.ts"
+import { FLOW, specificDischarge } from "../water/flow.ts"
+import { waterAt } from "../water/rivers.ts"
 
 /** Wall hits: share of the impact speed bounced back, and speed lost per m/s of impact. */
 const BOUNCE = 0.2
@@ -204,9 +207,10 @@ interface Pedals {
 /**
  * One step of a vehicle of `model` driven with `input`, before the walls: the steering turns toward
  * the keys within the lock for its speed and the grip the weather leaves, the gearbox picks a gear,
- * the engine worn by `wear` drives through it, the throttle against the motion is the brake pedal,
- * and the body moves on its springs and tyres over `ground` (`surface` under each wheel, as wet and
- * snowy as `weather` says); a destroyed one never rights itself. Returns the moved body, the new
+ * the engine worn by `wear` drives through it (unless the `water` it stands in is over its intake:
+ * it stalls), the throttle against the motion is the brake pedal, and the body moves on its springs
+ * and tyres over `ground` (`surface` under each wheel, as wet and snowy as `weather` says), buoyed
+ * and dragged by the water; a destroyed one never rights itself. Returns the moved body, the new
  * steering angle and gearbox, what the tyres and body did, and the surfaces and their weather.
  */
 export const advance = (
@@ -220,6 +224,7 @@ export const advance = (
   handling: HandlingValue = REAL_HANDLING,
   weather: GroundUnder = () => DRY,
   wear: Wear = NEW_ENGINE,
+  water?: Controls["water"],
 ) => {
   // A wreck, burning or a charred shell, does not right itself: it stays where it lies.
   const rig = rigFor(
@@ -263,16 +268,38 @@ export const advance = (
     body,
     {
       steer,
-      drive: driveForce(spec, gearbox, speed, input.throttle, step, wear),
+      drive: stalled(spec, chassis, water)
+        ? 0
+        : driveForce(spec, gearbox, speed, input.throttle, step, wear),
       brake: braking ? Math.abs(input.throttle) || 1 : 0,
       handbrake: input.handbrake,
       surfaces,
       weather: grounds,
+      ...(water === undefined ? {} : { water }),
     },
     dt,
     ground,
   )
   return { body, steer, gearbox, result, surfaces, grounds }
+}
+
+/** Whether `water` stands over the engine's air intake of a vehicle of `spec` riding at `chassis`: the engine stalls. */
+export const stalled = (
+  spec: VehicleSpec,
+  chassis: Pick<ChassisValue, "z">,
+  water: Controls["water"],
+): boolean => water !== undefined && water.level > chassis.z - spec.cg + spec.intake
+
+/** The river a vehicle of `spec` at (x, y) riding at `chassis` stands in at `q` m³/s per km², if any: its level and current. */
+const waterAround = (
+  spec: VehicleSpec,
+  x: number,
+  y: number,
+  chassis: Pick<ChassisValue, "z">,
+  q: number,
+): Controls["water"] => {
+  const here = waterAt(x, y, chassis.z - spec.cg, q)
+  return here === undefined ? undefined : { level: here.level, vx: here.vx, vy: here.vy }
 }
 
 /**
@@ -283,7 +310,8 @@ export const advance = (
  * then the body moves on its springs and tyres (`integrate`), and its planar move is swept against
  * the drive walls: a hit keeps the sliding part, bounces a little and costs speed by how hard it
  * was. Wall and ground hits are Impact events, sliding tyres Skid events. A vehicle at rest with
- * its pedal up sleeps until something moves it.
+ * its pedal up sleeps until something moves it, unless it stands in a river, which buoys it, drags
+ * it with its current and stalls its engine once over the air intake.
  */
 export const VehiclePhysics = Game.System(
   "Lunigiana/VehiclePhysics",
@@ -305,6 +333,7 @@ export const VehiclePhysics = Game.System(
       handling: Game.System.readResource(Handling),
       weather: Game.System.readResource(Weather),
       clock: Game.System.readResource(GameClock),
+      rivers: Game.System.readResource(Rivers),
     },
     events: { impact: Game.System.writeEvent(Impact), skid: Game.System.writeEvent(Skid) },
   },
@@ -314,7 +343,8 @@ export const VehiclePhysics = Game.System(
       weather = resources.weather.get()
     if (dt <= 0) return
     const air = airAt(resources.clock.get().seconds, weather),
-      under = (x: number, y: number, level: number) => groundAt(weather, x, y, level, air)
+      under = (x: number, y: number, level: number) => groundAt(weather, x, y, level, air),
+      q = specificDischarge(resources.rivers.get(), FLOW)
     for (const { entity, data } of queries.vehicles.each()) {
       const { model } = data.vehicle.get()
       const spec = RIGS[model].spec
@@ -332,9 +362,12 @@ export const VehiclePhysics = Game.System(
         chassis.vz === 0 &&
         chassis.pitchRate === 0 &&
         chassis.rollRate === 0
+      // In a river nothing sleeps: the current and the water's rise move it.
+      const water = waterAround(spec, pose.x, pose.y, chassis, q)
       if (
         input.throttle === 0 &&
         still &&
+        water === undefined &&
         !(handling.selfRighting === 1 && overturned(chassis) && !destroyed(wear.damage))
       )
         continue
@@ -350,6 +383,7 @@ export const VehiclePhysics = Game.System(
         handling,
         under,
         wear,
+        water,
       )
 
       // The planar move against the walls. A turn that wedges the body into a wall is undone; if moving at all does, the car stays put.
@@ -448,6 +482,7 @@ export const VehiclePhysics = Game.System(
       const next = { ...body, steer, ...gearbox }
       if (
         input.throttle === 0 &&
+        water === undefined &&
         settles(motion, { vx, vy, spin }, next) &&
         rests(
           model,

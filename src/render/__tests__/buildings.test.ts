@@ -3,7 +3,7 @@ import { test } from "node:test"
 
 import { MAP } from "../../sim/map/index.ts"
 import { buildingPieces } from "../buildings.ts"
-import { linear, Triangles, type Sink } from "../geometry.ts"
+import { linear, Triangles, type Sink, WaterTriangles } from "../geometry.ts"
 import { PALETTE } from "../palette.ts"
 
 const shutters = [linear(PALETTE.shutterGreen), linear(PALETTE.woodBrown)],
@@ -16,7 +16,7 @@ const drawn = (piece: ReturnType<typeof buildingPieces>[number]) => {
   const sink: Sink = {
     solid: new Triangles(),
     decal: new Triangles(),
-    water: new Triangles(),
+    water: new WaterTriangles(),
     glow: new Triangles(),
     pieces: [],
   }

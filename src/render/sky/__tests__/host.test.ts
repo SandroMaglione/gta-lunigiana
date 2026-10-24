@@ -50,7 +50,7 @@ const drawn = (t: number, regime: Regime, at: readonly [number, number] = [X, Y]
   const host = new SkyHost(new Group(), { reduced: () => false }),
     r = renderer(),
     v = view(...at)
-  host.sky(t, 1, weather(regime, t), 10)
+  host.sky(t, 1, weather(regime, t), 10, 0.04)
   host.draw(v, r)
   return { host, r, post: v.post }
 }
@@ -96,7 +96,7 @@ test("the sun lights the map from where it really stands, whichever way the view
   assert.ok(sun.elevation > SHADOW_FLOOR, "high enough that the shadow floor does not lift it")
   for (const yaw of [0, Math.PI / 2, -Math.PI, 1]) {
     const host = new SkyHost(new Group(), { reduced: () => false })
-    host.sky(t, 1, weather("clear", t), 10)
+    host.sky(t, 1, weather("clear", t), 10, 0.04)
     host.draw(view(X, Y, yaw), renderer())
     assert.ok(host.toKey.distanceTo(real) < 1e-9, `yaw ${yaw}: ${host.toKey.toArray()}`)
   }
@@ -133,11 +133,11 @@ test("the lamps and the exposure land at once on the first frame and after a clo
   const host = new SkyHost(new Group(), { reduced: () => false }),
     v = view(),
     r = renderer()
-  host.sky(at(12), 1, weather("clear", at(12)), 10)
+  host.sky(at(12), 1, weather("clear", at(12)), 10, 0.04)
   host.draw(v, r)
   assert.equal(host.frame?.lamps, 0)
   // A frame later, the clock running at its rate, a storm settles: the lamps' target is on, and they only start to fade in.
-  host.sky(at(12) + 1, 1, weather("storm", at(12)), 10 + 1 / 60)
+  host.sky(at(12) + 1, 1, weather("storm", at(12)), 10 + 1 / 60, 0.04)
   host.draw(v, r)
   assert.ok(
     host.look!.light.lamps > 0.9 && host.frame.lamps > 0 && host.frame.lamps < 0.05,
@@ -145,7 +145,7 @@ test("the lamps and the exposure land at once on the first frame and after a clo
   )
   assert.ok(host.look!.exposure < host.look!.light.exposure, "the eye opens slowly")
   // Ten hours on in one frame: a dev-menu jump to the night.
-  host.sky(at(22), 1, weather("clear", at(22)), 10 + 2 / 60)
+  host.sky(at(22), 1, weather("clear", at(22)), 10 + 2 / 60, 0.04)
   host.draw(v, r)
   assert.ok(
     host.frame.lamps > 0.99 && host.look!.exposure === host.look!.light.exposure,

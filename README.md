@@ -114,8 +114,8 @@ The same keys walk and drive; the table shows what each does in both modes:
 
 | Key | On foot | Driving |
 |---|---|---|
-| W A S D or arrow keys | walk along the screen directions | up: throttle, down: brake and reverse, left/right: steer |
-| Shift | sprint | |
+| W A S D or arrow keys | walk along the screen directions; in a river, wade or swim | up: throttle, down: brake and reverse, left/right: steer |
+| Shift | sprint; swimming, a hard crawl | |
 | F or Enter | enter the nearest vehicle (steal, enter or carjack) | get out |
 | Q / E | turn the view a quarter left / right | nothing: the view follows the car |
 | Space | | handbrake |
@@ -125,6 +125,8 @@ The same keys walk and drive; the table shows what each does in both modes:
 | P (dev builds only) | debug menu: the time of day, the clock’s speed and the date, the weather, and the vehicle physics presets and handling knobs for every vehicle at once; P closes it, and so does Esc while it has the focus | same |
 
 Crashes wear vehicles out, the truck far less than a small car: a damaged engine pulls weaker and misfires, smokes white, then black, and once destroyed it burns and nobody can drive it again. 5–10 s later it explodes: the blast wrecks the cars beside it, which catch fire in turn, and kills the people nearby, you too if you are still inside or standing next to it; you come back on foot at the start 4 s later ([docs/gameplay.md](docs/gameplay.md#damage)).
+
+The rivers rise in a storm and fall back over the following days. Shallow water slows you; deep or fast water lifts you off your feet and the current carries you downstream until you swim out, but you never drown. A flood floats parked cars off, and water over a car's air intake stalls its engine ([docs/water.md](docs/water.md)).
 
 The bindings live in `bindings` in `src/sim/schema.ts`. The HUD shows the street and district you’re in, the time in Rome (HH:MM) with the weather and the temperature where you stand (for example “Rain · 9 °C”), cars stolen, people hit, the action the key would take, a speedometer while driving, a minimap, and “Sei morto” when you are killed. On screens 600 px wide or narrower the clock sits under the score. M, or a click on the minimap, opens the full map: the whole area north-up with the villages, hamlets and main peaks named and your position marked.
 
@@ -137,7 +139,7 @@ Where a touch screen is the main pointer, the game runs in mobile mode: the cont
 | Stick: a thumb on the left half | walk along the screen directions | |
 | ◀ / ▶ on the left | | steer left / right |
 | Gas / Brake on the right | | throttle / brake, then reverse |
-| Run | sprint | |
+| Run | sprint; swimming, a hard crawl | |
 | Steal, Enter, Carjack or Exit (shown only when it would act) | enter the nearest vehicle | get out |
 | ↺ / ↻ | turn the view a quarter left / right | hidden: the view follows the car |
 | Hand brake | | handbrake |
@@ -180,7 +182,8 @@ The simulation, the browser hosts and the map tools live in separate folders:
 |---|---|
 | `src/sim/` | the simulation: Ritmo schema, systems, collision, routes, drive physics (chassis, tyres, drivetrain, the arcade assists), crash damage, the handling knobs and presets, the animal species, tuning. Headless and deterministic |
 | `src/sim/sky/` | the game clock and Rome’s calendar, the map’s place, the sun and the moon, the national climate model and its daily odds, the day plan, the weather regimes and what the weather is at a point (temperature, rain and snow, wet and snowy ground, fog, wind) |
-| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, perception and reactions, animals, physics, contacts, damage, explosions, populate, populate animals, sky) |
+| `src/sim/water/` | the rivers: their flow from the weather's rain, their depth and current along each reach, and people and animals wading and swimming in them |
+| `src/sim/systems/` | one file per system group (spawn, enter/exit, foot, drive, traffic, pedestrians, perception and reactions, animals, physics, contacts, damage, explosions, populate, populate animals, sky, water) |
 | `src/sim/population/` | who lives where and who goes out: residents from the buildings, people's looks, parties, farms |
 | `src/sim/map/` | the generated map (`monzone.bin`), its decoder, types and lookups (heights, walls, road graph, ground elevation, surfaces, land cover) |
 | `src/render/` | Three.js host code: pixel pipeline, static world meshes, people, animal and vehicle models, blood pools, tyre marks and smoke, damaged engines' smoke and fire, explosions and charred wrecks, the render schedule; `sky/` lights the day and the night and draws the weather (fog, snow, wet ground, cloud shadows, rain and snow, lightning, street lamps, lit windows, headlights) |
@@ -193,7 +196,7 @@ The simulation, the browser hosts and the map tools live in separate folders:
 | `index.html` | canvas, HUD and touch-control markup, title card (the loading screen), and the switch to mobile mode |
 | `lab.html` | the audio audition page (dev server only) |
 | `data/raw/` | pinned map inputs: OSM extract, Regione Toscana CTR and LiDAR |
-| `docs/` | architecture, map pipeline, gameplay, weather and audio notes; `docs/standards/` holds the checks for each part of the game |
+| `docs/` | architecture, map pipeline, gameplay, weather, water and audio notes; `docs/standards/` holds the checks for each part of the game |
 | `.oxlintrc.json`, `.oxfmtrc.json`, `lefthook.yml` | lint rules, formatter settings, and the git hooks that format and lint each commit and check each push |
 | `lint/` | the project's own oxlint plugins, one file each named after the plugin (`test-files.ts`: each test in a `__tests__` folder) |
 
@@ -205,7 +208,7 @@ Rebuild the map from the pinned inputs with one command:
 pnpm map
 ```
 
-The build reads only `data/raw` and takes about 8s. Its output is deterministic: with the same inputs, `monzone.bin` (6.7 MB, gzipped) gunzips to the same bytes on every machine, and comes out byte-identical with the same Node build (another zlib or OS compresses differently). Never edit `monzone.bin` by hand.
+The build reads only `data/raw` and takes about 9 s. Its output is deterministic: with the same inputs, `monzone.bin` (6.7 MB, gzipped) gunzips to the same bytes on every machine, and comes out byte-identical with the same Node build (another zlib or OS compresses differently). Never edit `monzone.bin` by hand.
 
 The inputs in `data/raw` are:
 
@@ -239,5 +242,6 @@ The `docs/` folder explains how the game works:
 - [docs/map.md](docs/map.md): the map pipeline, the file format and the data’s limits
 - [docs/gameplay.md](docs/gameplay.md): on foot, vehicles, traffic, people and their reactions, deaths and score, population, animals and tuning
 - [docs/weather.md](docs/weather.md): the game clock, the sun and the moon, the climate model and its sources, the weather, the grip it costs, and how it looks and sounds
+- [docs/water.md](docs/water.md): the rivers' flow and its calibration against a real gauge, their depth and current, wading and swimming, vehicles in the water, and how it looks
 
 [AGENTS.md](AGENTS.md) routes coding agents to [CODING_STANDARDS.md](CODING_STANDARDS.md), the workflow every change follows, and to the checks for each part of the game in [docs/standards/](docs/standards/).

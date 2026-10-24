@@ -29,6 +29,7 @@ import {
   Explosion,
   Game,
   GameClock,
+  InWater,
   Lightning,
   Motion,
   Pedestrian,
@@ -37,6 +38,8 @@ import {
   Pose,
   type PoseValue,
   PrevPose,
+  Rivers,
+  type RiversValue,
   Skid,
   STEP,
   Time,
@@ -46,6 +49,8 @@ import {
 } from "../sim/index.ts"
 import { VEHICLES } from "../sim/vehicles.ts"
 import { VIEW_REACH } from "../sim/view.ts"
+import { FLOW, specificDischarge } from "../sim/water/flow.ts"
+import { waterUnder } from "../sim/water/rivers.ts"
 import { type ActorNode, vehicleBody, type VehicleNode, vehicleNode } from "./actors.ts"
 import { AnimalNode } from "./animals.ts"
 import { Blasts } from "./blasts.ts"
@@ -124,10 +129,12 @@ const SyncPeople = RenderSync.system(Game, {
     player: Game.Query.optional(Player),
     pedestrian: Game.Query.optional(Pedestrian),
     motion: Game.Query.read(Motion),
+    pose: Game.Query.read(Pose),
+    wet: Game.Query.optional(InWater),
   },
-  resources: { time: Time },
+  resources: { time: Time, rivers: Rivers },
   // PrevPose is written every step, so apply also sees Driving and Down going away, and keeps the speed and clock current.
-  redrawOn: [Driving, Down, Dead, Pedestrian, PrevPose],
+  redrawOn: [Driving, Down, Dead, Pedestrian, InWater, PrevPose],
   create: ({ renderable, entity }) => new PersonNode(renderable, actorMaterial, entity),
   apply: (node, { data, resources }) => {
     node.visible = !data.driving.present
@@ -136,9 +143,27 @@ const SyncPeople = RenderSync.system(Game, {
     const { vx, vy } = data.motion.get()
     node.speed = Math.hypot(vx, vy)
     node.clock = resources.time.get().step * STEP.dt
+    node.floating(
+      ...afloat(data.pose.get(), data.wet.value(), data.down.present, resources.rivers.get()),
+    )
     node.showXray(data.player.present)
   },
 })
+
+/**
+ * How a person or animal at `pose` is in the water (`wet`): whether it is, the render y of the surface over it while it swims or
+ * lies there (undefined while it wades, standing on the bed, or is out of it), and whether it swims.
+ */
+const afloat = (
+  pose: PoseValue,
+  wet: { readonly swimming: boolean } | undefined,
+  lying: boolean,
+  rivers: RiversValue,
+): [boolean, number | undefined, boolean] => {
+  if (wet === undefined || !(wet.swimming || lying)) return [wet !== undefined, undefined, false]
+  const water = waterUnder(pose.x, pose.y, true, specificDischarge(rivers, FLOW))
+  return [true, water === undefined ? undefined : yOf(water.level), wet.swimming]
+}
 
 const SyncAnimals = RenderSync.system(Game, {
   name: "Lunigiana/SyncAnimals",
@@ -148,13 +173,20 @@ const SyncAnimals = RenderSync.system(Game, {
     down: Game.Query.optional(Down),
     dead: Game.Query.optional(Dead),
     motion: Game.Query.read(Motion),
+    pose: Game.Query.read(Pose),
+    wet: Game.Query.optional(InWater),
   },
-  redrawOn: [Down, Dead, PrevPose],
+  resources: { time: Time, rivers: Rivers },
+  redrawOn: [Down, Dead, InWater, PrevPose],
   create: ({ renderable, entity }) => new AnimalNode(renderable, actorMaterial, entity),
-  apply: (node, { data }) => {
+  apply: (node, { data, resources }) => {
     node.lie(data.down.present, data.dead.present)
     const { vx, vy } = data.motion.get()
     node.speed = Math.hypot(vx, vy)
+    node.clock = resources.time.get().step * STEP.dt
+    node.floating(
+      ...afloat(data.pose.get(), data.wet.value(), data.down.present, resources.rivers.get()),
+    )
   },
 })
 
@@ -386,8 +418,8 @@ const DrawEffects = Game.System(
 )
 
 /**
- * Hands the sky host this frame's game time (blended at alpha), the weather and sim time, the steps'
- * lightning, and the cars with their lamps on, switching every car's lamps: on in traffic and in the
+ * Hands the sky host this frame's game time (blended at alpha), the weather, sim time and what the
+ * rivers carry, the steps' lightning, and the cars with their lamps on, switching every car's lamps: on in traffic and in the
  * player's car, off when parked. Last in the schedule, so the cars stand where they are drawn.
  */
 const DrawSky = Game.System(
@@ -403,6 +435,7 @@ const DrawSky = Game.System(
       time: Game.System.readResource(Time),
       clock: Game.System.readResource(GameClock),
       weather: Game.System.readResource(Weather),
+      rivers: Game.System.readResource(Rivers),
     },
     events: { lightning: Game.System.readEvent(Lightning) },
     services: {
@@ -420,6 +453,7 @@ const DrawSky = Game.System(
       rate,
       resources.weather.get(),
       (resources.time.get().step + alpha) * STEP.dt,
+      specificDischarge(resources.rivers.get(), FLOW),
     )
     for (const lightning of events.lightning.all()) sky.strike(lightning)
     const found = queries.player.singleOptional()

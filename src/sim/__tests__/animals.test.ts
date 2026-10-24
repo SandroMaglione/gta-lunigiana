@@ -68,7 +68,10 @@ const FARM = (() => {
   return { x: best.x, y: best.y, angle: 0 }
 })()
 
-/** A pasture by the farm at least 60 m from any traffic road, where a passing car scares nothing: found by geometry. */
+/**
+ * A pasture by the farm at least 60 m from any traffic road, where a passing car scares nothing, and with no stream within a cow's
+ * home range (wading slows a walk past its time): found by geometry.
+ */
 const MEADOW = (() => {
   const roads = edgeIndex(graph.trafficEdges)
   for (let r = 20; r < 400; r += 10)
@@ -76,7 +79,15 @@ const MEADOW = (() => {
       const x = FARM.x + r * Ops.cos((a / 32) * 2 * Math.PI),
         y = FARM.y + r * Ops.sin((a / 32) * 2 * Math.PI)
       const road = roads.nearest(x, y)
-      if (pasture(x, y) && distanceToEdge(road, x, y) - roadOf(road).w / 2 > 60)
+      if (
+        pasture(x, y) &&
+        distanceToEdge(road, x, y) - roadOf(road).w / 2 > 60 &&
+        !MAP.water.some((w) =>
+          w.pts.some(
+            (v, k) => k % 2 === 0 && Ops.hypot(v - x, w.pts[k + 1]! - y) < FAUNA.cow.home + 10,
+          ),
+        )
+      )
         return { x, y, angle: 0 }
     }
   throw new Error("no meadow by the farm")

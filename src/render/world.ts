@@ -37,6 +37,7 @@ import {
   terrainMaterial,
   treeMaterial,
   Triangles,
+  WaterTriangles,
   waterMaterial,
   type Piece,
   type Sink,
@@ -65,7 +66,7 @@ const staticMesh = (
 const emptySink = (): Sink => ({
   solid: new Triangles(),
   decal: new Triangles(),
-  water: new Triangles(),
+  water: new WaterTriangles(),
   glow: new Triangles(),
   pieces: [],
 })

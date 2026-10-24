@@ -148,7 +148,7 @@ const placeParties = (
   const free = (p: Vec2.Vec2, r: number) =>
     far(p, band[0]) &&
     !indoors(p.x, p.y) &&
-    clearOf(wallsAlong("walk", p.x, p.y, 0, 0, 1), p.x, p.y, r)
+    clearOf(wallsAlong("land", p.x, p.y, 0, 0, 1), p.x, p.y, r)
   const target = peopleOut(at.x, at.y)
   const streets = peopledIndex.around(at.x, at.y, band)
   const placed: Array<Placed> = []

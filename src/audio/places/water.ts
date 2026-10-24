@@ -9,6 +9,7 @@
  */
 import { staticGrid } from "../../sim/collide.ts"
 import { heightAt, MAP, type Water } from "../../sim/map/index.ts"
+import { channelOf } from "../../sim/water/channel.ts"
 import { segDist2 } from "../../tools/geometry.ts"
 import { lineLevel, NIGHT_DB, spreading, type LineSegment } from "../acoustics.ts"
 import { smoothstep } from "../buffers.ts"
@@ -46,8 +47,6 @@ const POWER: ReadonlyArray<readonly [number, number]> = [
 const CALM = 0.01,
   RAPIDS = 0.06,
   RAPIDS_DB = 8
-/** Half-width of the grade window along the water, m (bridge caps and culvert dips are local). */
-const GRADE_WINDOW = 40
 /** Flow is the width relative to the Lucido's, `CALM_FLOW` of it on calm reaches. */
 const WIDEST = 14,
   CALM_FLOW = 0.4
@@ -70,32 +69,11 @@ const powerOf = (w: number): number => {
   return p0 + ((p1 - p0) * (w - w0)) / (w1 - w0)
 }
 
-/** Linear interpolation of per-vertex `z` at arc length `at`, given ascending arc lengths `s`. */
-const zAlong = (s: Float64Array, z: ReadonlyArray<number>, at: number): number => {
-  let lo = 0,
-    hi = s.length - 1
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1
-    if (s[mid]! <= at) lo = mid
-    else hi = mid
-  }
-  const span = s[hi]! - s[lo]!
-  return span > 0 ? z[lo]! + ((z[hi]! - z[lo]!) * (at - s[lo]!)) / span : z[lo]!
-}
-
-/** The reaches of one water piece, with their grade-dependent power and flow. */
+/** The reaches of one water piece, with their grade-dependent power and flow (the grade over ±40 m, `channelOf`'s). */
 const reachesOf = (water: Water): Array<Reach> => {
   const { pts, z, w } = water,
     n = pts.length / 2
-  const s = new Float64Array(n)
-  for (let i = 1; i < n; i++)
-    s[i] = s[i - 1]! + Math.hypot(pts[2 * i]! - pts[2 * i - 2]!, pts[2 * i + 1]! - pts[2 * i - 1]!)
-  const total = s[n - 1]!
-  const grade = Array.from(s, (at) => {
-    const lo = Math.max(0, at - GRADE_WINDOW),
-      hi = Math.min(total, at + GRADE_WINDOW)
-    return hi > lo ? Math.abs(zAlong(s, z, lo) - zAlong(s, z, hi)) / (hi - lo) : 0
-  })
+  const { grade } = channelOf(water)
   const key = `water:${water.name ?? water.id}`,
     river = water.kind === "river" || w >= 8
   const out: Array<Reach> = []

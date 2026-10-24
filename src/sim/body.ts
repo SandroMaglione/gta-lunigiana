@@ -10,7 +10,7 @@ import { Ops, Vec2 } from "@typeonce/ritmo-math"
 import { overturned } from "./chassis.ts"
 import { moveCircles, segmentDistance } from "./collide.ts"
 import { destroyed } from "./damage.ts"
-import { type Segment, wallsNear } from "./map/index.ts"
+import { type Segment, type WallKind, wallsNear } from "./map/index.ts"
 import type { ChassisValue, PoseValue } from "./schema.ts"
 import { ENTER_GAP, PERSON_RADIUS } from "./tuning.ts"
 import { VEHICLES, type VehicleModel } from "./vehicles.ts"
@@ -46,7 +46,7 @@ export const offBody = (model: VehicleModel, pose: PoseValue, x: number, y: numb
 
 /** Wall segments that may touch a body of half-extent `pad` moving from (x, y) by (dx, dy). */
 export const wallsAlong = (
-  kind: "walk" | "drive",
+  kind: WallKind,
   x: number,
   y: number,
   dx: number,
@@ -163,9 +163,9 @@ export const moveCar = (
   return sound ? { position, blocked } : undefined
 }
 
-/** Whether a vehicle of `model` at `pose` overlaps no drive wall (by more than `slack`). */
+/** Whether a vehicle of `model` at `pose` overlaps no wall traffic keeps to, the water's edge included (by more than `slack`). */
 export const carClear = (model: VehicleModel, pose: PoseValue, slack = 0): boolean => {
-  const segs = wallsAlong("drive", pose.x, pose.y, 0, 0, VEHICLES[model].length / 2 + 1)
+  const segs = wallsAlong("traffic", pose.x, pose.y, 0, 0, VEHICLES[model].length / 2 + 1)
   return depthIn(segs, pose, carCircles(model, pose.angle), carRadius(model)) <= slack
 }
 

@@ -4,7 +4,7 @@
 `src/sim/map/monzone.bin`, the only map file the game loads (6.7 MB, see
 [File format](#file-format)). The build is deterministic (gunzipped, its output is the same bytes
 on every machine; the gzipped file is byte-identical with the same Node build, while another zlib
-or OS writes other compressed bytes) and takes about 8 s. It prints a lap time per stage
+or OS writes other compressed bytes) and takes about 9 s. It prints a lap time per stage
 and a summary: counts, the steepest grade per road class, and the size of each part of the file.
 Inputs and attribution are in the [README](../README.md).
 
@@ -47,6 +47,9 @@ build can use it before `monzone.bin` exists.
   fifth of the Apuans' bare rock and half their pastures, so `ucs.ts` adds the open covers: quarries
   (UCS 131), natural pastures (321), heath and scrub (322), bare rock and cliffs (332) and sparse
   vegetation (333). Woods, fields and towns stay OSM's.
+- **The Aulella's catchment**: one published figure, the 208 km² ARPAL's Annali Idrologici 2017
+  (part II) give the Soliera gauge, taken as a fact (as the rivers' calibration takes the gauge's
+  flows, [water.md](water.md#sources)); no ARPAL data is shipped.
 
 `pnpm fetch-rt` (`src/tools/fetch-rt.ts`) downloads the CTR sheets, the LiDAR tiles, the 10 m DTM
 and the land cover. It copies the shapefile layers the build reads (`AED`, `AGE`, `AVI`, `AZR`) to
@@ -167,11 +170,21 @@ bilinear in between). Each node of the 4 m grid over the bounds (1951 × 2501 no
 of a 5 × 5 m square of samples. This grid is carved and flattened by the next steps; profiles and water sample the untouched terrain (the "ground"). Elevations run from 147 m
 (the Aulella below Gragnola) to 1799 m (the north-west ridge of Monte Grondilice).
 
-### 5. River carving (`water.ts`)
+### 5. River carving and catchments (`water.ts`, `catchment.ts`)
 
 - The water surface is sampled every 2 m at ground − depth/2. It is made monotone downstream and
   continuous at confluences: a tributary's tail is lowered (by at most 0.25 extra slope) or ponded
   up to the level of the water it joins. The Lucido meets the Aulella below Gragnola.
+- Before the carving, the catchment upstream of every water sample is measured (`catchment.ts`):
+  the samples are burned 100 m under their own surface into a copy of the grid, which is filled so
+  every node drains (priority-flood with an epsilon, Barnes et al. 2014; the grid's edge is the
+  outlet), each node routed to its steepest lower neighbour (D8), and the 4 m cells accumulated
+  downstream. Each piece starts with what the pieces ending where it begins bring, and a sample
+  keeps the most its own burned nodes gather within a node of it (D8 cuts a bend's corner past a
+  node), never less than upstream; nodes within two of another water's are left out, and a piece's
+  last sample keeps what came down to it (D8 may route the water a tail joins through it). The
+  Torrente Aulella takes 161 km² from beyond the bounds, which hold only its left bank: the Soliera
+  gauge's 208 km² (ARPAL), less the Lucido's 47 at its mouth. It takes about 1 s.
 - The bed is carved into the grid: depth/2 below the surface inside w/2, a gravel slope out to the
   bed width, then a one-cell bank back to the terrain.
 
@@ -238,19 +251,28 @@ simplified (Douglas–Peucker, 1.5 m tolerance). Slopes use a 12 m baseline, so 
 (terrace walls, road cuts) stop no one. Steep cells are majority-filtered (3 × 3) so the walls
 follow slopes, not single-cell bumps.
 
-| Wall source | `walk` | `drive` |
-|---|---|---|
-| Water cells (within max(w/2, 2) m of the centreline) | yes, except on any road | yes, except where a drivable road crosses (bridge or ford) |
-| Slope | > 35°, except on any road | > 25°, except within w/2 + 1.5 m of a drivable road |
-| Building outlines | yes | yes |
-| `wall`, `cliff` barriers | yes | yes |
-| `guard_rail` barriers | no | yes |
-| Map bounds | yes | yes |
-| Road-exit caps (4 m inside, where drivable roads leave the area) | no | yes |
-| Bridge parapets (w/2 + 0.25 m each side of a drivable bridge's deck, where `lines.ts` draws them; open where any other road, tunnels included, crosses under, joins or carries on) | no | yes |
+| Wall source | `walk` | `shore` | `drive` |
+|---|---|---|---|
+| Water cells (within max(w/2, 2) m of the centreline) | no | yes, except on any road or a steep cell | no |
+| Slope | > 35°, except on any road | no | > 25°, except within w/2 + 1.5 m of a drivable road |
+| Building outlines | yes | no | yes |
+| `wall`, `cliff` barriers | yes | no | yes |
+| `guard_rail` barriers | no | no | yes |
+| Map bounds | yes | no | yes |
+| Road-exit caps (4 m inside, where drivable roads leave the area) | no | no | yes |
+| Bridge parapets (w/2 + 0.25 m each side of a drivable bridge's deck, where `lines.ts` draws them; open where any other road, tunnels included, crosses under, joins or carries on) | no | no | yes |
+
+Water stops neither feet nor wheels: the player wades and swims, and vehicles float
+([water.md](water.md)). The shore walls are the water's edge: the game joins them to the walk walls
+for where people and animals spawn, and to the drive walls for the AI drivers' lanes and the
+vehicle spawns (`wallsNear`'s `land` and `traffic`). The build still keeps the spawns
+and traffic's dead ends clear of the water: it checks them against the walk walls with the shore
+and against the drive walls with the water's cells open where a drivable road crosses, as the drive
+walls held them before, and stores neither of those.
 
 - Road buffers are padded by half a cell plus the simplification tolerance, so no traced wall
-  comes within w/2 of a centreline. The carved banks of the wider streams skip the slope test.
+  comes within w/2 of a centreline. The carved banks of the wider streams skip the slope test:
+  they are the way out of the water.
 - Where a drivable road (not a tunnel) runs through or along a footprint, the house gives way:
   OSM centrelines and CTR footprints disagree by a metre or two, and none of these roads is
   tagged as a passage. `clipBuildings` cuts a corridor of min(w/2, 1.2) m half-width out of the
@@ -303,10 +325,10 @@ is the largest connected component of every edge except tunnels.
 
 ## File format
 
-`monzone.bin` is gzip (level 9) of one JSON line, a newline, then four packed sections. The game
+`monzone.bin` is gzip (level 9) of one JSON line, a newline, then five packed sections. The game
 loads it as one asset: the browser host downloads and gunzips it and hands the bytes to
 `provideMap` (`src/sim/map/packed.ts`) before anything imports the map module; Node (the tests, the
-tools, `ritmo-devtools lint`) reads it from disk. It is 6.7 MB, 28.5 MB gunzipped. Gzipped on its
+tools, `ritmo-devtools lint`) reads it from disk. It is 6.7 MB, 28.3 MB gunzipped. Gzipped on its
 own, the JSON line is 1.5 MB, the heightmap 2.8 MB, the walls 0.7 MB and the trees 1.7 MB. The
 base64 JSON it replaced was 36 MB, 14.4 MB gzipped.
 
@@ -322,18 +344,18 @@ outer rings counter-clockwise, holes clockwise.
 | `heightmap` | `cell` (4 m), `cols`, `rows`, `x0`, `y0`; the nodes (integer decimetres, row-major, row 0 = south) are the first packed section |
 | `roads` | `id`, `cls`, `name?`, `ref?`, `w`, `surface`, `oneway?`, `bridge?`, `tunnel?`, `layer?`, `pts`, `z` (surface elevation per vertex) |
 | `buildings` | `id` (OSM id, or negative for the CTR), `kind`, `name?`, `h` (wall height above `z0`), `z0` (lowest ground under the footprint), `style`, `ruins?`, `tint`, `outer`, `holes?` |
-| `water` | `id`, `kind` (`river` or `stream`), `name?`, `w`, `pts`, `z` (water surface per vertex) |
+| `water` | `id`, `kind` (`river` or `stream`), `name?`, `w` (the water's width), `bed` (the gravel bed's half-width), `depth` (the bed is carved `depth`/2 under `z`), `pts`, `z` (the built water surface per vertex), `area` (the catchment upstream of each vertex, km²) |
 | `rail` | `id`, `bridge?`, `tunnel?`, `pts`, `z` (rail top per vertex) |
 | `areas` | `kind` (one of `AREA_KINDS`), `name?`, `rings` (outer first, then holes) |
 | `barriers` | `kind` (`wall`, `guard_rail`, `cliff`), `pts` |
 | `pois` | `id`, `kind` (`key=value` or `area:<kind>`), `name?`, `x`, `y` |
 | `districts` | `name`, `x`, `y`, `r` |
 | `graph` | `xy` (node coordinates), `edges` (flat `a, b, roadIndex` triples), `traffic`, `walk` (edge indices) |
-| `walls` | `walk`, `drive`: segment counts; the `ax, ay, bx, by` segments are the second and third packed sections |
+| `walls` | `walk`, `shore`, `drive`: segment counts; the `ax, ay, bx, by` segments are the second, third and fourth packed sections |
 | `trees` | tree count; the `x, y, scale` triples are the last packed section |
 | `spawns` | `player` and `parked`: `{ x, y, angle }` |
 
-The packed sections follow the newline in file order: heightmap, walk walls, drive walls, trees
+The packed sections follow the newline in file order: heightmap, walk walls, shore walls, drive walls, trees
 (`packMap` in `src/tools/pack.ts` encodes, `decodeMap` in `src/sim/map/packed.ts` decodes; the
 build throws if a value does not fit). Each holds n integers as the zigzag-coded difference
 (0, −1, 1, −2... stored as 0, 1, 2, 3...) from the value `stride` places back, split into byte
@@ -365,7 +387,8 @@ roads, no drivable road inside a footprint, closed building interiors, one traff
 reaching the station, Monzone Alto and each of those villages, grades within 1.5× the class
 limits (a track shortcut pinned at both ends by the bends of one quarry road may only be the
 straight line between them), bridge and underpass clearances, no perched water, the Lucido's
-widths, and valid names, classes, styles, area kinds and districts (each of those villages is
+widths, catchments growing downstream with no jump at a tributary's mouth (the Lucido's 47 km² at its mouth, the Aulella's 208 leaving
+the map), no walk or drive wall in a wide river and shore walls by it, and valid names, classes, styles, area kinds and districts (each of those villages is
 its own HUD name, Equi Terme's station and spa included, and Monte Sagro and Pizzo d'Uccello
 name themselves; CTR street names cased like "Via XX Settembre" and "Via Castel dell'Aquila").
 Run `pnpm test` after every `pnpm map`. `src/sim/map/__tests__/packed.test.ts` round-trips a small map

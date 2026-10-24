@@ -15,6 +15,7 @@ import {
   Pose,
   type PoseValue,
   PrevPose,
+  Rivers,
   Score,
   Stolen,
   Traffic,
@@ -25,6 +26,7 @@ import {
 } from "./schema.ts"
 import { type RomeTime, romeTime } from "./sky/calendar.ts"
 import { VEHICLES } from "./vehicles.ts"
+import { FLOW, specificDischarge } from "./water/flow.ts"
 
 /** Plain view data for the camera and HUD. */
 export interface PlayerViewModel {
@@ -135,7 +137,7 @@ export const HandlingView = Game.Inspector(
   ({ resources }) => resources.handling.get(),
 )
 
-/** The game clock and the weather, as plain data for the render's sky, the audio, the HUD clock and the dev debug menu. */
+/** The game clock, the weather and the rivers, as plain data for the render's sky, the audio, the HUD clock and the dev debug menu. */
 export interface SkyViewModel {
   /** Game time (Unix UTC seconds) and game seconds per step: the sky moves smoothly drawn at `seconds + alpha · rate`. */
   readonly seconds: number
@@ -144,19 +146,28 @@ export interface SkyViewModel {
   readonly local: RomeTime
   /** The `Weather` resource: the sky module's pure functions (`conditionsAt`, `fogLayers`, `windAt`, `sunAt`…) take it. */
   readonly weather: WeatherValue
+  /** What the rivers carry, m³/s per km² of catchment: `waterAt` and `channelOf` turn it into the water's depth and current. */
+  readonly flow: number
 }
 
-/** The sky the host draws, plays and shows: the clock, Rome's wall clock and the weather. */
+/** The sky the host draws, plays and shows: the clock, Rome's wall clock, the weather and what the rivers carry. */
 export const SkyView = Game.Inspector(
   "Lunigiana/SkyView",
   {
     resources: {
       clock: Game.System.readResource(GameClock),
       weather: Game.System.readResource(Weather),
+      rivers: Game.System.readResource(Rivers),
     },
   },
   ({ resources }): SkyViewModel => {
     const { seconds, rate } = resources.clock.get()
-    return { seconds, rate, local: romeTime(seconds), weather: resources.weather.get() }
+    return {
+      seconds,
+      rate,
+      local: romeTime(seconds),
+      weather: resources.weather.get(),
+      flow: specificDischarge(resources.rivers.get(), FLOW),
+    }
   },
 )

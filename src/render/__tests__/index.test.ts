@@ -123,6 +123,8 @@ test("registries: a detached node frees its own geometry (frames, pool, proxy), 
     "person run2",
     "person shock",
     "person stand",
+    "person swim1",
+    "person swim2",
     "person talk",
     "person walk x-ray",
     "person walk1",
@@ -478,4 +480,28 @@ test("a burning wreck smokes and burns before the charred shells nearer the play
     colors.includes(PALETTE.outline) && colors.includes(PALETTE.cobbleDark),
     "black smoke over the fire, and the shells' grey wisps",
   )
+})
+
+test("in the water a person shows no x-ray, and a swimmer floats with the water at its shoulders, never under the bed", () => {
+  const person = new PersonNode(LOOK, solidMaterial, 4)
+  person.showXray(true)
+  person.speed = 1
+  person.floating(true, undefined, false)
+  person.place(0, 0, 0)
+  person.pose()
+  assert.equal(shownProxy(person), undefined, "wading: the water hides the legs, not a wall")
+  const bed = person.position.y
+  person.floating(true, bed + 5, true)
+  person.place(0, 0, 0)
+  person.pose()
+  assert.ok(Math.abs(person.position.y - (bed + 5 - 0.66 * LOOK.height)) < 1e-9)
+  assert.ok(
+    person.body.geometry === person.frames.swim1 || person.body.geometry === person.frames.swim2,
+  )
+  person.floating(true, bed + 0.5, true)
+  person.place(0, 0, 0)
+  assert.equal(person.position.y, bed, "in shallow water it rests on the bed")
+  person.floating(false, undefined, false)
+  person.pose()
+  assert.notEqual(shownProxy(person), undefined, "out of the water, the x-ray again")
 })

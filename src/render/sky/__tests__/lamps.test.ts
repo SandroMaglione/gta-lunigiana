@@ -4,7 +4,7 @@ import { test } from "node:test"
 import { pointInRing } from "../../../sim/collide.ts"
 import { buildingsIn, buildingStyleOf, MAP, roadClassOf } from "../../../sim/map/index.ts"
 import { eaveOf, windowCount } from "../../buildings.ts"
-import { type Sink, Triangles } from "../../geometry.ts"
+import { type Sink, Triangles, WaterTriangles } from "../../geometry.ts"
 import { terrainY } from "../../ground.ts"
 import { lampPieces, lampsIn, placeLamps, streetLamps } from "../lamps.ts"
 
@@ -156,7 +156,7 @@ test("street lamps: a lantern is whole by day, solid from its foot to its cap on
       sink: Sink = {
         solid: new Triangles(),
         decal: new Triangles(),
-        water: new Triangles(),
+        water: new WaterTriangles(),
         glow: new Triangles(),
         pieces: [],
       }

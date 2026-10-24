@@ -389,6 +389,7 @@ const clouds = (() => {
 const calm: Surface = {
   snowLine: NO_SNOW,
   wet: 0,
+  flow: 0.04,
   air: january(12, 0),
   cloudCover: 0,
   cloudOffset: { x: 0, y: 0 },

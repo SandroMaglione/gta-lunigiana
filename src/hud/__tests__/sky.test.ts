@@ -18,6 +18,7 @@ const sky = (seconds: number, rate = 1, weather = initialWeather(START, 1)): Sky
   rate,
   local: romeTime(seconds),
   weather,
+  flow: 0.04,
 })
 
 /** A store over a fake game whose sky stays `game` until `become` moves it, as the real one's does until its next step: what the store sends is collected. */

@@ -50,6 +50,9 @@ export const SKY_UNIFORMS = {
   uSkyColour: { value: new Color(0, 0, 0) },
   /** Share of the water's cells that ring with a raindrop each tick, 0..0.06. */
   uRipples: { value: 0 },
+  /** What the rivers carry, as their depth's and speed's factors: q^STAGE and q^SPEED (water/channel), q m³/s per km². */
+  uRiverStage: { value: 0 },
+  uRiverSpeed: { value: 0 },
   /** Tree canopy sway amplitude, m (0 in still air: not a texel moves). */
   uSway: { value: 0 },
   /** How far the canopies lean downwind on screen, in sway amplitudes. */

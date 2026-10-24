@@ -2,8 +2,8 @@
  * One step of a vehicle's rigid body, in substeps: each wheel's spring and damper against the
  * ground under it (so the body rides bumps, pitches when braking, rolls in a corner, leaves the
  * ground over a crest and lands), each tyre's force from its load and slip, gravity along the
- * slope, air drag, and the body's corners against the ground once it touches down on its side or
- * roof. Forces and torques are summed in the heading frame (forward, left, up) about the centre of
+ * slope, air drag, a river's buoyancy and drag on the underbody, and the body's corners against the
+ * ground once it touches down on its side or roof. Forces and torques are summed in the heading frame (forward, left, up) about the centre of
  * mass; velocities update before positions (semi-implicit Euler). Walls are not here: the physics
  * system sweeps the body's planar move against them afterwards.
  *
@@ -32,6 +32,17 @@ const HULL_DAMPING = 0.5
 const HULL_FRICTION = 0.6
 /** Air density, kg/m³. */
 const AIR = 1.2
+/** Water's density, kg/m³. */
+const WATER = 1000
+/**
+ * The share of the body box under the water that buoys it: the air its cabin and doors hold. WRL Technical Report 2017/07 (UNSW
+ * Water Research Laboratory) floated a 1.0 t Toyota Yaris in 0.6 m of still water and a 2.4 t Nissan Patrol in 0.95 m. Its wheels
+ * come off the ground once the body has risen by its springs' sag (about 0.1 m), so half the box over the floor then floats both:
+ * the Yaris's 0.3 m of a 3.9 × 1.7 m box (1.0 t), the Patrol's 0.55 m of 4.97 × 1.94 m (2.65 t).
+ */
+const SEALED = 0.5
+/** Drag coefficient of a car's body in a current, side-on or end-on (a bluff box). */
+const HULL_DRAG = 1.1
 /** In the air, the air slows the body's tumbling: pitch and roll rates lose this share per second (a game's mercy: most jumps land on the wheels). */
 const AIR_SPIN = 1.5
 /**
@@ -72,6 +83,8 @@ export interface Controls {
   /** The surface under each wheel, and how wet and snow-covered it is there. */
   readonly surfaces: ReadonlyArray<Surface>
   readonly weather: ReadonlyArray<GroundWeather>
+  /** The river the vehicle stands in, if any: its surface (m a.s.l.) and current (m/s, world frame). */
+  readonly water?: { readonly level: number; readonly vx: number; readonly vy: number }
 }
 
 /** The hardest a wheel slid this step, where. */
@@ -317,6 +330,33 @@ export const integrate = (
       if (-into > HIT_FROM && (hit === undefined || -into > hit.speed))
         hit = { speed: -into, ...at, face: faceOf(index, corner, up, body.pitch) }
     })
+
+    // In a river: each quarter of the underbody buoyed by the water over it, dragged toward the current through the side and end it
+    // shows the water, and slowed as it rises or sinks through it.
+    const water = controls.water
+    if (water !== undefined) {
+      const wf = water.vx * c + water.vy * s,
+        wl = -water.vx * s + water.vy * c,
+        deepest = spec.height - spec.clearance
+      for (let index = 0; index < 4; index++) {
+        const o = turn(rig.corners[index]!, tilt),
+          under = Math.min(deepest, Math.max(0, water.level - (body.z + o.u)))
+        if (under <= 0) continue
+        const v = along(o),
+          vu = body.vz + p * o.l + q * o.f,
+          rf = wf - v.f,
+          rl = wl - v.l,
+          drag = 0.5 * WATER * HULL_DRAG * under
+        apply(
+          { ...o, u: o.u + under / 2 },
+          // Each quarter shows a quarter of the body's end and side.
+          drag * (spec.width / 4) * Math.abs(rf) * rf,
+          drag * (spec.length / 4) * Math.abs(rl) * rl,
+          WATER * GRAVITY * ((spec.length * spec.width) / 4) * under * SEALED -
+            0.5 * WATER * HULL_DRAG * ((spec.length * spec.width) / 4) * Math.abs(vu) * vu,
+        )
+      }
+    }
 
     // The stability assist (arcade): yaw toward the steered line, the slide damped.
     const steady = steadying(rig, vf, vl, r, controls.steer, touching, controls.handbrake)

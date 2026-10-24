@@ -76,7 +76,7 @@ test("a kid is narrower than an adult; an elder stoops", () => {
   )
 })
 
-test("frame choice: shock holds the head, chat gestures by turns, flight and speed run, walking steps by distance", () => {
+test("frame choice: shock holds the head, chat gestures by turns, flight and speed run, walking steps by distance, swimmers stroke", () => {
   const doing = (over: Partial<Doing>): Doing => ({
     mood: "walk",
     lying: false,
@@ -85,8 +85,18 @@ test("frame choice: shock holds the head, chat gestures by turns, flight and spe
     clock: 0,
     phase: 0,
     height: 1.75,
+    swimming: false,
     ...over,
   })
+  const strokes = [0, 0.6, 1.3, 1.9, 2.6].map((clock) =>
+    framePerson(doing({ swimming: true, mood: "flee", speed: 0, clock })),
+  )
+  assert.deepEqual(
+    [...new Set(strokes)].sort(),
+    ["swim1", "swim2"],
+    "a swimmer strokes, whatever its mood",
+  )
+  assert.equal(framePerson(doing({ swimming: true, lying: true })), "stand", "the dead float lying")
   assert.equal(framePerson(doing({ mood: "shock", speed: 0 })), "shock")
   assert.equal(framePerson(doing({ mood: "look", speed: 0 })), "stand")
   const talk = [0, 0.5, 1.2, 1.7, 2.3, 2.9].map((clock) =>

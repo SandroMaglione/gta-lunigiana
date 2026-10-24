@@ -7,6 +7,7 @@ import {
   Lightning,
   Player,
   Pose,
+  Rivers,
   Time,
   View,
   Weather,
@@ -14,6 +15,7 @@ import {
 } from "../schema.ts"
 import { advanceWeather, stormStep } from "../sky/weather.ts"
 import { restAxes } from "../view.ts"
+import { riversAfter } from "../water/flow.ts"
 
 /** Each step the game clock moves on by its rate (a game second at rate 1); at rate 0 it stands still and is not written. */
 export const AdvanceClock = Game.System(
@@ -74,5 +76,27 @@ export const AdvanceWeather = Game.System(
     }
     // Still at rate 0 with no storm: left unwritten, so a stopped sky reads as unchanged.
     if (next !== weather) resources.weather.set(next)
+  },
+)
+
+/**
+ * The rivers over this step's game seconds: the weather's precipitation fills the catchments' snow,
+ * soil and stores and they drain into the rivers (water/flow.ts). Nothing moves at rate 0.
+ */
+export const AdvanceRivers = Game.System(
+  "Lunigiana/AdvanceRivers",
+  {
+    resources: {
+      clock: Game.System.thisTick(Game.System.readResource(GameClock)),
+      weather: Game.System.thisTick(Game.System.readResource(Weather)),
+      rivers: Game.System.writeResource(Rivers),
+    },
+  },
+  ({ resources }) => {
+    const { seconds, rate } = resources.clock.get()
+    if (rate > 0)
+      resources.rivers.set(
+        riversAfter(resources.rivers.get(), resources.weather.get(), seconds, rate),
+      )
   },
 )

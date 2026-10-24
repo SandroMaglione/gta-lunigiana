@@ -82,6 +82,11 @@ export interface VehicleSpec {
   /** Road-speed limiter, m/s (trucks are held to 90 km/h). */
   readonly limiter?: number
   /**
+   * Height of the engine's air intake above the ground at rest, m (estimates from each model's layout): water over it stalls the
+   * engine. The Panda and the Giulia breathe behind the grille, the Ape under its seat, the truck through a stack behind the cab.
+   */
+  readonly intake: number
+  /**
    * Suspension: natural frequency of the body on its springs (Hz), damping ratio, and the front and
    * rear anti-roll bars' stiffness as a share of the springs' (a stiffer front bar makes the car
    * understeer at the limit instead of spinning).
@@ -143,6 +148,7 @@ export const VEHICLES = {
       launch: 1800,
     },
     drag: 0.69,
+    intake: 0.6,
     ride: { hz: 1.5, damping: 0.35, antiRoll: [0.6, 0.2] },
   },
   ape: {
@@ -179,6 +185,7 @@ export const VEHICLES = {
     },
     gearbox: { ratios: [5.8, 3.3, 2, 1.25], reverse: 5.8, final: 10.8, shift: 0.4, launch: 4500 },
     drag: 1.15,
+    intake: 0.45,
     ride: { hz: 2, damping: 0.25, antiRoll: [0, 0.8] },
   },
   truck: {
@@ -223,6 +230,7 @@ export const VEHICLES = {
     },
     drag: 6,
     limiter: 25,
+    intake: 2.4,
     ride: { hz: 1.8, damping: 0.3, antiRoll: [0.6, 0.6] },
   },
   carabinieri: {
@@ -266,6 +274,7 @@ export const VEHICLES = {
       launch: 1800,
     },
     drag: 0.68,
+    intake: 0.55,
     ride: { hz: 1.6, damping: 0.35, antiRoll: [0.8, 0.3] },
   },
 } as const satisfies Record<VehicleModel, VehicleSpec>

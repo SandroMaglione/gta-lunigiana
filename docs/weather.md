@@ -603,6 +603,8 @@ and how snow-covered the ground is there, each 0 to 1.
   to 1517 m by 18:00. In a frost the band stays dry.
 - **Where it falls short.** One wetness and one snow line serve the whole map, so tunnels and
   bridges get wet and white too.
+- **The rivers** take the same precipitation: it fills their catchments and they rise and fall
+  with it ([water.md](water.md#the-rivers-flow)).
 
 `conditionsAt(t, weather, x, y, z)` gathers it all for one point: the air's temperature, the rain
 and the snow falling (mm/h of water, the precipitation at sea level × `orographic(z)` split by

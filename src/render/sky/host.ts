@@ -66,6 +66,8 @@ interface SkyRead {
   readonly rate: number
   readonly weather: WeatherValue
   readonly now: number
+  /** What the rivers carry, m³/s per km² (`SkyViewModel.flow`). */
+  readonly flow: number
 }
 
 /** What the sky host reads of the view (a `PixelView`): where it looks, its turn and zoom, its size, its post uniforms and its shadow fit. */
@@ -142,9 +144,9 @@ export class SkyHost {
     this.lights = new NightLights(scene)
   }
 
-  /** DrawSky: the game time `seconds` (fractional), the clock's `rate`, the `weather` and sim time `now` (s) this frame; the cars' list starts empty. */
-  sky(seconds: number, rate: number, weather: WeatherValue, now: number): void {
-    this.read = { seconds, rate, weather, now }
+  /** DrawSky: the game time `seconds` (fractional), the clock's `rate`, the `weather`, sim time `now` (s) and the rivers' `flow` (m³/s per km²) this frame; the cars' list starts empty. */
+  sky(seconds: number, rate: number, weather: WeatherValue, now: number, flow: number): void {
+    this.read = { seconds, rate, weather, now, flow }
     this.cars.length = 0
   }
 
@@ -275,6 +277,7 @@ export class SkyHost {
       cloudOffset: driftClouds(this.clouds, frame.wind, dt),
       wind: frame.wind,
       rain: here.rain,
+      flow: read.flow,
       texelsPerMetre: view.texelsPerMetre,
       viewRight: this.axes.right,
       // A mirror shows the sky's radiance: a white Lambert face under the hemisphere's sky colour (× its intensity 1) returns it / π.

@@ -9,6 +9,7 @@ import { gzipSync } from "node:zlib"
 
 import type { MonzoneMap } from "../sim/map/index.ts"
 import { ORIGIN } from "../sim/map/kinds.ts"
+import { catchments } from "./catchment.ts"
 import { fitRoads, readCtr } from "./ctr.ts"
 import { fitDistricts } from "./districts.ts"
 import {
@@ -71,6 +72,11 @@ const water = extractWater(osm, ground) // widths depend on the way's mean groun
 const grid = makeGrid(ground)
 const at = (x: number, y: number) => sampleGrid(grid, x, y)
 const wp = waterProfiles(water, ground)
+const drained = catchments(
+  grid,
+  wp,
+  water.map((w) => w.pts.map((v) => v.id)),
+)
 carveAll(grid, water, wp)
 lap("water")
 
@@ -251,8 +257,9 @@ const walls = buildWalls(grid, roads, water, buildings, barriers)
 lap("walls")
 const trees = scatterTrees(areas, roads, buildings, water, rail)
 lap("trees")
-const walkClear = clearance(walls.walk, trees),
-  driveClear = clearance(walls.drive, trees)
+// Spawns and traffic's dead ends keep off the water as well.
+const walkClear = clearance([...walls.walk, ...walls.shore], trees),
+  driveClear = clearance([...walls.drive, ...walls.driveShore], trees)
 /** Room for a car to stop and turn (map.test.ts asks the same of every traffic dead end). */
 const TURN = 2.3
 const graph = buildGraph(roads, (x, y) => driveClear.circle(x, y, TURN))
@@ -282,6 +289,13 @@ lap("spawns")
 
 const districts = fitDistricts(osm, buildings)
 
+/**
+ * Catchment of the Torrente Aulella beyond the map, km²: the bounds hold only its left bank, so
+ * the D8 areas miss nearly all of it. The Soliera gauge, 4 km below Gragnola, drains 208 km²
+ * (ARPAL, Annali Idrologici 2017, part II); less the Lucido's 47 km² at its mouth (D8), the Aulella
+ * brings 161 km² to Gragnola. The few km² between Gragnola and the gauge count to it.
+ */
+const AULELLA_OFF_MAP = 161
 /** Surveyed eave over a building's lowest ground, m, outside which the eave is a survey slip and the default height stands. */
 const EAVE = { min: 1.5, max: 45 }
 const roadOut = (r: RoadF) => ({
@@ -332,14 +346,18 @@ const map: MonzoneMap = {
     }
   }),
   water: water.map((w, i) => {
-    const line = waterLine(w.pts, wp[i]!)
+    const line = waterLine(w.pts, wp[i]!),
+      off = w.name === "Torrente Aulella" ? AULELLA_OFF_MAP : 0
     return {
       id: w.id,
       kind: w.kind,
       ...(w.name === undefined ? {} : { name: w.name }),
       w: w.w,
+      bed: w.bed,
+      depth: w.depth,
       pts: flatLine(line.pts),
       z: line.z.map(r1),
+      area: line.keep.map((k) => Math.round((off + drained[i]![k]!) * 100) / 100),
     }
   }),
   rail: rail.map((r) => ({
@@ -353,7 +371,7 @@ const map: MonzoneMap = {
   pois,
   districts,
   graph: { xy: graph.xy, edges: graph.edges, traffic: graph.traffic, walk: graph.walk },
-  walls: { walk: walls.walk, drive: walls.drive },
+  walls: { walk: walls.walk, shore: walls.shore, drive: walls.drive },
   trees,
   spawns: { player, parked },
 }
@@ -383,8 +401,9 @@ console.log({
   rail: map.rail.length,
   areas: areas.length,
   wallsWalk: walls.walk.length / 4,
+  wallsShore: walls.shore.length / 4,
   wallsDrive: walls.drive.length / 4,
-  blockedCells: { walk: walls.walkCells, drive: walls.driveCells },
+  blockedCells: { walk: walls.walkCells, shore: walls.shoreCells, drive: walls.driveCells },
   nodes: graph.xy.length / 2,
   edges: graph.edges.length / 3,
   traffic: graph.traffic.length,

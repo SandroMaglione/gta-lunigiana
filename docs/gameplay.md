@@ -60,8 +60,14 @@ back once it rests on a seat.
 - Walking speed is 2.2 m/s, sprinting (Shift) 5.5 m/s, with an acceleration of 30 m/s². Wet
   ground and snow slow only tyres, not feet.
 - The body is a circle of radius 0.35 m. It slides along walk walls and never passes through them
-  (`walkBy` in `src/sim/body.ts`). Velocity is what actually happened, so a wall stops it.
+  (`walkBy` in `src/sim/body.ts`). Velocity is what actually happened, so a wall stops it. Water is
+  no wall.
 - Knocked down, the player cannot steer and slides to a stop (10 m/s²).
+- **In a river or stream** the player wades, slower the deeper it is and pushed by the current,
+  until the water reaches his chest or the current takes his feet (an adult's 1.2 m²/s of depth ×
+  speed); then he swims with the current at 0.9 m/s of his own (sprinting, a hard crawl at 1.4
+  m/s), and swims out wherever he heads. He never drowns. Knocked down in the water, the current
+  takes him. The rivers' depth and current follow the rain ([water.md](water.md)).
 
 ## Entering, stealing, carjacking, exiting
 
@@ -177,7 +183,11 @@ Simulation preset). A new game starts on the Balanced preset ([Presets](#presets
   on its roof sleeps on a 50% slope and slides off a 62% one. With the handling's self-righting
   on ([Handling](#handling)), a vehicle lying on its side or roof does not sleep, and one already
   asleep there wakes to roll back onto its wheels; a destroyed one stays where it lies
-  ([Damage](#damage)).
+  ([Damage](#damage)). A vehicle standing in a river never sleeps.
+- **Water**: a river buoys each quarter of the underbody by the water over it, so the springs and
+  tyres unload as it rises (a Panda floats in 0.7 m of still water), drags the body toward its
+  current, and stalls the engine once over its air intake (a Panda's at 0.6 m). Drive walls stop no
+  vehicle at the water's edge ([water.md](water.md#vehicles-in-the-water)).
 
 Events: a wall or ground hit is an `Impact` (a ground hit names the face that struck: `under`
 when the suspension bottoms out on landing, `roof`, `side`, `front`, `rear`), and each step a
@@ -563,6 +573,9 @@ happens around them. `Perceive` (`systems/perceive.ts`, with the vehicle checks 
 
 ### Walking
 
+- **Water.** People take no step into the water by choice, unless they flee; knocked
+  or swept into it, they wade or swim for the nearer bank, and the current takes the down and the
+  dead ([water.md](water.md#people-and-animals-in-the-water)).
 - **Routes.** People walk `graph.walkEdges`: on the verge of roads (w/2 + 0.8 m, on either side)
   and 0.3 m off the middle of paths, steps and tracks. At a junction a walker takes each way with
   the weight of the most lived-in walk edge up to 120 m down it (`WALK_AHEAD`, TUNED: about a
@@ -792,7 +805,8 @@ a party's followers and never binds.
   `EDGE_REACH` = 60 m) never gets one: a lone house or two, the woods and the fields stay empty.
   2,309 of the map's 23,228 walk edges are peopled.
 - The leader stands on a verge at a random point along the edge, never inside a building (where a
-  verge runs into houses that crowd the road) and clear of walk walls; 4 spots are tried a party.
+  verge runs into houses that crowd the road) and clear of walk walls and the water's edge; 4
+  spots are tried a party.
 - Each follower stands at its place beside the leader, or at the mirror place where that is taken;
   with room for neither it stays home, so a kid never comes out alone.
 
@@ -892,6 +906,9 @@ pigs pink 70 %, black 10 %, Cinta Senese (black with a white belt) 20 %.
 
 ### What they do
 
+- **Water.** Animals keep out of the water as people do, unless they bolt; a cow wades a shallow
+  slack stream to its pasture, and in deeper or faster water an animal paddles for the nearer
+  bank ([water.md](water.md#people-and-animals-in-the-water)).
 - **Roaming.** An animal rests (a cat 4–20 s, a dog 3–12, a cow 8–40 grazing, a pig 4–15; TUNED),
   then walks to a random point within its home range of home where it may stand: cows on pasture
   cover (meadow, grassland, farmland), pigs on open ground, cats and dogs anywhere outdoors. Blocked
@@ -947,7 +964,7 @@ pigs come out only where the player is out in the country, with fewer than 60 re
 | Pigs | 0.15 × the rural pens within 140 m (TUNED) | 5 | 1–3 by a pen, 5–15 m off it on open ground | 140 m |
 
 - Each run brings out at most one cat, one dog, one herd and one litter, never indoors and clear of
-  walk walls. Every animal beyond its kind's reach is despawned, the dead and dogs on a lead
+  walk walls and the water's edge. Every animal beyond its kind's reach is despawned, the dead and dogs on a lead
   included. Dogs on a lead come with their walkers ([Parties](#parties)) and count for no kind.
 - Free dogs come out in village outskirts too, where houses stand on meadow or grassland cover
   (Monzone's start has 65 farms within 140 m, Equi Terme 111, Gragnola's centre none).

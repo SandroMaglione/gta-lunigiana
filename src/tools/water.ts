@@ -139,15 +139,16 @@ export const fitUnderDecks = (
   })
 }
 
-/** Output polyline of a water profile: every OSM vertex plus the samples that keep the dips under decks and culverts. */
+/** Output polyline of a water profile: every OSM vertex plus the samples that keep the dips under decks and culverts, and the sample each is. */
 export const waterLine = (
   pts: ReadonlyArray<V>,
   p: Profile,
-): { pts: Array<V>; z: Array<number> } => {
+): { pts: Array<V>; z: Array<number>; keep: Array<number> } => {
   const vertexAt = new Map(p.vertexSample.map((k, v) => [k, pts[v]!]))
   const keep = keepSamples(p, p.vertexSample, 0.1)
   return {
     pts: keep.map((k) => vertexAt.get(k) ?? { x: p.x[k]!, y: p.y[k]! }),
     z: keep.map((k) => p.z[k]!),
+    keep,
   }
 }

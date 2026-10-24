@@ -1,9 +1,26 @@
 import { InputAxis, Ops, Vec2 } from "@typeonce/ritmo-math"
 
 import { walkBy } from "../body.ts"
-import { Down, Driving, Game, Input, Motion, Player, Pose, Time, View } from "../schema.ts"
+import {
+  Down,
+  Driving,
+  Game,
+  Input,
+  InWater,
+  Motion,
+  Person,
+  Player,
+  Pose,
+  Rivers,
+  Time,
+  View,
+} from "../schema.ts"
 import { SPRINT_SPEED, WALK_SPEED } from "../tuning.ts"
 import { screenAxes } from "../view.ts"
+import { FLOW, specificDischarge } from "../water/flow.ts"
+import { waterUnder } from "../water/rivers.ts"
+import { HARD_STROKE, STROKE, waterVelocity } from "../water/swim.ts"
+import { personBuild } from "./water.ts"
 
 /** On-foot acceleration toward the wanted velocity, m/s². */
 const FOOT_ACCEL = 30
@@ -16,7 +33,9 @@ export const slide = (velocity: Vec2.Vec2, dt: number): Vec2.Vec2 =>
 
 /**
  * The player on foot: arrow keys move along the screen axes of the turned view (up key = screen-up),
- * sprint held runs, the body faces where the keys point. Knocked down, it only slides.
+ * sprint held runs, the body faces where the keys point. Knocked down, it only slides. In the water
+ * it wades, slower the deeper it is, or swims with the current (sprint held, a hard crawl); knocked
+ * down there, the current takes it.
  */
 export const PlayerFoot = Game.System(
   "Lunigiana/PlayerFoot",
@@ -27,6 +46,8 @@ export const PlayerFoot = Game.System(
           pose: Game.Query.write(Pose),
           motion: Game.Query.write(Motion),
           down: Game.Query.optional(Down),
+          look: Game.Query.read(Person),
+          wet: Game.Query.optional(InWater),
         },
         with: [Player],
         without: [Driving],
@@ -36,6 +57,7 @@ export const PlayerFoot = Game.System(
       input: Game.System.readResource(Input),
       view: Game.System.readResource(View),
       time: Game.System.thisTick(Game.System.readResource(Time)),
+      rivers: Game.System.readResource(Rivers),
     },
   },
   ({ queries, resources }) => {
@@ -51,13 +73,30 @@ export const PlayerFoot = Game.System(
       const wish = data.down.present
         ? Vec2.zero
         : Vec2.normalizeOr({ x: right.x * ix + up.x * iy, y: right.y * ix + up.y * iy }, Vec2.zero)
-      const velocity = data.down.present
-        ? slide(current, dt)
-        : Vec2.moveToward(
-            current,
-            Vec2.scale(wish, keys.sprint.held ? SPRINT_SPEED : WALK_SPEED),
-            FOOT_ACCEL * dt,
-          )
+      const wet = data.wet.value(),
+        water =
+          wet === undefined
+            ? undefined
+            : waterUnder(pose.x, pose.y, true, specificDischarge(resources.rivers.get(), FLOW))
+      const wanted = Vec2.scale(wish, keys.sprint.held ? SPRINT_SPEED : WALK_SPEED)
+      let velocity: Vec2.Vec2
+      if (wet !== undefined && water !== undefined) {
+        const look = data.look.get(),
+          down = data.down.present
+        velocity = waterVelocity(
+          current,
+          wanted,
+          water,
+          personBuild(look.height),
+          wet.swimming || down,
+          down ? 0 : STROKE[look.age] * (keys.sprint.held ? HARD_STROKE : 1),
+          FOOT_ACCEL,
+          dt,
+        )
+      } else
+        velocity = data.down.present
+          ? slide(current, dt)
+          : Vec2.moveToward(current, wanted, FOOT_ACCEL * dt)
       const moved = walkBy(pose, Vec2.scale(velocity, dt))
       // Velocity is what actually happened, so walls stop it instead of storing it up.
       const real =

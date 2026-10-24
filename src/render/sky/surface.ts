@@ -1,6 +1,6 @@
 /**
- * Surface weather on the lit world: snow, wet ground, puddles, rain rings on the water, cloud
- * shadows and wind-swayed trees, patched into the flat Lambert materials with `onBeforeCompile`.
+ * Surface weather on the lit world: snow, wet ground, puddles, the rivers' level and current
+ * and rain rings on them, cloud shadows and wind-swayed trees, patched into the flat Lambert materials with `onBeforeCompile`.
  * One program per variant (`VARIANTS`, each with its own `customProgramCacheKey`), every effect
  * driven by the shared `SKY_UNIFORMS` cells, never by a `#define` flipped at run time, so the
  * weather never recompiles a shader. Everything is in world space (no seam at a chunk's edge, no
@@ -20,6 +20,7 @@ import {
 
 import { type Air, celsiusAt } from "../../sim/sky/climate.ts"
 import { EDGE, FEATHER, MELT_BAND, MELT_FULL, REACH } from "../../sim/sky/local.ts"
+import { SPEED, STAGE } from "../../sim/water/channel.ts"
 import { ROCK_NORMAL_Y, yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
 import { CUT_GLSL, CUT_UNIFORMS } from "../see-through.ts"
@@ -86,6 +87,12 @@ const GUSTS = [phaseLocked(1.7), phaseLocked(3.1)] as const
 
 /** Rain rings on the water: the share of 0.2 m cells that ring each 1/8 s at `at` mm/h, growing as rate^`power`, capped at `most`. */
 const RIPPLES = { share: 0.02, at: 3, power: 0.6, most: 0.06 } as const
+/**
+ * The current's streaks: `length` × `width` m cells carried downstream at the water's speed, two phases `period` s apart
+ * dissolving into each other so none stretches; a share of them shows, from `calm` on still water to `most` at `fast` m/s and over (TUNED by eye: slack water
+ * is all but clear, a spate's rapids white with them).
+ */
+const STREAKS = { length: 1.6, width: 0.3, period: 2, calm: 0.02, most: 0.3, fast: 3 } as const
 
 /** A number as a GLSL float literal. */
 const num = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n))
@@ -132,6 +139,12 @@ float weatherClouds(vec2 p) {
 `
 
 const VERTEX_PARS = /* glsl */ `
+#ifdef WEATHER_WATER
+attribute float stage;
+attribute vec3 flow;
+uniform float uRiverStage;
+varying vec3 vRiverFlow;
+#endif
 #ifdef WEATHER_TREE
 attribute float canopy;
 uniform float uTime;
@@ -143,12 +156,17 @@ uniform vec3 uSwayAxis;
 `
 
 /**
- * After `begin_vertex`: the rest pose (what the snow and the clouds are locked to), then the tree's
+ * After `begin_vertex`: a river's surface lifted off its bed to the depth the rivers run at (its
+ * vertex's `stage` × q^STAGE, as `waterAt` has it), the rest pose (what the snow and the clouds are locked to), then the tree's
  * sway. A canopy moves rigidly by whole texels along the camera's right (a sprite's wobble: the
  * static world never shimmers), converted back into the unit shape's frame (Rᵀ·w / s); the trunk
  * stays. The shadow pass draws the rest pose.
  */
 const VERTEX_SWAY = /* glsl */ `
+#ifdef WEATHER_WATER
+  transformed.y += stage * uRiverStage;
+  vRiverFlow = flow;
+#endif
 vec3 weatherRest = transformed;
 #if defined( WEATHER_TREE ) && defined( USE_INSTANCING )
 {
@@ -183,6 +201,10 @@ uniform vec2 uCloudOffset;
 uniform vec3 uSkyColour;
 uniform float uTime;
 uniform float uRipples;
+#ifdef WEATHER_WATER
+varying vec3 vRiverFlow;
+uniform float uRiverSpeed;
+#endif
 #define WEATHER_FEATHER ${num(FEATHER)}
 #define WEATHER_MELT ${num(MELT_BAND)}
 #define WEATHER_MELT_FULL ${num(MELT_FULL)}
@@ -197,8 +219,8 @@ ${CUT_GLSL}
  * them at this point (cover over ±FEATHER m of the ragged edge; meltwater wetting a MELT m band
  * below it where the air thaws, fully from MELT_FULL °C), snow only on faces flatter than the
  * cliffs, drawn as a world-locked stipple of 0.25 m grains clumped by 1.5 m patches (a crisp
- * pixel-art edge); puddles on flat road that mirror the sky (≈ 11 % of it, fully wet); rain rings on
- * the water; and the cloud over this point, which `weatherSun` takes off the directional light below.
+ * pixel-art edge); puddles on flat road that mirror the sky (≈ 11 % of it, fully wet); the current's
+ * streaks and rain rings on the water; and the cloud over this point, which `weatherSun` takes off the directional light below.
  */
 const fragmentSurface = (): string => /* glsl */ `
 vec3 weatherNormal = transformNormalByInverseViewMatrix(normal, viewMatrix);
@@ -227,6 +249,24 @@ vec2 weatherMap = vec2(vWeatherWorld.x, -vWeatherWorld.z);
 }
 #endif
 #ifdef WEATHER_WATER
+{
+  // The current: streaks carried downstream at the water's mean speed there, two phases crossfaded.
+  vec2 down = normalize(vRiverFlow.xy + vec2(1e-6, 0.0));
+  vec2 across = vec2(-down.y, down.x);
+  float speed = vRiverFlow.z * uRiverSpeed;
+  float share = mix(${num(STREAKS.calm)}, ${num(STREAKS.most)}, clamp(speed / ${num(STREAKS.fast)}, 0.0, 1.0));
+  float streak = 0.0;
+  for (int i = 0; i < 2; i++) {
+    float phase = fract(uTime / ${num(STREAKS.period)} + 0.5 * float(i));
+    vec2 q = weatherMap - down * (speed * ${num(STREAKS.period)} * phase);
+    vec2 c = floor(vec2(dot(q, down) / ${num(STREAKS.length)}, dot(q, across) / ${num(STREAKS.width)}));
+    float on = float(0.5 + 0.5 * weatherLattice(c + vec2(4001.0 * float(i), 3001.0)) > 1.0 - share);
+    // Each streak shows for its own share of its phase's life, so the two phases dissolve into each other cell by cell.
+    float life = 0.5 + 0.5 * weatherLattice(c + vec2(17.0, 4001.0 * float(i)));
+    streak = max(streak, on * float(life < 1.0 - abs(2.0 * phase - 1.0)));
+  }
+  totalEmissiveRadiance += uSkyColour * (0.5 * streak);
+}
 {
   vec2 cell = floor(weatherMap * 5.0);
   float tick = floor(WEATHER_TICKS * uTime + WEATHER_TICKS * (0.5 + 0.5 * weatherLattice(cell)));
@@ -324,6 +364,8 @@ export interface Surface {
   readonly wind: { readonly x: number; readonly y: number }
   /** Rain falling at the focus, mm/h (`SkyFrame.rain`): rings on the water. */
   readonly rain: number
+  /** What the rivers carry, m³/s per km² of catchment (`SkyViewModel.flow`): how high and fast they run. */
+  readonly flow: number
   /** The view's zoom, texels per metre (`PixelView.texelsPerMetre`): the sway's whole texels. */
   readonly texelsPerMetre: number
   /** The camera's right axis, three space (`viewAxes(view.yaw).right`): the sway's direction. */
@@ -372,6 +414,8 @@ export const applySurface = (s: Surface): void => {
   u.uSkyColour.value.copy(s.skyColour)
   u.uRipples.value =
     s.rain > 0 ? Math.min(RIPPLES.most, RIPPLES.share * (s.rain / RIPPLES.at) ** RIPPLES.power) : 0
+  u.uRiverStage.value = s.flow > 0 ? s.flow ** STAGE : 0
+  u.uRiverSpeed.value = s.flow > 0 ? s.flow ** SPEED : 0
   const speed = Math.hypot(s.wind.x, s.wind.y)
   u.uSway.value = Math.min(SWAY.most, SWAY.perMs * Math.max(0, speed - SWAY.from))
   // The wind's share along the camera's right: three x is east, three z is south.

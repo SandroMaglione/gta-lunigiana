@@ -79,30 +79,33 @@ farm list about 9 ms of it); a test that has not built the cover pays for it her
 | 7 | `ApplyWeather` | `index.ts` | each `SetWeather` request forces a regime or hands the weather back to the day's plan, settled at once when asked, under the plan of the day the clock is on |
 | 8 | `AdvanceClock` | `systems/sky.ts` | moves `GameClock` on by its rate (a game second a step at rate 1); at rate 0 it stands still, unwritten |
 | 9 | `AdvanceWeather` | `systems/sky.ts` | over the step's game seconds, draws the day's plan from the weather seed when a new Rome day begins (at rate 0 only that), moves toward the regime it sets for the hour and eases `Weather` toward it, wetting, drying, snowing and thawing the ground; over its real time, drifts a thunderstorm's cell and emits `Lightning`, drawing from `WeatherRng` |
-| 10 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
-| 11 | `applyDeferred` | | applies the enter/exit commands, so the blast knows who sits in which vehicle |
-| 12 | `Explode` | `systems/explosions.ts` | lights a burning wreck's fuse; a wreck whose fuse has burnt down blows up (`Explosion`): hits and shoves the vehicles near it, kills, knocks down and scares the people |
-| 13 | `applyDeferred` | | applies the blast's deaths and knockdowns before anything moves |
-| 14 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down |
-| 15 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
-| 16 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`, braking for vehicles, people and animals, slower and keeping further back where the road is wet or snowy; a driver held up honks (`Honk`) |
-| 17 | `Pedestrians` | `systems/pedestrians.ts` | people move as their mood says: walk their routes, keep by their leader, stop, gather, run; the down and the dead slide |
-| 18 | `Animals` | `systems/animals.ts` | animals rest, wander, keep by their walker and run from what scares them; free dogs bark; the down and the dead slide; cries are `Cry` events |
-| 19 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`, each tyre's grip lowered by the wet and the snow under it; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
-| 20 | `Contacts` | `systems/contacts.ts` | car–car, car–person, car–animal, person and animal contacts, knockdowns and deaths (`Down`, `Dead`); car–car hits, knockdowns, kills, a cow struck and a car stopped against a wall by a pinned person or animal (faster than `KNOCK_SPEED`) are `Impact` events |
-| 21 | `CrashDamage` | `systems/damage.ts` | this step's `Impact` events wear the vehicles they struck (`Damage`); a traffic car destroyed is abandoned, its driver fleeing |
-| 22 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
-| 23 | `Recover` | `systems/contacts.ts` | knocked-down people and animals get up, never the dead; pedestrians then flee, animals bolt |
-| 24 | `Perceive` | `systems/perceive.ts` | pedestrians take in this step's hits, crashes and horns, and the vehicles, bodies and people around them, and set their moods; cries are `Cry` events; marks `Witness`es, lets go of a leader gone or dead |
-| 25 | `Startle` | `systems/animals.ts` | cats and pigs run from this step's crashes and struck bodies (`Cry`) |
-| 26 | `Respawn` | `systems/explosions.ts` | the dead player comes back on foot at the start after 4 s |
-| 27 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and parties of people (the dead beyond 140 m, like the living), and removes destroyed vehicles once out of view (`VIEW_REACH`) |
-| 28 | `PopulateAnimals` | `systems/populate-animals.ts` | every 0.5 s spawns and despawns the free animals |
-| 29 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
+| 10 | `AdvanceRivers` | `systems/sky.ts` | over the step's game seconds, the weather's precipitation fills the catchments' snow, soil and stores and they drain into the rivers (`Rivers`, [water.md](water.md)) |
+| 11 | `EnterExit` | `systems/enter-exit.ts` | action key: enter, steal, carjack, get out |
+| 12 | `applyDeferred` | | applies the enter/exit commands, so the blast knows who sits in which vehicle |
+| 13 | `Explode` | `systems/explosions.ts` | lights a burning wreck's fuse; a wreck whose fuse has burnt down blows up (`Explosion`): hits and shoves the vehicles near it, kills, knocks down and scares the people |
+| 14 | `Wade` | `systems/water.ts` | who is in the water: every person on foot and every animal in a river or stream gets `InWater`, swimming once off its feet, and loses it on dry ground |
+| 15 | `applyDeferred` | | applies the blast's deaths and knockdowns, and who is in the water, before anything moves |
+| 16 | `PlayerFoot` | `systems/foot.ts` | player walking, sprinting, sliding when down; in the water wading or swimming with the current |
+| 17 | `PlayerDrive` | `systems/drive.ts` | player keys into the driven car's `CarInput` |
+| 18 | `TrafficAI` | `systems/traffic.ts` | AI drivers write their `CarInput`, braking for vehicles, people and animals, slower and keeping further back where the road is wet or snowy; a driver held up honks (`Honk`) |
+| 19 | `Pedestrians` | `systems/pedestrians.ts` | people move as their mood says: walk their routes, keep by their leader, stop, gather, run; the down and the dead slide; out of their depth in the water they make for the bank, and the current takes the down and the dead |
+| 20 | `Animals` | `systems/animals.ts` | animals rest, wander, keep by their walker and run from what scares them; free dogs bark; the down and the dead slide; out of their depth in the water they paddle for the bank; cries are `Cry` events |
+| 21 | `VehiclePhysics` | `systems/physics.ts` | every vehicle moves on its springs and tyres from its `CarInput` under the `Handling`, each tyre's grip lowered by the wet and the snow under it, buoyed and dragged by a river and its engine stalled under one; wall and ground hits are `Impact` events, sliding tyres `Skid` events |
+| 22 | `Contacts` | `systems/contacts.ts` | car–car, car–person, car–animal, person and animal contacts, knockdowns and deaths (`Down`, `Dead`); car–car hits, knockdowns, kills, a cow struck and a car stopped against a wall by a pinned person or animal (faster than `KNOCK_SPEED`) are `Impact` events |
+| 23 | `CrashDamage` | `systems/damage.ts` | this step's `Impact` events wear the vehicles they struck (`Damage`); a traffic car destroyed is abandoned, its driver fleeing |
+| 24 | `RideAlong` | `systems/drive.ts` | the driving player takes the car's pose and motion |
+| 25 | `Recover` | `systems/contacts.ts` | knocked-down people and animals get up, never the dead; pedestrians then flee, animals bolt |
+| 26 | `Perceive` | `systems/perceive.ts` | pedestrians take in this step's hits, crashes and horns, and the vehicles, bodies and people around them, and set their moods; cries are `Cry` events; marks `Witness`es, lets go of a leader gone or dead |
+| 27 | `Startle` | `systems/animals.ts` | cats and pigs run from this step's crashes and struck bodies (`Cry`) |
+| 28 | `Respawn` | `systems/explosions.ts` | the dead player comes back on foot at the start after 4 s |
+| 29 | `Populate` | `systems/populate.ts` | every 0.5 s spawns and despawns traffic and parties of people (the dead beyond 140 m, like the living), and removes destroyed vehicles once out of view (`VIEW_REACH`) |
+| 30 | `PopulateAnimals` | `systems/populate-animals.ts` | every 0.5 s spawns and despawns the free animals |
+| 31 | `applyDeferred` | | applies spawns, despawns, inserts and removals |
 
-Controls, the handling, the clock and the weather are settled before movement, a blast is set off
-once getting in and out are applied and before anything moves, all movement happens before
-contacts, crash damage is counted after both, from the same step's hits, and contacts happen
+Controls, the handling, the clock, the weather and the rivers are settled before movement, a blast
+is set off once getting in and out are applied and before anything moves, who is in the water is
+settled with it (the movement systems read `InWater` and the water under them this step), all
+movement happens before contacts, crash damage is counted after both, from the same step's hits, and contacts happen
 before the player's pose follows the car. The physics drives on the crash damage counted the step
 before, and on a blast's in the same step. `Perceive` and `Startle` run after the contacts and
 `Recover` because they read this step's `Impact` and `Honk` events, which a save does not keep:
@@ -110,7 +113,7 @@ read a step later, a restored game would miss them. The moods they set move peop
 from the next step. `TrafficAI` and `VehiclePhysics` read `GameClock` and `Weather` and work out
 the air once a step (`airAt`), so every wheel meets the wet and the snow this step's weather left,
 meltwater included. Gameplay is in [gameplay.md](gameplay.md), the weather in
-[weather.md](weather.md).
+[weather.md](weather.md), the rivers and who meets them in [water.md](water.md).
 
 ### Where state lives
 
@@ -128,6 +131,7 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 | `Down` | knocked-down and dead people and animals | step at which they get up; for the `Dead`, the step they died, and `Recover` never lifts them |
 | `Dead` | the killed: pedestrians and animals a vehicle struck, people on foot by a blast, the player in a wreck that blew up | step they died (`since`); always with `Down` |
 | `Animal` | animals | species (`dog`, `cat`, `cow`, `pig`), coat and patch colours, size × the species' usual (immutable) |
+| `InWater` | the player on foot, pedestrians, animals in a river or stream | `swimming`: off its feet; while it has it, it is in the water under a bridge, not on its deck |
 | `Roam` | animals | mood (`idle`, `walk`, `flee`), the step it ends, home (hx, hy), and the point (tx, ty) it walks to or runs from |
 | `Vehicle` | vehicles | model and paint colour (immutable) |
 | `CarInput` | vehicles | throttle, steer, handbrake for this step |
@@ -143,11 +147,12 @@ Saved world state (in snapshots), declared in `src/sim/schema.ts`:
 `Pedestrian` the same and a `Route`; an `Animal` a pose, previous pose, motion and `Roam`; a
 follower a pose, previous pose and motion; a `Witness` is a `Pedestrian`; a `Vehicle` has a pose,
 previous pose, motion, `CarInput`, `Chassis` and `Damage`; `Traffic` also needs `Route` and
-`Autopilot`; the `Dead` are always `Down`. Spawns put a vehicle on its springs at rest on the
-ground (`settle` in `src/sim/chassis.ts`), in the gear for its speed, undamaged. No save is ever
+`Autopilot`; the `Dead` are always `Down`; `InWater` needs a pose and motion. Spawns put a
+vehicle on its springs at rest on the ground (`settle` in `src/sim/chassis.ts`), in the gear for
+its speed, undamaged. No save is ever
 persisted, so the new and reshaped state (`Chassis`, `Damage`, `Dead`, the wider `Person` and
-`Pedestrian`, `Handling` with its `weatherGrip` knob, `GameClock`, `WeatherRng` and `Weather`)
-needs no snapshot migration.
+`Pedestrian`, `Handling` with its `weatherGrip` knob, `GameClock`, `WeatherRng`, `Weather`,
+`Rivers` and `InWater`) needs no snapshot migration.
 
 Saved resources:
 
@@ -160,6 +165,7 @@ Saved resources:
 | `View` | `turns`, the net quarter turns of the camera; driving, the seat nearest the car's heading |
 | `Handling` | the 16 handling knobs ([gameplay.md](gameplay.md#handling)) |
 | `GameClock` | `seconds`, the game time in whole Unix UTC seconds, and `rate`, the game seconds each step adds: 1 in play (a game minute per real second, a 24-minute day), 0 standing still, up to 3600 from the dev debug menu |
+| `Rivers` | the catchments' water, mm over them: `snow` lying, `soil` moisture, `quick` runoff and `slow` groundwater in store; every river and stream runs at the discharge per km² they give (`specificDischarge`) times its own catchment ([water.md](water.md)). A new game's comes from the year before its start under the weather seed's plans (`initialRivers`) |
 | `Weather` | the weather `seed` (never changed); the `regime` it moves toward and whether it is `forced`; the eased `cloud`, `precip` (mm/h at sea level), `storm`, `wind` (on the map's low ground) and `windAngle`, `gust`, `fog` and temperature `anomaly`; the ground's `wet` and `snowLine` (m a.s.l.); the storm cell's centre (`cellX`, `cellY`); and the day's `plan` (its Rome `day`, whether `drawn`, `from` when it holds, `wet`, a wet day's `event`, `intensity`, `start`, `end` and `precip`, the `sky`, a dry day's `fog` until `lift` and strong wind from `windyFrom` to `windyTo`, and the `airMass`; times in seconds since the Rome day's midnight) |
 
 `Input` is transient: it is rebuilt every step and never saved.
@@ -229,6 +235,10 @@ the first physics step finds it ready. The lookups are compact static grids (`st
 - `edgeIndex` (`src/sim/edges.ts`, re-exported by `src/sim/route.ts`), with its instances
   `trafficIndex` and `walkIndex` (`src/sim/route.ts`) and `peopledIndex`, answers nearest-edge and
   spawn-band lookups without scanning the whole graph.
+- `waterAt` (`src/sim/water/rivers.ts`) finds the nearest reach of a river or stream within its
+  bed in a 32 m grid of the map's reaches, each with its two vertices' bed, depth and speed per
+  unit discharge (`channelOf` in `src/sim/water/channel.ts`, built at load). `initialRivers` keeps the rivers it has worked out for a start
+  and seed (a pure function of them), and `petAt` the evapotranspiration's heat index per latitude.
 - `groundZ` (`src/sim/map/ground.ts`) is where every wheel, foot, sound source and drawn actor
   stands, in m a.s.l.: the terrain as its mesh is drawn (each 4 m cell split along its SW–NE
   diagonal), at-grade roads `ROAD_LIFT` above their profile (blended where several overlap, so a
@@ -554,7 +564,8 @@ People and animals (`src/render/people.ts`, `src/render/animals.ts`, sharing `fi
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
 (buildings, roofs, bridges, platforms, the street lamps' iron and lantern bodies), a decal mesh
-(roads, rail), a water mesh (rivers and streams), a glow mesh (lit window panes and lantern glass)
+(roads, rail), a water mesh (rivers and streams, laid on their beds: the shader lifts them to the
+level the rivers run at, [water.md](water.md#how-it-looks)), a glow mesh (lit window panes and lantern glass)
 and one `InstancedMesh` per tree kind; the water and glow meshes exist only where the chunk has
 some. A 192 m apron of extra chunks continues the terrain, lines and trees beyond the map
 bounds. Terrain cells take their colours from the land cover (`src/sim/map/cover.ts`, painted by
@@ -784,7 +795,7 @@ never recompiles a shader.
 | `solidMaterial` | `solid` | buildings, bridges, platforms, the lamps' iron | snow, wet darkening, cloud shadows |
 | `terrainMaterial` | `terrain` | the terrain | snow, wet darkening, cloud shadows |
 | `decalMaterial` | `road` | roads, rail | snow (0.6 of it), wet darkening, puddles, cloud shadows |
-| `waterMaterial` | `water` | rivers, streams | rain rings, cloud shadows; no snow, no darkening |
+| `waterMaterial` | `water` | rivers, streams | the level and the current's streaks the rivers run at, rain rings, cloud shadows; no snow, no darkening |
 | `treeMaterial` | `tree` | the instanced trees | snow on the canopy tops, wet darkening, cloud shadows, sway |
 | `actorMaterial` | `actor` | people, animals, vehicles, tyre marks, smoke | cloud shadows only |
 | `bloodMaterial` | `actor` | blood pools, pulled toward the camera like the decals | cloud shadows only |
@@ -802,9 +813,11 @@ never recompiles a shader.
   sim.
 - Snow settles only on faces flatter than `ROCK_NORMAL_Y` (0.64, `terrain.ts`), the slope the
   terrain paints as bare rock, so cliffs stay bare.
-- Rivers and streams left the decal mesh for their own layer (`RibbonSpec.layer` in `lines.ts`),
+- Rivers and streams left the decal mesh for their own layer (`RibbonSpec.flowing` in `lines.ts`),
   cut by the same chunk rule, so a chunk still equals a cut: water takes no snow and no wet
-  darkening.
+  darkening. Its vertices lie on the bed and carry `stage` and `flow` (`WaterTriangles` in
+  `geometry.ts`); `uRiverStage` (q^0.547) lifts them to the rivers' level and `uRiverSpeed`
+  (q^0.453) carries the streaks, both written by `applySurface` from `SkyViewModel.flow`.
 - Cost: +0.015 ms a render at Monzone with snow, wet, clouds and wind on (0.25–0.27 ms against
   0.24–0.26 ms unpatched, 640 × 317 target, about 92 draw calls).
 
@@ -901,7 +914,11 @@ the day cycle:
 
 A four-minute night drive in the storm also held 60 fps with no frame over 16.8 ms. In Node, 83
 chunk builds swept through Monzone take 0.92 ms on average and 2.6 ms at worst, against 0.88 and
-2.3 ms before the glow and water meshes and the lamps.
+2.3 ms before the glow and water meshes and the lamps. With the rivers' level and current (the
+water ribbons over the whole bed, with their own attributes), the 121 chunks within 640 m of Monzone
+station build in 0.40 ms on average and 2.05 ms at worst, against 0.38 and 1.59 ms before (Node,
+the third pass); a minute of a spate on the Lucido with the player swimming in it holds 60 fps
+with no frame over 16.8 ms, 19 programs and 72 draw calls (headless Chrome, seed 1).
 
 ## Audio
 
@@ -932,7 +949,8 @@ sky store `SkyView`:
   `driving`, `down`, `dead`), the driven vehicle's label and speed, the vehicle in reach (label,
   occupied, stolen), the score, and the view's quarter turns.
 - `SkyView` returns a `SkyViewModel`: the game time (`seconds`) and `rate`, the Rome wall clock at
-  that time (`local`), and the `Weather` value, its seed and day plan included. Host code calls the
+  that time (`local`), the `Weather` value, its seed and day plan included, and what the rivers
+  carry (`flow`, m³/s per km² of catchment). Host code calls the
   sim's pure sky functions on it itself (`conditionsAt`, `sunOver`, `describeWeather`, `regimeAt`,
   `untilChange`), so the HUD reads the weather as the physics and the sound do; the month's odds
   are module content, which the menu reads with `oddsAt` at `place()`'s latitude.
@@ -1175,7 +1193,8 @@ step, and git hooks run the first three before a commit or push.
     the phase-locked sines; in `src/render/__tests__/`, `stand-ins.test.ts`: every material a world
     build and the actors draw has a stand-in; `pipeline.test.ts`: `compile` builds into the scene's
     target; `actors.test.ts`: the vehicle lamps and the x-ray's yellow; `buildings.test.ts`: lit
-    panes on homes only; `world.test.ts`: the glow and water meshes; `sightline.test.ts`: a person
+    panes on homes only; `world.test.ts`: the glow and water meshes; `index.test.ts`: no x-ray in
+    the water, a swimmer floating at its shoulders; `sightline.test.ts`: a person
     behind a house near the spawn, under a tree's crown or under the ground is hidden, the player at
     the spawn is not, a hill hiding a road says where it meets the line, and the cut's easing, hold,
     radius, ground depth, reduced motion and sim time going back.

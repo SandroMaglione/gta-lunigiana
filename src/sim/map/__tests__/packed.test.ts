@@ -37,7 +37,11 @@ test("packMap and decodeMap round-trip the map file: negative values, the widest
     pois: [],
     districts: [{ name: "Monzone\nAlto", x: 0, y: 0, r: 30 }], // a newline in a string must not end the JSON line
     graph: { xy: [0, 0, 1, 1], edges: [0, 1, 0], traffic: [0], walk: [0] },
-    walls: { walk: [-1000.5, -20.3, 50.1, 9.9, 100000.7, -200000.1, 0, 0], drive: [] },
+    walls: {
+      walk: [-1000.5, -20.3, 50.1, 9.9, 100000.7, -200000.1, 0, 0],
+      shore: [1.5, 2.5, 3.5, 4.5],
+      drive: [],
+    },
     // tree x from the origin: -32768 then -1, deltas -32768 and +32767, the widest 2-byte zigzag codes
     trees: [-32918, -120, 0.8, -151, 19, 1.3],
     spawns: { player: { x: 1, y: 2, angle: -0.5 }, parked: [{ x: 3, y: 4, angle: 1 }] },

@@ -2,7 +2,7 @@
  * The map file `monzone.bin` and its decoder (encoder: `packMap` in `src/tools/pack.ts`). The
  * file is gzip of one JSON line (`MonzoneMapJson`: the map with its three big numeric parts
  * replaced by counts), a newline, then those parts as packed sections in file order: heightmap,
- * walk walls, drive walls, trees. A section holds n integers as the zigzag-coded difference from
+ * walk walls, shore walls, drive walls, trees. A section holds n integers as the zigzag-coded difference from
  * the value `stride` places back (from 0 for the first `stride`), split into byte planes: the
  * low byte of every value, then the next byte of every value. Neighbours differ little and like
  * bytes sit together, so the gzipped file is less than half the base64 JSON it replaced.
@@ -130,11 +130,17 @@ export const decodeMap = (file: Uint8Array): MonzoneMap => {
     heightmap.cols,
   )
   const walk = unpackWalls(section(4 * walls.walk, 4, 2), bounds)
+  const shore = unpackWalls(section(4 * walls.shore, 4, 2), bounds)
   const drive = unpackWalls(section(4 * walls.drive, 4, 2), bounds)
   const treeData = unpackTrees(section(3 * trees, 2, 3), bounds)
   if (at !== file.length)
     throw new Error(
       `map: the sections end at byte ${at} of ${file.length}; monzone.bin and this decoder disagree`,
     )
-  return { ...json, heightmap: { ...heightmap, data }, walls: { walk, drive }, trees: treeData }
+  return {
+    ...json,
+    heightmap: { ...heightmap, data },
+    walls: { walk, shore, drive },
+    trees: treeData,
+  }
 }

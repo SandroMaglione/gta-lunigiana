@@ -73,8 +73,8 @@ const SAME_WALL = 0.6
 /**
  * What a vehicle hitting a drive wall at the contact point (x, y) hit, by how it sounds: the
  * nearest tree trunk, building wall or barrier within `reach` m, if it is the nearest drive wall;
- * else the bank itself, rock in the bare-stone covers and earth elsewhere (a steep bank, a
- * stream's edge, the end of the map).
+ * else the bank itself, rock in the bare-stone covers and earth elsewhere (a steep bank, the end
+ * of the map).
  */
 export const wallAt = (x: number, y: number, reach = 3): Material => {
   let wall = Infinity

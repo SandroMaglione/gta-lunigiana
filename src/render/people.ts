@@ -1,7 +1,7 @@
 /**
  * People: a low-poly box figure built from the whole look (height and age, sex, outfit, hairdo,
- * colours) in seven frames (standing, two walk steps, two run steps, hands to the head, a talking
- * gesture), the rule that picks the frame for what the person is doing, and the x-ray proxies the
+ * colours) in nine frames (standing, two walk steps, two run steps, hands to the head, a talking
+ * gesture, two strokes of a crawl), the rule that picks the frame for what the person is doing, and the x-ray proxies the
  * player shows (one per gait, one lying down). A figure faces local +X with its right on +Z; its
  * feet stand on y = 0.
  *
@@ -17,7 +17,17 @@ import { at, Figure, FigureNode, leaning, seeded, type Basis, type Vec } from ".
 import { PALETTE } from "./palette.ts"
 
 /** A person's frames. */
-export const PERSON_FRAMES = ["stand", "walk1", "walk2", "run1", "run2", "shock", "talk"] as const
+export const PERSON_FRAMES = [
+  "stand",
+  "walk1",
+  "walk2",
+  "run1",
+  "run2",
+  "shock",
+  "talk",
+  "swim1",
+  "swim2",
+] as const
 /** A person's frame. */
 export type PersonFrame = (typeof PERSON_FRAMES)[number]
 
@@ -88,6 +98,29 @@ const STANCES: Record<PersonFrame, Stance> = {
   },
   shock: { lean: 0, legs: [STILL, STILL], arms: ["head", "head"] },
   talk: { lean: 0, legs: [STILL, STILL], arms: [HANG, [0.25, 1.5]] },
+  // A crawl, the body leaning into the water: one arm reaching ahead over the head, the other pulling back, the legs kicking.
+  swim1: {
+    lean: 0.9,
+    legs: [
+      [0.3, 0.5],
+      [-0.3, 0.2],
+    ],
+    arms: [
+      [2.6, 0.3],
+      [-0.5, 0.5],
+    ],
+  },
+  swim2: {
+    lean: 0.9,
+    legs: [
+      [-0.3, 0.2],
+      [0.3, 0.5],
+    ],
+    arms: [
+      [-0.5, 0.5],
+      [2.6, 0.3],
+    ],
+  },
 }
 
 /** The point `length` m from `from` along a limb swung `angle` rad forward of straight down. */
@@ -282,6 +315,12 @@ const RUN_STEP = 0.8
 const TALK_BEAT = 1.1
 /** A walk cycle by half steps: one leg forward, legs passing, the other forward, passing. */
 const WALK_CYCLE = ["walk1", "stand", "walk2", "stand"] as const
+/** Seconds an arm's stroke takes swimming (estimate: an unhurried crawl's 0.8 strokes a second). */
+const STROKE_TIME = 1.25
+/** How far under the surface a swimmer's feet float, as a share of its height: the water at its shoulders as it leans into the stroke. */
+const SWIM_SINK = 0.66
+/** How far under the surface a body lying in the water floats, m: face down, its back awash. */
+const LYING_SINK = 0.15
 
 /** What picks a person's frame: what it does, how fast it goes (m/s), how far it has gone (m), the sim time (s) and its height. */
 export interface Doing {
@@ -293,15 +332,20 @@ export interface Doing {
   /** A stable phase in [0, 1) of its own, so two talkers do not gesture in step. */
   readonly phase: number
   readonly height: number
+  /** Off its feet in a river. */
+  readonly swimming: boolean
 }
 
 /**
- * The frame for what a person is doing: lying flat (down or dead) on the standing frame; hands to the head in shock; talking,
+ * The frame for what a person is doing: lying flat (down or dead) on the standing frame; swimming, stroke by stroke; hands to
+ * the head in shock; talking,
  * standing and gesturing by turns; running when fleeing or going faster than a walk, stepping by the distance covered;
  * walking through the walk cycle by half steps.
  */
 export const framePerson = (d: Doing): PersonFrame => {
   if (d.lying) return "stand"
+  if (d.swimming)
+    return Math.floor(d.clock / STROKE_TIME + d.phase * 2) % 2 === 0 ? "swim1" : "swim2"
   if (d.mood === "shock") return "shock"
   if (d.speed < STILL_SPEED)
     return d.mood === "chat" && Math.floor(d.clock / TALK_BEAT + d.phase * 2) % 2 === 1
@@ -333,6 +377,9 @@ export class PersonNode extends FigureNode<PersonFrame> implements Doing {
   mood: Mood = "walk"
   speed = 0
   clock = 0
+  swimming = false
+  /** In a river: the water hides what is under its surface, and no x-ray shows it. */
+  wet = false
   private xrayed = false
 
   constructor(look: Look, material: Material, seed = 0) {
@@ -352,12 +399,20 @@ export class PersonNode extends FigureNode<PersonFrame> implements Doing {
     this.phase = seeded(seed + 0x9e3779b9)()
   }
 
+  /** In the water (`wet`), floating in it when its surface is at render y `surface` (undefined: standing on the bed), swimming or lying. */
+  floating(wet: boolean, surface: number | undefined, swimming: boolean): void {
+    this.wet = wet
+    this.afloat = surface
+    this.swimming = surface !== undefined && swimming && !this.lying
+    this.sink = this.lying ? LYING_SINK : SWIM_SINK * this.height
+  }
+
   /** Shows the frame for what it is doing now, and the x-ray proxy that fits it if its silhouette shows. */
   pose(): void {
     const frame = framePerson(this)
     this.body.geometry = this.frames[frame]
     this.showProxy(
-      this.xrayed
+      this.xrayed && !this.wet
         ? this.lying
           ? "lying"
           : frame === "run1" || frame === "run2"

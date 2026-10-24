@@ -162,6 +162,10 @@ export class FigureNode<Frame extends string> extends ActorNode {
   walked = 0
   /** Down or dead. */
   lying = false
+  /** Render y of the water's surface when it floats in a river (swimming, or lying in it), else undefined: it stands on the bed. */
+  afloat: number | undefined = undefined
+  /** How far under the surface its origin (its feet standing) floats, m: its own for swimming and for lying (`floating`). */
+  protected sink = 0
   protected readonly lies: Lying
   private readonly bleeding: Bleeding
   private last: { readonly x: number; readonly y: number } | undefined = undefined
@@ -183,11 +187,14 @@ export class FigureNode<Frame extends string> extends ActorNode {
     this.add(this.pool)
   }
 
-  /** Stands the node on the ground under map point (x, y), facing `angle`, and adds the metres covered to `walked`. */
+  /**
+   * Stands the node on the ground under map point (x, y), or floats it `sink` under the water's surface (never under the bed),
+   * facing `angle`, and adds the metres covered to `walked`.
+   */
   place(x: number, y: number, angle: number): void {
     const h = groundY(x, y, this.elevation)
     this.elevation = h
-    this.position.set(x, h, -y)
+    this.position.set(x, this.afloat === undefined ? h : Math.max(h, this.afloat - this.sink), -y)
     this.rotation.y = angle
     if (this.last !== undefined) this.walked += Math.hypot(x - this.last.x, y - this.last.y)
     this.last = { x, y }
