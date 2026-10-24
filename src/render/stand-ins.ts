@@ -16,6 +16,7 @@ import {
   actorMaterial,
   decalMaterial,
   solidMaterial,
+  terrainMaterial,
   treeMaterial,
   waterMaterial,
 } from "./geometry.ts"
@@ -43,6 +44,7 @@ export const standIns = (): { readonly group: Group; readonly dispose: () => voi
   group.add(
     ...[
       solidMaterial,
+      terrainMaterial,
       decalMaterial,
       waterMaterial,
       glowMaterial,

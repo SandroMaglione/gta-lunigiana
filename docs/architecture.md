@@ -329,7 +329,8 @@ frame it:
 
 1. writes the loop's `alpha` (fraction of a step since the last one) into `RenderClock`;
 2. ticks the `render` and `audio` schedules (`runtime.tick(render, audio)`); the render's `DrawSky`
-   hands the sky host the clock, the weather, the steps' lightning and the cars with lamps on;
+   hands the sky host the clock, the weather, the steps' lightning and the cars with lamps on, and
+   its `FollowPlayer` hands the see-through cut the player as drawn;
 3. reads `PlayerView` and moves and turns the camera;
 4. draws the sky for the moved camera (`skyHost.draw`: light, shadows, fog, rain, bolts, night
    lights; see [The sky](#the-sky));
@@ -351,9 +352,9 @@ card the clock reads `DEFAULT_START` and the HUD 08:00, and 60 steps after the c
 
 ## Rendering
 
-The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`. Its ten systems run
+The render schedule (`src/render/index.ts`) uses `@typeonce/ritmo-render`. Its eleven systems run
 in this order: `SyncPeople`, `SyncAnimals`, `SyncVehicles`, `MarkDriven`, `PlacePeople`,
-`PlaceAnimals`, `PlaceVehicles`, `SpreadPools`, `DrawEffects`, `DrawSky`.
+`PlaceAnimals`, `PlaceVehicles`, `SpreadPools`, `DrawEffects`, `DrawSky`, `FollowPlayer`.
 
 - `SyncPeople`, `SyncAnimals` and `SyncVehicles` (`RenderSync.system`) keep one three.js node per
   entity with a `Person`, an `Animal` or a `Vehicle`, in the `People`, `Animals` and `Vehicles`
@@ -477,8 +478,12 @@ in this order: `SyncPeople`, `SyncAnimals`, `SyncVehicles`, `MarkDriven`, `Place
   (`(Time.step + alpha) · STEP.dt`) and every `Lightning` since the last frame. It switches every
   car's lamps, on in traffic and in the player's car, off when parked (a destroyed traffic car is
   abandoned, so its lamps go out; `SyncVehicles` hides a charred shell's), and hands the sky the
-  cars whose lamps are on, for the headlight beams. Like every render system it writes nothing:
-  `src/render/__tests__/index.test.ts` counts the schedule's 10 systems and checks their declared
+  cars whose lamps are on, for the headlight beams.
+- `FollowPlayer`, after the placing systems, hands the see-through cut (the `Cut` service,
+  [See-through cut](#see-through-cut)) the player as drawn: on foot their figure's feet and height
+  (0.5 m lying), driving their car's ground (`cg` under the node) and its spec's height; with no
+  player it shuts the cut. Like every render system it writes nothing:
+  `src/render/__tests__/index.test.ts` counts the schedule's 11 systems and checks their declared
   access.
 
 People and animals (`src/render/people.ts`, `src/render/animals.ts`, sharing `figure.ts` and
@@ -544,7 +549,7 @@ People and animals (`src/render/people.ts`, `src/render/animals.ts`, sharing `fi
   frame over 16.8 ms for 20 s at the start and for 30 s in Gragnola's centre (19 people, 5
   animals).
 - **Limit**: in the dense centres (Gragnola, Vinca) the camera sees mostly roofs, so people in the
-  alleys are hidden; only the player has an x-ray silhouette.
+  alleys are hidden; only the player has an x-ray silhouette and the see-through cut.
 
 The static world (`src/render/world.ts`) is cut into 128 m chunks (`src/render/chunks.ts`), and
 only the chunks around the camera exist as meshes. A built chunk has a terrain mesh, a solid mesh
@@ -620,6 +625,54 @@ The pixel pipeline (`src/render/pipeline.ts`):
   ridges that shade a valley. The depth bias stays 0.45 m whatever the depth range.
 - The far plane is 3 km from the camera (2.5 km past the focus): from the Apuan summits the
   deepest ground in view is ≈ 2.45 km from the camera, past the 1 km the plane used to stop at.
+
+### See-through cut
+
+While the world hides the player, a circle round them on screen opens and the world inside it that
+stands between them and the camera is not drawn, so the player and the ground they are heading for
+show behind houses, trees and hills.
+
+- **When** (`SeeThrough` in `src/render/sightline.ts`): each frame two sight lines run from the
+  player toward the camera (along its back axis, 30° up), one 0.4 m over their feet and one 0.1 m
+  under their top (`sight`). Every 2 m up to 500 m along each they look for terrain over the line,
+  and where they first meet it; then every 0.75 m up to 100 m (50 m up) for a building (inside its
+  walls, under its ridge: `topOf` in `buildings.ts`) and a tree crown as drawn (`inCrown` in
+  `trees.ts`: the broadleaf's ellipsoid, the conifer's cone). Either line blocked holds the cut open; it opens over 0.2 s, stays 0.4 s after the
+  player was last hidden (it does not flicker at a wall's edge) and shuts over 0.2 s. Under
+  `prefers-reduced-motion` it opens and shuts at once. A sight line costs 0.004–0.06 ms in Node
+  (in a forest, unblocked: the longest march), two a frame. Baldur's Gate 3 traces from its
+  characters toward the camera the same way.
+- **What** (`src/render/see-through.ts`): a circle of 54 texels' radius on screen (6.75 m on foot,
+  9 m in a car, 10.8 m above 16 m/s: 40 % of the view's height across) round the middle of the
+  player's body. Inside it, a fragment
+  nearer the camera than that middle is dropped (`discard`, before it is shaded) when it is:
+  - a building, bridge, platform, lamp, tree or lit pane (`CUT_ABOVE`) more than 0.4 m over the
+    player's feet: walls stand as stubs round the ground, as in The Sims' cutaway, and the trunks
+    as stumps;
+  - the terrain, a road or a river (`CUT_GROUND`) more than `uCutGround` m nearer: 2 m (the
+    march's step) short of where a sight line first meets the terrain, measured along the view from
+    the body's middle, and at least 1 m; while no terrain hides the player, none is cut. A hill
+    that hides the player goes in a full circle, however far off and high it stands, while the
+    ground between them and the hill stays. The last value holds while the cut shuts. An earlier
+    rule cut only the ground above the player's feet on screen, which left a half disc under a
+    mountain. With the clear colour painted magenta, a path at a cliff's foot (the terrain 1–3 m
+    off) and a mountain road under a ridge 135 m off showed no hole.
+- **Look**: the edge is hard, and the outline pass (which darkens a texel whose neighbour lies over
+  1 m deeper) draws it as a crisp ring; a dithered edge would have left outline specks. The shadow
+  pass draws the whole world, so the cut moves no shadow. People, animals, vehicles, the marks and
+  the blood are never cut. The x-ray silhouette still shows where the cut leaves the player hidden.
+- **Cost**: every cut material reads the shared `CUT_UNIFORMS` cells (`uCutCentre`, `uCutFeet`,
+  `uCutRadius`, 0 while shut, `uCutGround`) and picks its rule by a `#define` fixed at compile time, so opening it
+  recompiles nothing. The terrain left `solidMaterial` for its own `terrain` variant, one program
+  more (19 at "Press any key"). Measured in headless Chrome (M4 Pro, 1280×720, dev server, seed 7,
+  a fresh profile per run, walking behind the houses at the spawn with the cut open for 15 s),
+  against `main`: "Press any key" at 806–850 ms (809–812 ms), JS heap after GC 103.8–104.2 MB
+  (104.1–104.2 MB), 60 fps with no frame over 16.8 ms (the same).
+- **Limits**: the sight lines start at the body's middle, so a car whose rear alone is behind a
+  wall keeps the cut shut (the x-ray shows the rear). Inside a cut house the floor is the terrain
+  under it, and walls standing below the player's feet (a house downhill) stay whole. The ground
+  cut is one depth for the whole circle, from the lines through the body: a hill off to one side of
+  them, nearer than that depth, stays.
 
 ### The sky
 
@@ -715,13 +768,14 @@ it was, so the outlines, the texel snapping and the integer upscale stay exact
 
 #### Surface weather
 
-The lit world's materials are patched once into five weather variants (`surface.ts`), and every
+The lit world's materials are patched once into six weather variants (`surface.ts`), and every
 effect is driven by the shared uniforms, never by a `#define` flipped at run time, so the weather
 never recompiles a shader.
 
 | Material | Variant | Draws | Weather on it |
 |---|---|---|---|
-| `solidMaterial` | `solid` | terrain, buildings, bridges, platforms, the lamps' iron | snow, wet darkening, cloud shadows |
+| `solidMaterial` | `solid` | buildings, bridges, platforms, the lamps' iron | snow, wet darkening, cloud shadows |
+| `terrainMaterial` | `terrain` | the terrain | snow, wet darkening, cloud shadows |
 | `decalMaterial` | `road` | roads, rail | snow (0.6 of it), wet darkening, puddles, cloud shadows |
 | `waterMaterial` | `water` | rivers, streams | rain rings, cloud shadows; no snow, no darkening |
 | `treeMaterial` | `tree` | the instanced trees | snow on the canopy tops, wet darkening, cloud shadows, sway |
@@ -731,7 +785,8 @@ never recompiles a shader.
 - `onBeforeCompile` replaces each anchor chunk exactly once (it throws on a missing or repeated
   anchor) and `customProgramCacheKey` returns `weather-<variant>`, so each variant is one program.
   Only the key light is clouded (`directLight.color *= weatherSun`), never the hemisphere or the
-  night lights.
+  night lights. The terrain and the solid variant differ only in how the see-through cut takes
+  them ([See-through cut](#see-through-cut)).
 - The snow cover and the wetness are the sim's (`groundAt`): the snow edge's lattice hash and value
   noise are ported to 32-bit unsigned GLSL, with the sim's `EDGE`, `FEATHER`, `MELT_BAND` and
   `MELT_FULL` written into the shader text, so the white edge on screen is where the tyres lose
@@ -814,10 +869,11 @@ order.
   so their order never depends on three's sort by distance: tyre marks 0, smoke (tyres, engines,
   blasts) and the x-ray proxies 1, a wreck's flames and a blast's flash 2, a blast's fireball and
   embers 3, bolts 4, rain and snow 5.
-- 18 programs at "Press any key", still 18 after a blast beside the player in a night storm
-  (10 before the day cycle; 16 with it before the wrecks and blasts, still 16 after a tour of the
-  map's corners, Monte Sagro and Viano at every hour and regime, bolts and a night drive):
-  `weather-solid`, `-road`, `-water` and `-tree`; `weather-actor` four times (people, animals,
+- 19 programs at "Press any key", still 19 after 15 s behind the houses with the see-through cut
+  open (18 before the cut's terrain variant, still 18 after a blast beside the player in a night
+  storm; 10 before the day cycle; 16 with it before the wrecks and blasts, still 16 after a tour of
+  the map's corners, Monte Sagro and Viano at every hour and regime, bolts and a night drive):
+  `weather-solid`, `-terrain`, `-road`, `-water` and `-tree`; `weather-actor` four times (people, animals,
   cars and blood pools; marks with vertex alpha; instanced smoke; a blast's instanced debris); the
   glow and vehicle-lamp materials; rain and snow; the bolts' line material; the fire (a wreck's
   flames, a blast's flash, fireball and embers); the x-ray; two depth programs; the blit. All but
@@ -1089,7 +1145,7 @@ step, and git hooks run the first three before a commit or push.
     `src/hud/__tests__/title.test.ts`: the clock held behind the title card while the world moves
     on.
   - `src/render/__tests__/index.test.ts`: every system of every described schedule (`render`,
-    10 systems, and `audio`) declares no writes; a detached node frees its frames, pool and
+    11 systems, and `audio`) declares no writes; a detached node frees its frames, pool and
     proxies, not a vehicle's shared body; people, animals and vehicles draw with the actor
     material; traffic and the player's car shine and get the headlight beams, parked cars stay
     dark.
@@ -1103,7 +1159,10 @@ step, and git hooks run the first three before a commit or push.
     the phase-locked sines; in `src/render/__tests__/`, `stand-ins.test.ts`: every material a world
     build and the actors draw has a stand-in; `pipeline.test.ts`: `compile` builds into the scene's
     target; `actors.test.ts`: the vehicle lamps and the x-ray's yellow; `buildings.test.ts`: lit
-    panes on homes only; `world.test.ts`: the glow and water meshes.
+    panes on homes only; `world.test.ts`: the glow and water meshes; `sightline.test.ts`: a person
+    behind a house near the spawn, under a tree's crown or under the ground is hidden, the player at
+    the spawn is not, a hill hiding a road says where it meets the line, and the cut's easing, hold,
+    radius, ground depth and reduced motion.
   - `src/sim/map/__tests__/map.test.ts`: invariants of the generated map (see [map.md](map.md)).
   - the audio tests, in Node without Web Audio (see [audio.md](audio.md#tests)).
 

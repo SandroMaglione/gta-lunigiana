@@ -24,8 +24,10 @@ const decal = (): MeshLambertMaterial =>
     polygonOffsetUnits: -2,
   })
 
-/** The terrain, buildings, bridges and platforms: snow, wet ground and cloud shadows (`render/sky/surface`). */
+/** Buildings, bridges, platforms and the lamps' iron: snow, wet ground and cloud shadows (`render/sky/surface`); the see-through cut leaves their stubs. */
 export const solidMaterial = weatherMaterial(flat(), "solid")
+/** The terrain: the solid's weather, but the see-through cut takes only the ground that hides the player. */
+export const terrainMaterial = weatherMaterial(flat(), "terrain")
 /** Ground decals (roads, rail): half-cleared snow, wet ground and puddles that mirror the sky, cloud shadows. */
 export const decalMaterial = weatherMaterial(decal(), "road")
 /** Rivers and streams, a decal of their own: never snowed on or darkened by rain, ringed by raindrops, cloud shadows. */

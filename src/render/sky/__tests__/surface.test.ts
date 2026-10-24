@@ -18,11 +18,13 @@ import {
   actorMaterial,
   decalMaterial,
   solidMaterial,
+  terrainMaterial,
   treeMaterial,
   waterMaterial,
 } from "../../geometry.ts"
 import { yOf } from "../../ground.ts"
 import { viewAxes } from "../../pipeline.ts"
+import { CUT_UNIFORMS } from "../../see-through.ts"
 import {
   applySurface,
   driftClouds,
@@ -78,8 +80,20 @@ test("patchShader rewrites three's Lambert program at each anchor exactly once, 
     // Snow and wet on the ground variants; the tree sways; water rings in the rain; actors only take cloud shadows.
     assert.equal(
       f.includes("#define WEATHER_GROUND"),
-      variant === "solid" || variant === "road" || variant === "tree",
+      variant === "solid" || variant === "terrain" || variant === "road" || variant === "tree",
       `${variant}: ground`,
+    )
+    // The see-through cut: buildings and trees above the player's feet, the ground above their row on screen, never an actor;
+    // dropped before anything is shaded.
+    assert.equal(f.includes("#define CUT_ABOVE"), variant === "solid" || variant === "tree")
+    assert.equal(
+      f.includes("#define CUT_GROUND"),
+      variant === "terrain" || variant === "road" || variant === "water",
+    )
+    assert.equal(count(f, "if (cutAway(-vViewPosition, vWeatherWorld.y)) discard;"), 1)
+    assert.ok(
+      f.indexOf("cutAway(-vViewPosition") < f.indexOf("float weatherSun = "),
+      `${variant}: cut before it is shaded`,
     )
     assert.equal(f.includes("#define WEATHER_ROAD"), variant === "road")
     assert.equal(v.includes("#define WEATHER_TREE"), variant === "tree")
@@ -96,6 +110,8 @@ test("patchShader shares the sky's uniform cells by reference, and fails loudly 
     assert.equal(a.uniforms[key], SKY_UNIFORMS[key], `${key}: the very cell`)
     assert.equal(b.uniforms[key], SKY_UNIFORMS[key])
   }
+  for (const key of Object.keys(CUT_UNIFORMS) as Array<keyof typeof CUT_UNIFORMS>)
+    assert.equal(a.uniforms[key], CUT_UNIFORMS[key], `${key}: the cut's very cell`)
   assert.equal(
     count(
       ShaderChunk.lights_fragment_begin,
@@ -117,6 +133,7 @@ test("patchShader shares the sky's uniform cells by reference, and fails loudly 
 test("each world material is its own weather variant with its own program key, one program per variant", () => {
   const expected: ReadonlyArray<readonly [MeshLambertMaterial, Variant]> = [
     [solidMaterial, "solid"],
+    [terrainMaterial, "terrain"],
     [decalMaterial, "road"],
     [treeMaterial, "tree"],
     [waterMaterial, "water"],

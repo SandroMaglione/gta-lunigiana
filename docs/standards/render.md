@@ -10,7 +10,9 @@ Checks for a change in `src/render`, the camera, the view or the keys, on top of
   time, turning with the view (in the home view it stands where it really is); F or Enter as the
   action key; on a touch screen, every control on the screen (a stick to walk; in a vehicle ◀ ▶
   buttons on the left and Gas and Brake on the right, pressing the keys as the keyboard does) and
-  the game landscape only, turned a quarter when the phone is held upright.
+  the game landscape only, turned a quarter when the phone is held upright; while the world hides
+  the player, a see-through circle opens round them with a crisp outlined edge (no dither), and
+  shuts once they are in sight again.
 - **Axes**: Three.js world axes are (east, up, −north), so the map point (x, y) at height h is
   (x, h, −y).
 - **Streaming**: a chunk build keeps giving the same result as cutting the same area from a

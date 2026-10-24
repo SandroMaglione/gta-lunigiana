@@ -13,7 +13,7 @@ import { hash01 } from "../tools/geometry.ts"
 import { linear, paint, type Piece, type Sink, type Triangles } from "./geometry.ts"
 import { terrainY, yOf } from "./ground.ts"
 import { PALETTE } from "./palette.ts"
-import { hasHipRoof, hipRoof, orientedBox } from "./roof.ts"
+import { hasHipRoof, hipRise, hipRoof, type OrientedBox, orientedBox } from "./roof.ts"
 
 /** Wall colour per style, indexed by the building's tint (0..3). */
 const WALLS = {
@@ -145,6 +145,20 @@ export const eaveOf = (b: Building): number => {
   return Math.max(yOf(b.z0) + b.h, Math.min(highest, yOf(b.z0) + 6) + 2.5)
 }
 
+/** Whether `b` takes a hip roof over `box` (its footprint's `orientedBox`); the rest have flat roofs. */
+const hipRoofed = (b: Building, box: OrientedBox): boolean => {
+  const style = buildingStyleOf(b)
+  return (
+    style !== "industrial" && style !== "ruin" && b.holes === undefined && hasHipRoof(b.outer, box)
+  )
+}
+
+/** Render y of a building's highest point: its ridge, or its eaves under a flat roof. */
+export const topOf = (b: Building): number => {
+  const box = orientedBox(b.outer)
+  return eaveOf(b) + (hipRoofed(b, box) ? hipRise(box) : 0)
+}
+
 /** One building as walls (an extrusion) plus roof and windows added to `sink`. */
 const building = (sink: Sink, b: Building) => {
   const style = buildingStyleOf(b)
@@ -163,9 +177,8 @@ const building = (sink: Sink, b: Building) => {
   walls.rotateX(-Math.PI / 2) // (east, north, up) -> (east, up, -north)
   walls.translate(0, base, 0)
   const painted = paint(walls, WALLS[style][b.tint & 3]!)
-  const pitched = style !== "industrial" && style !== "ruin" && b.holes === undefined
   const box = orientedBox(b.outer)
-  if (pitched && hasHipRoof(b.outer, box)) hipRoof(sink.solid, box, eave, roofHex(b))
+  if (hipRoofed(b, box)) hipRoof(sink.solid, box, eave, roofHex(b))
   else recolourTop(painted, roofHex(b))
   if (WINDOWS[style]) windows(sink, b, eave)
   return painted

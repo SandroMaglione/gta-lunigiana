@@ -45,6 +45,7 @@ import { actorMaterial, linear, solidMaterial } from "../geometry.ts"
 import { yOf } from "../ground.ts"
 import {
   Animals,
+  Cut,
   Effects,
   makeEffects,
   makeRegistries,
@@ -57,6 +58,7 @@ import {
 } from "../index.ts"
 import { PALETTE } from "../palette.ts"
 import { PersonNode } from "../people.ts"
+import { SeeThrough } from "../sightline.ts"
 import { vehicleLampMaterials } from "../sky/glow.ts"
 import { SkyHost } from "../sky/host.ts"
 import type { LitCar } from "../sky/night-lights.ts"
@@ -172,8 +174,8 @@ test("the host schedules (render, audio) read the world and never write it", asy
     const names = new Set(steps.flatMap((step) => (step.kind === "system" ? [step.system] : [])))
     const systems = described.systems.filter((s) => names.has(s.name))
     // Sync and place people, animals and vehicles, mark the driven car, spread the blood pools, draw the tyre marks and smoke,
-    // feed the sky.
-    if (name === "render") assert.equal(systems.length, 10)
+    // feed the sky, follow the player with the see-through cut.
+    if (name === "render") assert.equal(systems.length, 11)
     assert.ok(systems.length > 0, `${name} has systems`)
     for (const s of systems) {
       const writes = [
@@ -201,6 +203,7 @@ test("the render schedule draws people, animals and vehicles with the actor mate
       Game.Runtime.service(RenderClock, { alpha: 0 }),
       Game.Runtime.service(Effects, makeEffects(scene)),
       Game.Runtime.service(Sky, new SkyHost(scene, { reduced: () => false })),
+      Game.Runtime.service(Cut, new SeeThrough({ yaw: 0, texelsPerMetre: 8 }, () => false)),
     ),
   })
   assert.ok(made.ok)
@@ -236,6 +239,7 @@ test("lamps: the player's car and traffic shine and get the sky's headlight beam
       Game.Runtime.service(RenderClock, { alpha: 0 }),
       Game.Runtime.service(Effects, makeEffects(scene)),
       Game.Runtime.service(Sky, sky),
+      Game.Runtime.service(Cut, new SeeThrough({ yaw: 0, texelsPerMetre: 8 }, () => false)),
     ),
   })
   assert.ok(made.ok)
@@ -411,6 +415,7 @@ const drawn = (cars: ReadonlyArray<ReturnType<typeof burning>>) => {
       Game.Runtime.service(RenderClock, { alpha: 0 }),
       Game.Runtime.service(Effects, effects),
       Game.Runtime.service(Sky, new SkyHost(scene, { reduced: () => false })),
+      Game.Runtime.service(Cut, new SeeThrough({ yaw: 0, texelsPerMetre: 8 }, () => false)),
     ),
   })
   assert.ok(made.ok)

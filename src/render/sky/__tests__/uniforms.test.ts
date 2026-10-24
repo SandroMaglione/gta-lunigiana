@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import { CUT_UNIFORMS } from "../../see-through.ts"
 import { glowMaterial, vehicleLampMaterials } from "../glow.ts"
 import { Precipitation } from "../precipitation.ts"
 import { NOON } from "../testing.ts"
@@ -18,9 +19,11 @@ test("the glow and lamp materials hold the shared uniform cells themselves, so o
   }
   assert.match(
     glowMaterial.fragmentShader,
-    /if \(uLamps < [0-9.]+\) discard;/,
-    "panes are not drawn by day: the settled daytime look keeps its shutters",
+    /if \(uLamps < [0-9.]+ \|\| cutAway\(vAt, vY\)\) discard;/,
+    "panes are not drawn by day (the settled daytime look keeps its shutters), nor where the see-through cut takes their wall",
   )
+  assert.equal(glowMaterial.uniforms["uCutRadius"], CUT_UNIFORMS.uCutRadius, "the cut's very cell")
+  assert.ok("CUT_ABOVE" in glowMaterial.defines, "cut with the walls they lie on")
   assert.notEqual(
     vehicleLampMaterials.on.uniforms["uOn"],
     vehicleLampMaterials.off.uniforms["uOn"],

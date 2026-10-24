@@ -5,7 +5,14 @@ import { Group, InstancedMesh, Vector3, type Mesh } from "three"
 
 import { MAP } from "../../sim/map/index.ts"
 import { chunkBoxes, CHUNKS, radiiFor, screenDistances, screenRects } from "../chunks.ts"
-import { decalMaterial, linear, solidMaterial, treeMaterial, waterMaterial } from "../geometry.ts"
+import {
+  decalMaterial,
+  linear,
+  solidMaterial,
+  terrainMaterial,
+  treeMaterial,
+  waterMaterial,
+} from "../geometry.ts"
 import { terrainY } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
 import { QUARTER, viewAxes } from "../pipeline.ts"
@@ -171,7 +178,8 @@ test("world streaming: rivers draw in their own water mesh (no snow on them), ro
           m.material !== waterMaterial &&
           m.material !== decalMaterial,
       )
-      .every((m) => m.material === solidMaterial),
-    "terrain and buildings: the solid variant",
+      .every((m) => m.material === solidMaterial || m.material === terrainMaterial),
+    "buildings in the solid variant, the terrain in its own",
   )
+  assert.ok(meshes.some((m) => m.material === terrainMaterial))
 })

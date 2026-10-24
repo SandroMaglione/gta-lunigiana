@@ -40,12 +40,23 @@ const crown = (piece: BufferGeometry, sways: 0 | 1): BufferGeometry =>
     ),
   )
 
+/** Each kind's crown at unit scale, m: its radius, its height and its centre's height over the trunk's base. */
+const CROWN = {
+  broadleaf: { radius: 3, height: 5, at: 4.2 },
+  conifer: { radius: 2, height: 6.5, at: 4.2 },
+} as const satisfies Record<TreeKind, { radius: number; height: number; at: number }>
+
 /** Unit-scale tree shapes (≈ 7 m tall), trunk base at the origin; shared by every chunk. */
 const shapes = {
   broadleaf: merge([
     crown(paint(new CylinderGeometry(0.22, 0.3, 2, 5).translate(0, 1, 0), PALETTE.woodBrown), 0),
     crown(
-      paint(new IcosahedronGeometry(1, 0).scale(3, 2.5, 3).translate(0, 4.2, 0), PALETTE.forest),
+      paint(
+        new IcosahedronGeometry(1, 0)
+          .scale(CROWN.broadleaf.radius, CROWN.broadleaf.height / 2, CROWN.broadleaf.radius)
+          .translate(0, CROWN.broadleaf.at, 0),
+        PALETTE.forest,
+      ),
       1,
     ),
   ]),
@@ -54,7 +65,17 @@ const shapes = {
       paint(new CylinderGeometry(0.18, 0.24, 1.6, 5).translate(0, 0.8, 0), PALETTE.woodBrown),
       0,
     ),
-    crown(paint(new ConeGeometry(2, 6.5, 6).translate(0, 4.2, 0), PALETTE.conifer), 1),
+    crown(
+      paint(
+        new ConeGeometry(CROWN.conifer.radius, CROWN.conifer.height, 6).translate(
+          0,
+          CROWN.conifer.at,
+          0,
+        ),
+        PALETTE.conifer,
+      ),
+      1,
+    ),
   ]),
 } as const satisfies Record<TreeKind, BufferGeometry>
 
@@ -66,6 +87,31 @@ const TINTS = [new Color(1, 1, 1), new Color(1.35, 1.3, 1.1), new Color(0.75, 0.
  * (Regione Toscana land cover 2019); the rest is chestnut and hop-hornbeam, then beech higher up.
  */
 const CONIFERS = 0.03
+
+/** The kind of the tree drawn from `seed`. */
+const kindOf = (seed: number): TreeKind => (hash01(seed, 11) < CONIFERS ? "conifer" : "broadleaf")
+/** The drawn scale of a tree of map scale `scale` drawn from `seed`. */
+const sizeOf = (seed: number, scale: number): number => scale * (0.85 + 0.3 * hash01(seed, 9))
+/** Render y of a tree's trunk base at (x, y): a little into the ground, so no slope shows under it. */
+const baseY = (x: number, y: number): number => terrainY(x, y) - 0.2
+
+/**
+ * Whether the point (x, y) at render height `h` lies in the crown of tree `k` (`MAP.trees` at 3k,
+ * as `treesIn` gives it): the broadleaf's ellipsoid, or the conifer's cone, as drawn.
+ */
+export const inCrown = (k: number, x: number, y: number, h: number): boolean => {
+  const tx = MAP.trees[3 * k]!,
+    ty = MAP.trees[3 * k + 1]!,
+    seed = 3 * k,
+    s = sizeOf(seed, MAP.trees[3 * k + 2]!),
+    kind = kindOf(seed),
+    { radius, height, at } = CROWN[kind]
+  const across = Math.hypot(x - tx, y - ty) / (radius * s),
+    up = (h - baseY(tx, ty)) / s - at
+  if (kind === "broadleaf") return across * across + ((2 * up) / height) ** 2 < 1
+  // The cone narrows from its full radius at its base to nothing at its tip.
+  return Math.abs(up) < height / 2 && across < 0.5 - up / height
+}
 
 /** Calls `visit` for each tree of MAP.trees and each mirror image of the trees within the apron width of an edge. */
 const eachTree = (visit: (x: number, y: number, scale: number, seed: number) => void): void => {
@@ -99,7 +145,7 @@ type ChunkTrees = Record<TreeKind, Array<number>>
 export const bucketTrees = (): Map<number, ChunkTrees> => {
   const chunks = new Map<number, ChunkTrees>()
   eachTree((x, y, scale, seed) => {
-    const kind: TreeKind = hash01(seed, 11) < CONIFERS ? "conifer" : "broadleaf"
+    const kind = kindOf(seed)
     const key = chunkOf(x, y)
     let trees = chunks.get(key)
     if (trees === undefined) chunks.set(key, (trees = { broadleaf: [], conifer: [] }))
@@ -126,11 +172,8 @@ export const treeMeshes = (trees: ChunkTrees, material: Material): Array<Instanc
         scale = list[4 * i + 2]!,
         seed = list[4 * i + 3]!
       rotation.setFromAxisAngle(up, hash01(seed, 5) * Math.PI * 2)
-      const s = scale * (0.85 + 0.3 * hash01(seed, 9))
-      mesh.setMatrixAt(
-        i,
-        matrix.compose(at.set(x, terrainY(x, y) - 0.2, -y), rotation, size.set(s, s, s)),
-      )
+      const s = sizeOf(seed, scale)
+      mesh.setMatrixAt(i, matrix.compose(at.set(x, baseY(x, y), -y), rotation, size.set(s, s, s)))
       mesh.setColorAt(i, TINTS[Math.floor(hash01(seed, 13) * TINTS.length)]!)
     }
     mesh.instanceMatrix.needsUpdate = true

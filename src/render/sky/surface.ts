@@ -22,24 +22,28 @@ import { type Air, celsiusAt } from "../../sim/sky/climate.ts"
 import { EDGE, FEATHER, MELT_BAND, MELT_FULL, REACH } from "../../sim/sky/local.ts"
 import { ROCK_NORMAL_Y, yOf } from "../ground.ts"
 import { PALETTE } from "../palette.ts"
+import { CUT_GLSL, CUT_UNIFORMS } from "../see-through.ts"
 import { phaseLocked, SKY_UNIFORMS } from "./uniforms.ts"
 
-/** The surface-weather variants: terrain and buildings, road decals, instanced trees, rivers, and the things that move (people, vehicles, tyre marks, smoke). */
-export const VARIANTS = ["solid", "road", "tree", "water", "actor"] as const
+/** The surface-weather variants: buildings, terrain, road decals, instanced trees, rivers, and the things that move (people, vehicles, tyre marks, smoke). */
+export const VARIANTS = ["solid", "terrain", "road", "tree", "water", "actor"] as const
 /** A surface-weather variant (one shader program each). */
 export type Variant = (typeof VARIANTS)[number]
 
 /**
  * What each variant draws, as the GLSL macros it defines: snow and wet ground (`GROUND`), roads half
- * cleared of snow with puddles (`ROAD`), canopies that sway (`TREE`), rain rings (`WATER`). Every
- * variant takes cloud shadows; actors (people, vehicles, tyre marks, smoke) take nothing else: a person
- * crossing the snow line stays dressed, and the clouds shade everything the sun lights.
+ * cleared of snow with puddles (`ROAD`), canopies that sway (`TREE`), rain rings (`WATER`), and how
+ * the see-through cut takes it (`render/see-through`): buildings and trees above the player's feet
+ * (`CUT_ABOVE`), the ground above their feet on screen (`CUT_GROUND`). Every variant takes cloud
+ * shadows; actors (people, vehicles, tyre marks, smoke) take nothing else: a person crossing the snow
+ * line stays dressed, the clouds shade everything the sun lights, and the cut never hides an actor.
  */
 const DEFINES = {
-  solid: ["WEATHER_GROUND"],
-  road: ["WEATHER_GROUND", "WEATHER_ROAD"],
-  tree: ["WEATHER_GROUND", "WEATHER_TREE"],
-  water: ["WEATHER_WATER"],
+  solid: ["WEATHER_GROUND", "CUT_ABOVE"],
+  terrain: ["WEATHER_GROUND", "CUT_GROUND"],
+  road: ["WEATHER_GROUND", "WEATHER_ROAD", "CUT_GROUND"],
+  tree: ["WEATHER_GROUND", "WEATHER_TREE", "CUT_ABOVE"],
+  water: ["WEATHER_WATER", "CUT_GROUND"],
   actor: [],
 } as const satisfies Record<Variant, ReadonlyArray<string>>
 
@@ -183,6 +187,9 @@ uniform float uRipples;
 #define WEATHER_MELT ${num(MELT_BAND)}
 #define WEATHER_MELT_FULL ${num(MELT_FULL)}
 #define WEATHER_TICKS 8.0
+#if defined( CUT_ABOVE ) || defined( CUT_GROUND )
+${CUT_GLSL}
+#endif
 `
 
 /**
@@ -230,6 +237,13 @@ vec2 weatherMap = vec2(vWeatherWorld.x, -vWeatherWorld.z);
 float weatherSun = 1.0 - uCloudShade * smoothstep(uCloudCut - WEATHER_CLOUD_SOFT, uCloudCut + WEATHER_CLOUD_SOFT, weatherClouds(weatherMap - uCloudOffset));
 `
 
+/** Drops a fragment the see-through cut takes (`render/see-through`): view-space position from three's Lambert varying. */
+const CUT_FRAGMENT = /* glsl */ `
+#if defined( CUT_ABOVE ) || defined( CUT_GROUND )
+  if (cutAway(-vViewPosition, vWeatherWorld.y)) discard;
+#endif
+`
+
 /** The r186 directional-light anchor in `lights_fragment_begin` (the pre-r151 form with `geometry` no longer matches). */
 const DIR_LIGHT = "getDirectionalLightInfo( directionalLight, directLight );"
 
@@ -246,7 +260,7 @@ export const patchShader = (
   shader: Pick<WebGLProgramParametersWithUniforms, "vertexShader" | "fragmentShader" | "uniforms">,
   variant: Variant,
 ): void => {
-  Object.assign(shader.uniforms, SKY_UNIFORMS) // the cells themselves, so every program of every material updates together
+  Object.assign(shader.uniforms, SKY_UNIFORMS, CUT_UNIFORMS) // the cells themselves, so every program of every material updates together
   const defines = DEFINES[variant].map((name) => `#define ${name}\n`).join("")
   let vertex = replaceOnce(
     shader.vertexShader,
@@ -263,6 +277,12 @@ export const patchShader = (
     shader.fragmentShader,
     "#include <common>",
     `${defines}#include <common>\n${HELPERS}${FRAGMENT_PARS}`,
+  )
+  // The see-through cut, first: a fragment it takes is not shaded at all.
+  fragment = replaceOnce(
+    fragment,
+    "#include <clipping_planes_fragment>",
+    `#include <clipping_planes_fragment>\n${CUT_FRAGMENT}`,
   )
   fragment = replaceOnce(
     fragment,

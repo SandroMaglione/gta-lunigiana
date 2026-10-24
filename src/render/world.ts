@@ -34,6 +34,7 @@ import {
   decalMaterial,
   merge,
   solidMaterial,
+  terrainMaterial,
   treeMaterial,
   Triangles,
   waterMaterial,
@@ -165,7 +166,7 @@ export class World {
     const list = this.byChunk[key]!
     for (let n = 0; n < list.length; n += 3)
       this.pieces[list[n]!]!.draw(at, list[n + 1]!, list[n + 2]!)
-    const meshes = [staticMesh(terrainChunk(key, this.cover), solidMaterial, false)]
+    const meshes = [staticMesh(terrainChunk(key, this.cover), terrainMaterial, false)]
     const solid = [...(sink.solid.empty ? [] : [sink.solid.geometry()]), ...sink.pieces]
     if (solid.length > 0) meshes.push(staticMesh(merge(solid), solidMaterial, true))
     if (!sink.decal.empty) meshes.push(staticMesh(sink.decal.geometry(), decalMaterial, false))

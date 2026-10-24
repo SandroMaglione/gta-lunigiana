@@ -12,6 +12,7 @@
 import { Color, ShaderMaterial } from "three"
 
 import { PALETTE } from "../palette.ts"
+import { CUT_GLSL, CUT_UNIFORMS } from "../see-through.ts"
 import { SKY_UNIFORMS } from "./uniforms.ts"
 
 /** Lit colour gain of a glow pane at full `uLamps` (vertex colour × this, on screen): bright enough to keep its hue through the night grade. */
@@ -40,17 +41,35 @@ export const glowMaterial = new ShaderMaterial({
     uAmbient: SKY_UNIFORMS.uAmbient,
     uExposure: SKY_UNIFORMS.uExposure,
     uGlass: { value: new Color(PALETTE.windowGlass) },
+    ...CUT_UNIFORMS,
   },
   vertexColors: true,
-  vertexShader: VERTEX,
+  // The panes lie on the walls: the see-through cut takes them with the walls (`render/see-through`).
+  defines: { CUT_ABOVE: "" },
+  vertexShader: /* glsl */ `
+    varying vec3 vLit;
+    varying vec3 vAt;
+    varying float vY;
+    void main() {
+      vLit = color;
+      vec4 world = modelMatrix * vec4(position, 1.0);
+      vec4 at = viewMatrix * world;
+      vAt = at.xyz;
+      vY = world.y;
+      gl_Position = projectionMatrix * at;
+    }
+  `,
   fragmentShader: /* glsl */ `
+    ${CUT_GLSL}
+    varying vec3 vAt;
+    varying float vY;
     uniform float uLamps;
     uniform float uAmbient;
     uniform float uExposure;
     uniform vec3 uGlass;
     varying vec3 vLit;
     void main() {
-      if (uLamps < ${GLOW_FROM.toFixed(2)}) discard;
+      if (uLamps < ${GLOW_FROM.toFixed(2)} || cutAway(vAt, vY)) discard;
       gl_FragColor = vec4(uGlass * uAmbient + vLit * (uLamps * ${GLOW_GAIN.toFixed(2)} / uExposure), 1.0);
     }
   `,

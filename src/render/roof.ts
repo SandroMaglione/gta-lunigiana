@@ -7,7 +7,7 @@
 import type { Triangles } from "./geometry.ts"
 
 /** An oriented rectangle: centre, unit long axis (ux, uy), half sizes a ≥ b. */
-interface OrientedBox {
+export interface OrientedBox {
   readonly cx: number
   readonly cy: number
   readonly ux: number
@@ -79,12 +79,15 @@ const OVERHANG = 0.4
 
 const UP = [0, 1, 0] as const
 
+/** How far a hip roof over `box` rises from its eaves to its ridge, m. */
+export const hipRise = (box: OrientedBox): number => (box.b + OVERHANG) * PITCH
+
 /** A hip roof (a pyramid when square) over `box` grown by the overhang, eaves at render height `eave`. */
 export const hipRoof = (tris: Triangles, box: OrientedBox, eave: number, hex: number): void => {
   const a = box.a + OVERHANG,
     b = box.b + OVERHANG,
     r = a - b,
-    top = eave + b * PITCH
+    top = eave + hipRise(box)
   const vx = -box.uy,
     vy = box.ux
   const p = (su: number, sv: number, y: number) =>

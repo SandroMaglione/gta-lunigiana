@@ -5,9 +5,10 @@
  * do, and vehicles at their centre of mass from their Chassis, spreads the blood pools under the
  * dead, marks the player's car for the x-ray silhouette, lays tyre marks and smoke from the Skid
  * events, draws the damaged engines' smoke and fire and the Explosion events' blasts, and hands the
- * sky host the clock, the weather, the lightning and the cars with their lamps on. Read-only
- * towards the world (__tests__/index.test.ts checks every system's declared access); the host
- * ticks it once per animation frame after writing `RenderClock.alpha`.
+ * sky host the clock, the weather, the lightning and the cars with their lamps on, and the
+ * see-through cut the player as drawn. Read-only towards the world (__tests__/index.test.ts checks
+ * every system's declared access); the host ticks it once per animation frame after writing
+ * `RenderClock.alpha`.
  *
  * @module render
  */
@@ -43,6 +44,7 @@ import {
   Vehicle,
   Weather,
 } from "../sim/index.ts"
+import { VEHICLES } from "../sim/vehicles.ts"
 import { VIEW_REACH } from "../sim/view.ts"
 import { type ActorNode, vehicleBody, type VehicleNode, vehicleNode } from "./actors.ts"
 import { AnimalNode } from "./animals.ts"
@@ -51,6 +53,7 @@ import { actorMaterial } from "./geometry.ts"
 import { groundY, yOf } from "./ground.ts"
 import { Marks, TREAD } from "./marks.ts"
 import { PersonNode } from "./people.ts"
+import type { SeeThrough } from "./sightline.ts"
 import type { SkyHost } from "./sky/host.ts"
 import { Smoke } from "./smoke.ts"
 import { PLUMES_AT_ONCE, type WreckState, Wrecks } from "./wrecks.ts"
@@ -107,6 +110,8 @@ export const makeEffects = (parent: Object3D) => {
 export const Effects = Descriptor.Service<ReturnType<typeof makeEffects>>()("Lunigiana/Effects")
 /** The host's sky (`SkyHost`), fed by the render schedule: it draws the light, the weather and the night lights. */
 export const Sky = Descriptor.Service<SkyHost>()("Lunigiana/Sky")
+/** The host's see-through cut (`SeeThrough`), fed the player as drawn by the render schedule. */
+export const Cut = Descriptor.Service<SeeThrough>()("Lunigiana/SeeThrough")
 
 const SyncPeople = RenderSync.system(Game, {
   name: "Lunigiana/SyncPeople",
@@ -439,6 +444,52 @@ const DrawSky = Game.System(
   },
 )
 
+/** How tall a lying person is drawn for the see-through cut's sight lines, m. */
+const LYING = 0.5
+
+/**
+ * Hands the see-through cut the player as drawn this frame: on foot their figure (standing on its
+ * feet, or lying), driving their car (its ground `cg` under the node, its spec's height), or shuts
+ * it when there is no player. After the placing systems, so it follows the nodes where they stand.
+ */
+const FollowPlayer = Game.System(
+  "Lunigiana/FollowPlayer",
+  {
+    queries: {
+      player: Game.Query({ selection: { driving: Game.Query.optional(Driving) }, with: [Player] }),
+      vehicles: Game.Query({ selection: { vehicle: Game.Query.read(Vehicle) } }),
+    },
+    resources: { time: Game.System.readResource(Time) },
+    services: {
+      cut: Game.System.service(Cut),
+      people: Game.System.service(People),
+      vehicles: Game.System.service(Vehicles),
+      clock: Game.System.service(RenderClock),
+    },
+  },
+  ({ queries, resources, services }) => {
+    const now = (resources.time.get().step + services.clock.alpha) * STEP.dt
+    const found = queries.player.singleOptional()
+    const me = found.ok ? found.value : undefined
+    const driving = me?.data.driving.value()
+    const car = driving === undefined ? undefined : queries.vehicles.getHandle(driving.vehicle)
+    const node =
+      car?.ok === true
+        ? services.vehicles.get(car.value.entity.id)
+        : me === undefined
+          ? undefined
+          : services.people.get(me.entity.id)
+    if (node === undefined) return services.cut.shut()
+    const at = node.position
+    if (node instanceof PersonNode)
+      services.cut.follow(at.x, at.y, at.z, node.lying ? LYING : node.height, now)
+    else {
+      const spec = VEHICLES[node.model]
+      services.cut.follow(at.x, at.y - spec.cg, at.z, spec.height, now)
+    }
+  },
+)
+
 /** The render schedule, ticked once per animation frame after the fixed updates. */
 export const render = Game.Schedule(
   SyncPeople,
@@ -451,4 +502,5 @@ export const render = Game.Schedule(
   SpreadPools,
   DrawEffects,
   DrawSky,
+  FollowPlayer,
 )

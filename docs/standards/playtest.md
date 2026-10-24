@@ -35,8 +35,9 @@ this WebGL page, so drive headless Chrome over CDP:
    in mobile mode. Drive the touch controls with `Input.dispatchTouchEvent`.
 4. Dev builds expose `window.gta`: `renderer`, `view`, `scene`, `world`, `effects`, `heightAt`,
    `player()`, `handling()` (the handling knobs in force), `audio` (`level()` gives the output in
-   dBFS), `sky` and `skyLook()`. Load `?seed=N`, wait for `gta`, then press a key
-   to dismiss the title card.
+   dBFS), `sky`, `skyLook()` and `cut` (the see-through cut: `open`, and `follow`, which the
+   render schedule calls with the player each frame; wrap it to pin the cut to a spot you shoot).
+   Load `?seed=N`, wait for `gta`, then press a key to dismiss the title card.
    - `gta.sky` is the debug menu's sky store: `now()` (the game time, its rate, Rome's wall clock
      in `local`, and the weather), `rate()`, `regime()` (the regime held, `null` in Auto),
      `heading()`, and the setters `setTime(secondOfDay)` (Rome time),

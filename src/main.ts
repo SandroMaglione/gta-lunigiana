@@ -32,6 +32,7 @@ import { groundY } from "./render/ground.ts"
 import {
   Animals,
   blend,
+  Cut,
   Effects,
   makeEffects,
   makeRegistries,
@@ -42,6 +43,7 @@ import {
   Vehicles,
 } from "./render/index.ts"
 import { PixelView, QUARTER, turnToward, WIDEST_ZOOM, zoomFor } from "./render/pipeline.ts"
+import { SeeThrough } from "./render/sightline.ts"
 import { SkyHost } from "./render/sky/host.ts"
 import { standIns } from "./render/stand-ins.ts"
 import { World } from "./render/world.ts"
@@ -123,6 +125,8 @@ const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch, p
 const renderClock = { alpha: 0 }
 const { people, animals, vehicles } = makeRegistries(scene)
 const effects = makeEffects(scene)
+// The circle that opens round the player while the world hides them, sized in texels of the view.
+const cut = new SeeThrough(view, () => reduceMotion.matches)
 // The speaker starts its AudioContext on the first key, click or tap from here on: pressed while loading, or the one that dismisses the title card.
 const speaker = makeSpeaker(
   window,
@@ -149,6 +153,7 @@ const made = makeRuntime({
     Game.Runtime.service(RenderClock, renderClock),
     Game.Runtime.service(Effects, effects),
     Game.Runtime.service(Sky, skyHost),
+    Game.Runtime.service(Cut, cut),
     Game.Runtime.service(Audio, director),
   ),
   ...(import.meta.env.DEV ? { debug: { hostClock: BrowserHostClock.make(window) } } : {}),
@@ -291,6 +296,8 @@ if (import.meta.env.DEV) {
       handling: () => runtime.inspect(HandlingView),
       audio: { speaker, level: speaker.level, context: speaker.context },
       sky,
+      // The see-through cut: `open` (0 shut … 1 open) and `follow`, which the render schedule calls with the player each frame.
+      cut,
       // What the sky host drew last: the sky frame, the sun and moon, the light, the exposure, the fog and the weather at the focus.
       skyLook: () => skyHost.look,
     },
