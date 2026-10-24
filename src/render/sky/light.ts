@@ -328,15 +328,12 @@ export const aimToward = (aim: Aim | undefined, azimuth: number, elevation: numb
 
 /**
  * Writes into `out` the direction toward the key light (three space) for `aim`, cast from at least
- * SHADOW_FLOOR, turned `yaw` rad with the view (the settled rule: the sun turns with the view; at the
- * home seat it stands where it really is). Sim (x east, y north, z up) is three (x, z, −y).
+ * SHADOW_FLOOR: where the body really stands over the map, whichever way the view looks. Sim (x east,
+ * y north, z up) is three (x, z, −y).
  */
-export const keyDirection = (aim: Aim, yaw: number, out: Vector3): Vector3 => {
+export const keyDirection = (aim: Aim, out: Vector3): Vector3 => {
   const d = skyDirection(aim.azimuth, Math.max(aim.elevation, SHADOW_FLOOR))
-  const c = Math.cos(yaw),
-    s = Math.sin(yaw)
-  // A turn of `yaw` about three's +y: x' = x cos + z sin, z' = −x sin + z cos.
-  return out.set(d.x * c + -d.y * s, d.z, -d.x * s + -d.y * c)
+  return out.set(d.x, d.z, -d.y)
 }
 
 /** `current` eased toward `target` over `dt` s with time constant `tau` s, in log space (an exposure: halving and doubling take as long). */

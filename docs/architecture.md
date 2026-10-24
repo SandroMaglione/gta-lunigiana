@@ -621,10 +621,8 @@ The pixel pipeline (`src/render/pipeline.ts`):
 - The camera leads the player by 0.6 s of velocity, at most 14 m (`LOOK_AHEAD`), and eases
   toward its target.
 - The key light (the sun, or the moon at night) stands on its real arc for the game time over the
-  map's origin, turned with the view's yaw ([Lights](#lights)): in the home view it stands where it
-  really is, and a turn carries it round with the camera, so the lit and shaded wall faces look the
-  same whichever way the camera looks. Its shadow box follows the view, snapped to shadow-map
-  texels. The box
+  map's origin, fixed in the sky whichever way the view looks ([Lights](#lights)): a turn moves the
+  camera, never the shadows. Its shadow box follows the view, snapped to shadow-map texels. The box
   covers the ground the view shows (`shadowFit`): a 5 × 5 grid of rays across the view is marched
   down to the terrain, because a slope falling away from the camera shows ground far past the flat
   rectangle (at most 300 m across the light) and a valley seen between the view's edges can lie
@@ -735,8 +733,8 @@ hemisphere 0xdbe8f5 / 0x9a8a68 × 1.8, exposure 1).
   2° to −1°. A `HemisphereLight` gives the sky and the ground's bounce, by keyframes of the sun's
   elevation from −18° (night) to 30° (the settled noon).
 - **Its aim moves in steps** of 0.75° (every 3–4 real seconds at the normal clock), so hard shadow
-  edges do not crawl; a clock jump lands at once. `keyDirection` turns it about the vertical by the
-  view's yaw: the settled rule that the sun turns with the view.
+  edges do not crawl; a clock jump lands at once. `keyDirection` maps it into three space untouched
+  by the view's yaw: the settled rule that the sun stays where it really stands.
 - **Shadows are cast from at least 20° up** (`SHADOW_FLOOR`) while the colour follows the true
   elevation: long low shadows stay legible and inside the streamed chunks, and at 15° a shadow edge
   across a wall broke into light dashes. The shadow pass is skipped (`shadowMap.autoUpdate =
@@ -1167,12 +1165,12 @@ step, and git hooks run the first three before a commit or push.
     proxies, not a vehicle's shared body; people, animals and vehicles draw with the actor
     material; traffic and the player's car shine and get the headlight beams, parked cars stay
     dark.
-  - `src/render/sky/__tests__/*.test.ts`: the light (the settled look at 50.4°, the key turned with
-    the view at three yaws, clouds taking the sun only under their shadows), the post pass against
-    a mirror of its GLSL (fog, grades, the limit), the surface shader's key lines verbatim and its
-    port against the sim's snow cover and wetness (its melt band's straight line equal to
-    `celsiusAt`), the host (the shadow skip, the fog's colour, the puddles' mirror, the sun and the
-    moon over the loaded map's place), the lamps' placement and lanterns, the bolts and the flash's
+  - `src/render/sky/__tests__/*.test.ts`: the light (the settled look at 50.4°, the key's aim and
+    floor, clouds taking the sun only under their shadows), the post pass against a mirror of its
+    GLSL (fog, grades, the limit), the surface shader's key lines verbatim and its port against the
+    sim's snow cover and wetness (its melt band's straight line equal to `celsiusAt`), the host
+    (the shadow skip, the fog's colour, the puddles' mirror, the key fixed in the sky at four yaws,
+    the sun and the moon over the loaded map's place), the lamps' placement and lanterns, the bolts and the flash's
     limits, the drop counts and wrap (both buffers under their cap at 30 mm/h), the light pool, and
     the phase-locked sines; in `src/render/__tests__/`, `stand-ins.test.ts`: every material a world
     build and the actors draw has a stand-in; `pipeline.test.ts`: `compile` builds into the scene's

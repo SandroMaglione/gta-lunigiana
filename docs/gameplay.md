@@ -46,8 +46,8 @@ trails a turning car, so out of a car turning at 0.5–1.5 rad/s it can be 58–
 it lands there within 1.7 s; until then the walking keys follow the seat, not the screen. Under
 `prefers-reduced-motion` the view turns at once, except while it follows the car: it jumps onto it
 on getting in, then follows on the spring, which turns it less than the car's own wobbles would.
-The sun and the minimap turn with it, so the lit and shaded walls and the minimap's top always
-match the screen. While it follows the car the walls lose their exact 2:1 pixel lines, which come
+The minimap turns with it, so its top always matches the screen; the sun stays where it really
+stands, so the shadows hold still on the ground while the view turns. While it follows the car the walls lose their exact 2:1 pixel lines, which come
 back once it rests on a seat.
 
 ## On foot

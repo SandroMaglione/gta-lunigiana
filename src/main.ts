@@ -81,7 +81,7 @@ renderer.shadowMap.type = BasicShadowMap
 renderer.info.autoReset = false // two renders per frame (scene + blit): reset once per frame instead
 
 const scene = new Scene()
-// The sun (the moon at night) on its real arc, turned with the view, the sky light, the weather and the night lights: every light
+// The sun (the moon at night) on its real arc, fixed in the sky, the sky light, the weather and the night lights: every light
 // and weather mesh is made here, before the first frame compiles the shaders (the clear colour too is the sky's, each frame).
 const skyHost = new SkyHost(scene, { reduced: () => reduceMotion.matches })
 await step(document, "Painting land cover", 0.8)

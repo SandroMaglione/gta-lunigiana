@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Color, Object3D, Vector3 } from "three"
+import { Color, Vector3 } from "three"
 
 import { linear } from "../../geometry.ts"
 import {
@@ -160,14 +160,11 @@ test("the key light's aim moves in steps of under a degree, at once after a cloc
   aim = aimToward(aim, 245.6, 30.7)
   assert.deepEqual(aim, { azimuth: 245.6, elevation: 30.7 }, "past the step: moved")
   assert.deepEqual(aimToward(aim, 100, 5), { azimuth: 100, elevation: 5 }, "a jump moves at once")
-  // The fixed sun before the day cycle stood at azimuth 245°, elevation 50.4°, turned with the view.
+  // The fixed sun before the day cycle stood at azimuth 245°, elevation 50.4°.
   const out = new Vector3()
-  for (const yaw of [0, Math.PI / 2, -Math.PI]) {
-    keyDirection({ azimuth: HOME_AZIMUTH, elevation: HOME_ELEVATION }, yaw, out)
-    const home = HOME_SUN.clone().applyAxisAngle(Object3D.DEFAULT_UP, yaw)
-    near(out.distanceTo(home), 0, 1e-9, `home sun at yaw ${yaw}`)
-  }
-  keyDirection({ azimuth: 90, elevation: 2 }, 0, out)
+  keyDirection({ azimuth: HOME_AZIMUTH, elevation: HOME_ELEVATION }, out)
+  near(out.distanceTo(HOME_SUN), 0, 1e-9, "home sun")
+  keyDirection({ azimuth: 90, elevation: 2 }, out)
   near(
     Math.asin(out.y),
     (SHADOW_FLOOR * Math.PI) / 180,

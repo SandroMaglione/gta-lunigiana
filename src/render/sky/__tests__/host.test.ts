@@ -4,7 +4,7 @@ import { test } from "node:test"
 import { Color, Group, Vector2, Vector3 } from "three"
 
 import { heightAt } from "../../../sim/map/index.ts"
-import { moonAt, sunAt } from "../../../sim/sky/astro.ts"
+import { moonAt, skyDirection, sunAt } from "../../../sim/sky/astro.ts"
 import { DAY, daysFromCivil, utcFromRome } from "../../../sim/sky/calendar.ts"
 import { place, providePlace } from "../../../sim/sky/place.ts"
 import type { Regime } from "../../../sim/sky/regimes.ts"
@@ -12,23 +12,24 @@ import { initialWeather, setWeather } from "../../../sim/sky/weather.ts"
 import { yOf } from "../../ground.ts"
 import { shadowFit, viewAxes } from "../../pipeline.ts"
 import { SkyHost } from "../host.ts"
+import { SHADOW_FLOOR } from "../light.ts"
 import { makePost } from "../post.ts"
 import { SKY_UNIFORMS } from "../uniforms.ts"
 
 /** Monzone, the spawn: the view's focus (three space, or at map point (x, y)) and a 1280 × 720 screen's texels. */
 const X = -412.9,
   Y = 438.1
-const view = (x = X, y = Y) => {
+const view = (x = X, y = Y, yaw = 0) => {
   const focus = new Vector3(x, yOf(heightAt(x, y)), -y),
     size = new Vector2(427, 240)
   return {
     focus,
-    yaw: 0,
+    yaw,
     texelsPerMetre: 8,
     view: size,
     post: makePost(),
     shadowFit: (toSun: Vector3, groundAt: (x: number, z: number) => number) =>
-      shadowFit(focus, viewAxes(0), size.x / 8, size.y / 8, toSun, groundAt),
+      shadowFit(focus, viewAxes(yaw), size.x / 8, size.y / 8, toSun, groundAt),
   }
 }
 const renderer = () => ({
@@ -81,6 +82,23 @@ test("the sun and the moon stand over the loaded map's place, wherever it lies",
     )
   } finally {
     providePlace(home)
+  }
+})
+
+// Regression: the key light turned with the view's yaw, so a quarter turn or the driving view swung the shadows round with the camera.
+test("the sun lights the map from where it really stands, whichever way the view looks", () => {
+  // 22 October 2026, 12:00 in Rome: the sun about 34° up in the south.
+  const t = at(12),
+    { lat, lon } = place(),
+    sun = sunAt(t, lat, lon),
+    d = skyDirection(sun.azimuth, sun.elevation),
+    real = new Vector3(d.x, d.z, -d.y)
+  assert.ok(sun.elevation > SHADOW_FLOOR, "high enough that the shadow floor does not lift it")
+  for (const yaw of [0, Math.PI / 2, -Math.PI, 1]) {
+    const host = new SkyHost(new Group(), { reduced: () => false })
+    host.sky(t, 1, weather("clear", t), 10)
+    host.draw(view(X, Y, yaw), renderer())
+    assert.ok(host.toKey.distanceTo(real) < 1e-9, `yaw ${yaw}: ${host.toKey.toArray()}`)
   }
 })
 

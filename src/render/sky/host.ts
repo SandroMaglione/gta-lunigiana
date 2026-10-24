@@ -103,7 +103,7 @@ export class SkyHost {
   readonly bolts: Bolts
   /** Headlight beams and street-lamp lights. */
   readonly lights: NightLights
-  /** Toward the key light this frame, three space, turned with the view (cast from at least SHADOW_FLOOR up). */
+  /** Toward the key light this frame, three space, where it really stands (cast from at least SHADOW_FLOOR up). */
   readonly toKey = new Vector3()
   /** The sky frame drawn last. */
   frame: SkyFrame | undefined
@@ -201,10 +201,10 @@ export class SkyHost {
     const flash = this.bolts.update({ now }),
       flashLight = (flash * FLASH_LIGHT) / exposure
 
-    // The key light: aimed in steps (hard shadow edges must not crawl), turned with the view; its shadow pass skipped when it is dark.
+    // The key light: aimed in steps (hard shadow edges must not crawl), fixed in the sky whichever way the view looks; its shadow pass skipped when it is dark.
     const key = light.key
     this.aim = aimToward(this.aim, key.azimuth, key.elevation)
-    keyDirection(this.aim, view.yaw, this.toKey)
+    keyDirection(this.aim, this.toKey)
     setRgb(this.key.color, key.color)
     this.key.intensity = key.intensity
     followSun(

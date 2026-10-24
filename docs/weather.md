@@ -107,13 +107,12 @@ time, in degrees: azimuth clockwise from north, elevation geometric (no refracti
   scanned hour by hour from local midnight, then bisected to half a second. At the reference site
   on 22 October 2026 they are 07:42 and 18:24, on 21 June 05:36 and 21:06, on 21 December 07:51 and
   16:43. The dev menu's sunrise and sunset buttons jump to them.
-- **The view turns the sky with it.** The renderer takes the real direction and turns it about the
-  vertical by the view's yaw (`keyDirection`, `src/render/sky/light.ts`): in the home view the sun
-  stands where it really is, and each quarter turn, or the view following a car, swings it with the
-  camera, so the lit and shaded walls always match the screen, the settled rule of
-  [render.md](standards/render.md); while the view follows a car round a corner, the shadows sweep
-  over the ground with it (the user's choice). The home view looks south-east, so a morning sun
-  shines toward the camera; the user accepted that backlight.
+- **The sky stays put when the view turns.** The renderer takes the real direction into three
+  space as it is (`keyDirection`, `src/render/sky/light.ts`), whatever the view's yaw: a quarter
+  turn, or the view following a car round a corner, moves the camera and never the shadows, the
+  settled rule of [render.md](standards/render.md). Which walls are lit depends only on the date,
+  the hour and the place: the home view looks south-east, so a morning sun shines toward the
+  camera, and a turn shows the other side of the same light.
 
 ## The climate model
 
