@@ -4,21 +4,8 @@ import { test } from "node:test"
 import { Vec2 } from "@typeonce/ritmo-math"
 
 import { carCircles, carRadius, clearOf } from "../body.ts"
-import { moveCircles, pushOutSegments, sweepCircleSegment } from "../collide.ts"
-import type { Segment } from "../map/index.ts"
+import { moveCircles, pushOutSegments } from "../collide.ts"
 import { VEHICLE_MODELS, VEHICLES } from "../vehicles.ts"
-
-const wall: Segment = { ax: 5, ay: -5, bx: 5, by: 5 }
-
-test("sweepCircleSegment: hit time, normal, end cap", () => {
-  const hit = sweepCircleSegment({ x: 0, y: 0 }, { x: 10, y: 0 }, 1, wall)
-  assert.ok(hit)
-  assert.equal(hit.time, 0.4)
-  assert.deepEqual([hit.nx, Math.abs(hit.ny)], [-1, 0])
-  const cap = sweepCircleSegment({ x: 0, y: 5 }, { x: 10, y: 0 }, 1, wall)
-  assert.ok(cap?.time === 0.4 && cap.nx === -1)
-  assert.equal(sweepCircleSegment({ x: 0, y: 7 }, { x: 10, y: 0 }, 1, wall), undefined)
-})
 
 test("moveCircles: no tunnelling, sliding, a 3-circle car stops at the wall", () => {
   const long = { ax: 5, ay: -50, bx: 5, by: 50 }

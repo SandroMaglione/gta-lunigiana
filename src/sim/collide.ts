@@ -1,60 +1,13 @@
 /**
- * Circle-vs-segment collision, which ritmo-math does not have (Collide2 covers
- * circles against axis-aligned boxes only). Mirrors `Collide2.moveCircle`:
- * swept, pushes out first, slides along walls, up to 4 contacts per call.
- * Ported from the verified `.research/scratch-ritmo-addons/sim/collide.ts`.
+ * Collision helpers on top of ritmo-math's `Collide2`, which sweeps and pushes one circle against
+ * the map's wall segments: a rigid group of circles moved as one (a car is a row of circles along
+ * its axis), push-out repeated for concave corners, a static broad phase, and polygon geometry.
  *
  * @module collide
  */
 import { Collide2, Vec2 } from "@typeonce/ritmo-math"
 
 import type { Segment } from "./map/index.ts"
-
-/** First contact of a circle at `o` moving by `d` with the capsule of radius `r` around `s`, or undefined. */
-export const sweepCircleSegment = (
-  o: Vec2.Vec2,
-  d: Vec2.Vec2,
-  r: number,
-  s: Segment,
-): Collide2.Hit | undefined => {
-  const ex = s.bx - s.ax
-  const ey = s.by - s.ay
-  const len2 = ex * ex + ey * ey
-  let best: Collide2.Hit | undefined
-  if (len2 > 1e-12) {
-    const len = Math.sqrt(len2)
-    let nx = -ey / len
-    let ny = ex / len
-    let side = (o.x - s.ax) * nx + (o.y - s.ay) * ny
-    if (side < 0) {
-      nx = -nx
-      ny = -ny
-      side = -side
-    }
-    const into = d.x * nx + d.y * ny
-    if (into < 0 && side >= r) {
-      const t = (r - side) / into
-      const px = o.x + d.x * t - s.ax
-      const py = o.y + d.y * t - s.ay
-      const u = (px * ex + py * ey) / len2
-      if (t <= 1 && u >= 0 && u <= 1) best = { time: t, nx, ny }
-    }
-  }
-  if (best !== undefined) return best
-  // End caps: Collide2.rayCircle is the exact ray-vs-circle entry time.
-  for (const [cx, cy] of [
-    [s.ax, s.ay],
-    [s.bx, s.by],
-  ] as const) {
-    const t = Collide2.rayCircle(o.x, o.y, d.x, d.y, cx, cy, r)
-    if (t === undefined || (best !== undefined && t >= best.time)) continue
-    const hx = o.x + d.x * t - cx
-    const hy = o.y + d.y * t - cy
-    const l = Math.sqrt(hx * hx + hy * hy) || 1
-    best = { time: t, nx: hx / l, ny: hy / l }
-  }
-  return best
-}
 
 /** Squared distance from (px,py) to segment a-b and the projection parameter t in [0,1]. */
 export const segDist2 = (
@@ -137,36 +90,13 @@ export const pushOutSegments = (
   segs: ReadonlyArray<Segment>,
   skin = Collide2.defaultSkin,
 ): Vec2.Vec2 => {
-  let x = c.x
-  let y = c.y
+  let at = c
   for (let pass = 0; pass < PUSH_PASSES; pass++) {
-    let pushed = false
-    for (const s of segs) {
-      const ex = s.bx - s.ax
-      const ey = s.by - s.ay
-      const len2 = ex * ex + ey * ey
-      const u =
-        len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - s.ax) * ex + (y - s.ay) * ey) / len2)) : 0
-      const qx = s.ax + ex * u
-      const qy = s.ay + ey * u
-      const dx = x - qx
-      const dy = y - qy
-      const dist2 = dx * dx + dy * dy
-      if (dist2 >= r * r) continue
-      pushed = true
-      if (dist2 > 1e-12) {
-        const dist = Math.sqrt(dist2)
-        x = qx + (dx / dist) * (r + skin)
-        y = qy + (dy / dist) * (r + skin)
-      } else {
-        const len = Math.sqrt(len2) || 1
-        x = qx - (ey / len) * (r + skin)
-        y = qy + (ex / len) * (r + skin)
-      }
-    }
-    if (!pushed) break
+    const out = Collide2.pushOut(at, r, { segments: segs }, skin)
+    if (out.x === at.x && out.y === at.y) break
+    at = out
   }
-  return { x, y }
+  return at
 }
 
 // ponytail: a fixed number of push-out passes; a body squeezed between walls closer than its diameter can still overlap one. Upgrade: solve the contacts together.
@@ -204,7 +134,7 @@ export const moveCircles = (
     for (const off of offsets) {
       const origin = Vec2.add(position, off)
       for (const s of segs) {
-        const h = sweepCircleSegment(origin, { x: rx, y: ry }, r, s)
+        const h = Collide2.sweepCircleSegment(origin, { x: rx, y: ry }, r, s)
         if (h !== undefined && (hit === undefined || h.time < hit.time)) hit = h
       }
     }
