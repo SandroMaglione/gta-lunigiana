@@ -31,35 +31,27 @@ const directions = ({ x, y }: Controls.Vector): Partial<Record<Key, boolean>> =>
 
 /**
  * The keyboard's controls with the touch screen's added: the stick holds the direction keys, each
- * button its own key. A key is held while any of them holds it, and a press on any is a press.
- * Only the controls `shown` count: one the mode hides under a thumb that stays down (the stick on
- * getting in, ◀ on getting out) lets go of its keys, as the thumb is lifted only later.
+ * button its own key. A key is held while any of them holds it, and a press on any is a press. A
+ * control the mode hides is `null` in Touch's layout, so Touch lets go of it under a thumb that
+ * stays down (the stick on getting in, ◀ on getting out), and its keys release once.
  */
 export const withTouch = (
   keyboard: InputCapture.Source<Keys>,
   touch: InputCapture.Source<Touch.Snapshot<Key, "move">>,
-  shown: (control: Key | "stick") => boolean = () => true,
 ): InputCapture.Source<Keys> => {
-  let was = directions({ x: 0, y: 0 }),
-    pads: Partial<Record<Key, boolean>> = {}
+  let was = directions({ x: 0, y: 0 })
   return {
     snapshot: () => {
       const typed = keyboard.snapshot(),
-        keys = typed.actions,
         tapped = touch.snapshot(),
-        buttons = tapped.actions,
-        now = directions(shown("stick") ? tapped.vectors.move : { x: 0, y: 0 })
-      const merged = {} as Record<Key, Controls.ActionState>,
-        held: Partial<Record<Key, boolean>> = {}
+        now = directions(tapped.vectors.move)
+      const merged = {} as Record<Key, Controls.ActionState>
       for (const key of BUTTONS) {
-        const pad = shown(key)
-          ? buttons[key]
-          : { held: false, pressed: false, released: pads[key] === true }
         const leans = now[key] === true,
           leant = was[key] === true
         const all = [
-            keys[key],
-            pad,
+            typed.actions[key],
+            tapped.actions[key],
             { held: leans, pressed: leans && !leant, released: leant && !leans },
           ],
           down = all.some((state) => state.held)
@@ -68,10 +60,8 @@ export const withTouch = (
           pressed: all.some((state) => state.pressed),
           released: all.some((state) => state.released) && !down,
         }
-        held[key] = pad.held
       }
       was = now
-      pads = held
       return { actions: merged, vectors: {}, used: typed.used || tapped.used }
     },
   }
@@ -148,10 +138,10 @@ const surface = (canvas: HTMLCanvasElement): Touch.TouchTarget => {
 /** Whether hud.css hides `node` in the current mode. */
 const hidden = (node: HTMLElement) => node.offsetParent === null
 
-/** A drawn control's touch zone in the page's frame: the circle it is drawn as, or out of reach while hidden. */
-const zone = (node: HTMLElement): Touch.ButtonZone =>
+/** A drawn control's touch zone in the page's frame: the circle it is drawn as, or `null` while hidden. */
+const zone = (node: HTMLElement): Touch.ButtonZone | null =>
   hidden(node)
-    ? { center: { x: -1e4, y: -1e4 }, radius: 0 }
+    ? null
     : {
         center: {
           x: node.offsetLeft + node.offsetWidth / 2,
@@ -160,7 +150,7 @@ const zone = (node: HTMLElement): Touch.ButtonZone =>
         radius: node.offsetWidth / 2,
       }
 
-/** Binds the touch controls to their markup over `canvas`: `touch` and `shown` feed `withTouch`, `draw` runs once per frame. */
+/** Binds the touch controls to their markup over `canvas`: `touch` feeds `withTouch`, `draw` runs once per frame. */
 export const makeTouchControls = (document: Document, canvas: HTMLCanvasElement) => {
   const root = element(document, "hud-touch"),
     stick = element(document, "hud-stick"),
@@ -168,28 +158,23 @@ export const makeTouchControls = (document: Document, canvas: HTMLCanvasElement)
   const pads = Object.fromEntries(
     BUTTONS.map((key) => [key, element(document, `hud-touch-${key}`)]),
   ) as Record<Key, HTMLElement>
-  // Read again on every new touch, so the zones follow the controls hud.css shows in the current mode.
+  // Read again on every snapshot and every new touch, so the zones follow the controls hud.css shows
+  // in the current mode: a hidden one is null, and Touch lets go of it under a thumb that stays down.
   const touch = Touch.actions(surface(canvas), document.defaultView!, ({ width, height }) => ({
     sticks: {
-      move: {
-        region: hidden(stick)
-          ? { left: -1e4, top: -1e4, width: 0, height: 0 }
-          : { left: 0, top: 0, width: width / 2, height },
-        radius: stick.offsetWidth / 2,
-      },
+      move: hidden(stick)
+        ? null
+        : { region: { left: 0, top: 0, width: width / 2, height }, radius: stick.offsetWidth / 2 },
     },
     buttons: Object.fromEntries(BUTTONS.map((key) => [key, zone(pads[key])])) as Record<
       Key,
-      Touch.ButtonZone
+      Touch.ButtonZone | null
     >,
   }))
   let moved = "",
     leaned = ""
   return {
     touch,
-    /** Whether hud.css shows the stick or a key's button in the current mode. */
-    shown: (control: Key | "stick"): boolean =>
-      !hidden(control === "stick" ? stick : pads[control]),
     /** Shows the buttons of the player's mode, the action button's verb, the held controls lit and the stick under the thumb. */
     draw: (view: PlayerViewModel): void => {
       if (root.dataset.mode !== view.mode) root.dataset.mode = view.mode

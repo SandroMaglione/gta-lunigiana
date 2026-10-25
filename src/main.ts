@@ -122,7 +122,7 @@ const keyboard = Keyboard.actions(window, bindings)
 const pad = document.documentElement.classList.contains("touch")
   ? makeTouchControls(document, canvas)
   : undefined
-const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch, pad.shown)
+const controls = pad === undefined ? keyboard : withTouch(keyboard, pad.touch)
 const renderClock = { alpha: 0 }
 const { people, animals, vehicles } = makeRegistries(scene)
 const effects = makeEffects(scene)

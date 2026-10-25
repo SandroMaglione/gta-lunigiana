@@ -47,32 +47,66 @@ test("the stick holds the arrow keys it leans to, eight ways, and the buttons pr
   assert.equal(both.actions.left.released, false)
 })
 
-test("a control the mode hides under a thumb that stays down lets go of its keys", () => {
-  const keyboard = Keyboard.scripted(bindings, [])
-  const touch = Touch.scripted({ buttons: BUTTONS, sticks: ["move"] }, [
-    { frame: 0, sticks: { move: { x: 0, y: -1 } }, press: ["action"] }, // leaning toward a car, Steal tapped and held
-    { frame: 3, sticks: { move: null }, release: ["action"], press: ["left"] }, // driving: ◀ held, Exit tapped
-    { frame: 4, press: ["action"] },
-  ])
-  let mode: "foot" | "driving" = "foot"
-  const driving = new Set<string>(["left", "right", "up", "down", "handbrake", "horn"]),
-    onFoot = new Set<string>(["stick", "sprint"])
-  const controls = withTouch(
-    keyboard,
-    touch,
-    (control) => !(mode === "driving" ? onFoot : driving).has(control),
-  )
+/** A canvas for Ritmo's live Touch: dispatches pointer events at page coordinates. */
+const fakeCanvas = () => {
+  const listeners = new Map<string, Set<(event: Touch.TouchEventLike) => void>>()
+  const target: Touch.TouchTarget = {
+    addEventListener: (type, listener) => {
+      const set = listeners.get(type) ?? new Set()
+      set.add(listener)
+      listeners.set(type, set)
+    },
+    removeEventListener: (type, listener) => void listeners.get(type)?.delete(listener),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 400 }),
+  }
+  const send = (type: "pointerdown" | "pointermove", pointerId: number, x: number, y: number) => {
+    for (const listener of listeners.get(type) ?? [])
+      listener({
+        clientX: x,
+        clientY: y,
+        pointerId,
+        pointerType: "touch",
+        preventDefault: () => {},
+      })
+  }
+  return { target, blur: { addEventListener: () => {}, removeEventListener: () => {} }, send }
+}
 
-  assert.deepEqual(held(controls.snapshot()), ["action", "up"])
+test("a control the mode hides under a thumb that stays down lets go of its keys", () => {
+  const canvas = fakeCanvas()
+  let mode: "foot" | "driving" = "foot"
+  // On foot the stick fills the left half; driving, ◀ sits at (60, 340) in its place.
+  const touch = Touch.actions(canvas.target, canvas.blur, ({ width, height }) => ({
+    sticks: {
+      move:
+        mode === "foot"
+          ? { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 }
+          : null,
+    },
+    buttons: Object.fromEntries(
+      BUTTONS.map((key) => [
+        key,
+        key === "left" && mode === "driving" ? { center: { x: 60, y: 340 }, radius: 40 } : null,
+      ]),
+    ) as Record<(typeof BUTTONS)[number], Touch.ButtonZone | null>,
+  }))
+  const controls = withTouch(Keyboard.scripted(bindings, []), touch)
+
+  canvas.send("pointerdown", 1, 60, 340) // a thumb leaning the stick toward a car
+  canvas.send("pointermove", 1, 60, 280)
+  assert.deepEqual(held(controls.snapshot()), ["up"])
   mode = "driving" // the stick hides under the thumb: no throttle from it
   const gotIn = controls.snapshot()
-  assert.deepEqual(held(gotIn), ["action"])
+  assert.deepEqual(held(gotIn), [])
   assert.equal(gotIn.actions.up.released, true)
-  assert.deepEqual(held(controls.snapshot()), ["action"])
+  canvas.send("pointermove", 1, 60, 200)
+  assert.deepEqual(held(controls.snapshot()), [], "the thumb, still down, holds nothing")
+
+  canvas.send("pointerdown", 2, 60, 340) // ◀ held
   assert.deepEqual(held(controls.snapshot()), ["left"])
   mode = "foot" // ◀ hides under the thumb: the player does not walk off
   const gotOut = controls.snapshot()
-  assert.deepEqual(held(gotOut), ["action"])
+  assert.deepEqual(held(gotOut), [])
   assert.equal(gotOut.actions.left.released, true)
   assert.equal(controls.snapshot().actions.left.released, false, "released once")
 })
